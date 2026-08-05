@@ -22,6 +22,8 @@ import { MonitoringSettingsSection } from '../integrations/monitoring-settings-s
 import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
 import { PerformanceSection } from '../maintenance/performance-section'
+import { trafficControlWarningDefaults } from '../maintenance/traffic-control-defaults'
+import { TrafficControlSection } from '../maintenance/traffic-control-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
@@ -88,6 +90,31 @@ const OPERATIONS_SECTIONS = [
           WorkerValidKey: settings.WorkerValidKey,
           WorkerAllowHttpImageRequestEnabled:
             settings.WorkerAllowHttpImageRequestEnabled,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'traffic-control',
+    titleKey: 'Traffic Control',
+    build: (settings: OperationsSettings) => (
+      <TrafficControlSection
+        defaultValues={{
+          'traffic_control.mainland_web_block_enabled':
+            settings['traffic_control.mainland_web_block_enabled'] ?? false,
+          'traffic_control.include_hong_kong_taiwan':
+            settings['traffic_control.include_hong_kong_taiwan'] ?? false,
+          'traffic_control.country_header':
+            settings['traffic_control.country_header'] ?? 'CF-IPCountry',
+          'traffic_control.warning_title':
+            settings['traffic_control.warning_title'] ??
+            trafficControlWarningDefaults['traffic_control.warning_title'],
+          'traffic_control.warning_content':
+            settings['traffic_control.warning_content'] ??
+            trafficControlWarningDefaults['traffic_control.warning_content'],
+          'traffic_control.warning_annotation':
+            settings['traffic_control.warning_annotation'] ??
+            trafficControlWarningDefaults['traffic_control.warning_annotation'],
         }}
       />
     ),

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useStatus } from '@/hooks/use-status'
 
 import { SettingsPage } from '../components/settings-page'
+import { trafficControlWarningDefaults } from '../maintenance/traffic-control-defaults'
 import type { OperationsSettings } from '../types'
 import {
   OPERATIONS_DEFAULT_SECTION,
@@ -56,6 +57,10 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.flush_interval': 5,
   'perf_metrics_setting.bucket_time': 'hour',
   'perf_metrics_setting.retention_days': 0,
+  'traffic_control.mainland_web_block_enabled': false,
+  'traffic_control.include_hong_kong_taiwan': false,
+  'traffic_control.country_header': 'CF-IPCountry',
+  ...trafficControlWarningDefaults,
 }
 
 export function OperationsSettings() {

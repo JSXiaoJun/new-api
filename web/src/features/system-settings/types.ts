@@ -362,6 +362,12 @@ export type OperationsSettings = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'hour' | 'minute' | '5min'
   'perf_metrics_setting.retention_days': number
+  'traffic_control.mainland_web_block_enabled': boolean
+  'traffic_control.include_hong_kong_taiwan': boolean
+  'traffic_control.country_header': string
+  'traffic_control.warning_title': string
+  'traffic_control.warning_content': string
+  'traffic_control.warning_annotation': string
 }
 
 export type SecuritySettings = {
