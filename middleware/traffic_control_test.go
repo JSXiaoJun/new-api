@@ -269,9 +269,11 @@ func TestTrafficControlAccessCheckReflectsCurrentCountry(t *testing.T) {
 
 	blocked := performTrafficControlRequest(router, mainlandWebDeniedPath+"?check=1", "CF-IPCountry", "CN")
 	assert.Equal(t, http.StatusForbidden, blocked.Code)
+	assert.Equal(t, "blocked", blocked.Header().Get(trafficControlHeader))
 
 	allowed := performTrafficControlRequest(router, mainlandWebDeniedPath+"?check=1", "CF-IPCountry", "HK")
 	assert.Equal(t, http.StatusNoContent, allowed.Code)
+	assert.Empty(t, allowed.Header().Get(trafficControlHeader))
 }
 
 func TestTrafficControlUsesForwardedHTTPSForAPIEndpoint(t *testing.T) {

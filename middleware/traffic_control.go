@@ -11,6 +11,7 @@ import (
 )
 
 const mainlandWebDeniedPath = "/web-access-denied"
+const trafficControlHeader = "X-Traffic-Control"
 
 var apiPathPrefixes = []string{
 	"/api",
@@ -140,6 +141,7 @@ func RestrictMainlandWebAccess(c *gin.Context) bool {
 		if c.Query("check") == "1" {
 			c.Header("Cache-Control", "no-store")
 			if blocked {
+				c.Header(trafficControlHeader, "blocked")
 				c.Status(http.StatusForbidden)
 			} else {
 				c.Status(http.StatusNoContent)
