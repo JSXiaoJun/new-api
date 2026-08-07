@@ -21,6 +21,7 @@ import z from 'zod'
 
 import { Rankings } from '@/features/rankings'
 import { getFreshModuleAccess } from '@/lib/nav-modules'
+import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 const rankingsSearchSchema = z.object({
@@ -37,13 +38,16 @@ export const Route = createFileRoute('/rankings/')({
     if (!access.enabled) {
       throw redirect({ to: '/' })
     }
-    if (access.requireAuth) {
+    if (access.adminOnly || access.requireAuth) {
       const { auth } = useAuthStore.getState()
       if (!auth.user) {
         throw redirect({
           to: '/sign-in',
           search: { redirect: location.href },
         })
+      }
+      if (access.adminOnly && auth.user.role < ROLE.ADMIN) {
+        throw redirect({ to: '/' })
       }
     }
   },

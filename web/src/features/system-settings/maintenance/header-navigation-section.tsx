@@ -55,6 +55,7 @@ const headerNavSchema = z.object({
   pricingRequireAuth: z.boolean(),
   rankingsEnabled: z.boolean(),
   rankingsRequireAuth: z.boolean(),
+  rankingsAdminOnly: z.boolean(),
   docs: z.boolean(),
   about: z.boolean(),
 })
@@ -89,6 +90,10 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.rankings?.requireAuth === undefined
       ? HEADER_NAV_DEFAULT.rankings.requireAuth
       : Boolean(config.rankings.requireAuth),
+  rankingsAdminOnly:
+    config.rankings?.adminOnly === undefined
+      ? HEADER_NAV_DEFAULT.rankings.adminOnly
+      : Boolean(config.rankings.adminOnly),
   docs:
     config.docs === undefined ? HEADER_NAV_DEFAULT.docs : Boolean(config.docs),
   about:
@@ -130,6 +135,7 @@ export function HeaderNavigationSection({
         ...(config.rankings ?? HEADER_NAV_DEFAULT.rankings),
         enabled: values.rankingsEnabled,
         requireAuth: values.rankingsRequireAuth,
+        adminOnly: values.rankingsAdminOnly,
       },
     }
 
@@ -183,6 +189,9 @@ export function HeaderNavigationSection({
     description: string
     requireAuthTitle: string
     requireAuthDescription: string
+    adminOnlyKey?: 'rankingsAdminOnly'
+    adminOnlyTitle?: string
+    adminOnlyDescription?: string
   }> = [
     {
       enabledKey: 'pricingEnabled',
@@ -204,6 +213,11 @@ export function HeaderNavigationSection({
       requireAuthTitle: t('Require login to view rankings'),
       requireAuthDescription: t(
         'Visitors must authenticate before accessing the rankings page.'
+      ),
+      adminOnlyKey: 'rankingsAdminOnly',
+      adminOnlyTitle: t('Only administrators can view rankings'),
+      adminOnlyDescription: t(
+        'When enabled, only administrators can access the rankings page.'
       ),
     },
   ]
@@ -291,6 +305,35 @@ export function HeaderNavigationSection({
                     </SettingsControlChildren>
                   )}
                 />
+
+                {module.adminOnlyKey ? (
+                  <FormField
+                    control={form.control}
+                    name={module.adminOnlyKey}
+                    render={({ field }) => (
+                      <SettingsControlChildren>
+                        <SettingsSwitchItem className='py-2'>
+                          <SettingsSwitchContent>
+                            <FormLabel>{module.adminOnlyTitle}</FormLabel>
+                            <FormDescription>
+                              {module.adminOnlyDescription}
+                            </FormDescription>
+                          </SettingsSwitchContent>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                              disabled={
+                                !form.watch(module.requireAuthDependsOn)
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </SettingsSwitchItem>
+                      </SettingsControlChildren>
+                    )}
+                  />
+                ) : null}
               </SettingsControlGroup>
             ))}
           </div>

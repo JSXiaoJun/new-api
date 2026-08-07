@@ -58,6 +58,7 @@ const quotaSchema = z.object({
   TopUpLink: z.string(),
   general_setting: z.object({
     docs_link: z.string(),
+    gallery_link: z.string(),
   }),
   quota_setting: z.object({
     enable_free_model_pre_consume: z.boolean(),
@@ -297,6 +298,26 @@ export function QuotaSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t('Link to your documentation site')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='general_setting.gallery_link'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Gallery Link')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder={t('https://gallery.example.com')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Link to your gallery site')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
