@@ -105,7 +105,7 @@ func evaluateMainlandWebRequest(c *gin.Context) (bool, string) {
 	if countryCode == "CN" {
 		return true, trafficControlBlocked
 	}
-	if traffic_control.IncludeHongKongTaiwan() && (countryCode == "HK" || countryCode == "TW") {
+	if traffic_control.IncludeHongKongTaiwan() && (countryCode == "HK" || countryCode == "MO" || countryCode == "TW") {
 		return true, trafficControlBlocked
 	}
 	return false, trafficControlAllowed

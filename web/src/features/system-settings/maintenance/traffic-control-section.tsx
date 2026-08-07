@@ -140,10 +140,12 @@ export function TrafficControlSection(props: TrafficControlSectionProps) {
             render={({ field }) => (
               <SettingsSwitchItem>
                 <SettingsSwitchContent>
-                  <FormLabel>{t('Also block Hong Kong and Taiwan')}</FormLabel>
+                  <FormLabel>
+                    {t('Also block Hong Kong, Macau, and Taiwan')}
+                  </FormLabel>
                   <FormDescription>
                     {t(
-                      'When enabled, visitors identified as HK or TW will see the same warning page.'
+                      'When enabled, visitors identified as HK, MO, or TW will see the same warning page.'
                     )}
                   </FormDescription>
                 </SettingsSwitchContent>

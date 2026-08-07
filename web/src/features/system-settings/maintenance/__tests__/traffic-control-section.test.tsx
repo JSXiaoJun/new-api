@@ -61,7 +61,10 @@ await i18n.use(initReactI18next).init({
     en: {
       translation: {
         'Block mainland China web traffic': 'Block mainland China web traffic',
-        'Also block Hong Kong and Taiwan': 'Also block Hong Kong and Taiwan',
+        'Also block Hong Kong, Macau, and Taiwan':
+          'Also block Hong Kong, Macau, and Taiwan',
+        'When enabled, visitors identified as HK, MO, or TW will see the same warning page.':
+          'When enabled, visitors identified as HK, MO, or TW will see the same warning page.',
         'Country header': 'Country header',
         'Traffic Control': 'Traffic Control',
         'Warning page title': 'Warning page title',

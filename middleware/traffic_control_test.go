@@ -61,12 +61,12 @@ func configureTrafficControlWithRegions(t *testing.T, enabled bool, includeHongK
 	})
 }
 
-func TestTrafficControlCanAlsoBlockHongKongAndTaiwan(t *testing.T) {
+func TestTrafficControlCanAlsoBlockHongKongMacauAndTaiwan(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	configureTrafficControlWithRegions(t, true, true, "CF-IPCountry")
 	router := newTrafficControlRouter()
 
-	for _, countryCode := range []string{"CN", "HK", "TW"} {
+	for _, countryCode := range []string{"CN", "HK", "MO", "TW"} {
 		response := performTrafficControlRequest(router, "/", "CF-IPCountry", countryCode)
 		assert.Equal(t, http.StatusFound, response.Code, countryCode)
 		assert.Equal(t, TrafficControlPath, response.Header().Get("Location"), countryCode)
@@ -115,7 +115,7 @@ func TestTrafficControlBlocksOnlyMainlandChinaWebRequests(t *testing.T) {
 	assert.Equal(t, http.StatusFound, mainlandResponse.Code)
 	assert.Equal(t, TrafficControlPath, mainlandResponse.Header().Get("Location"))
 
-	for _, countryCode := range []string{"HK", "TW", "US", ""} {
+	for _, countryCode := range []string{"HK", "MO", "TW", "US", ""} {
 		response := performTrafficControlRequest(router, "/", "CF-IPCountry", countryCode)
 		assert.Equal(t, http.StatusOK, response.Code, countryCode)
 		assert.Equal(t, "dashboard", response.Body.String(), countryCode)
