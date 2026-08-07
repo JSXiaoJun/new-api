@@ -283,6 +283,20 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	}
 
 	modelName := taskModelName(task)
+	if billingContext := task.PrivateData.BillingContext; billingContext != nil {
+		if billingContext.ModelRatio <= 0 || billingContext.GroupRatio < 0 {
+			return
+		}
+		otherMultiplier := 1.0
+		if priceData := taskBillingContextPriceData(billingContext); priceData != nil {
+			otherMultiplier = priceData.OtherRatioMultiplier()
+		}
+		rawQuota := float64(totalTokens) * billingContext.ModelRatio * billingContext.GroupRatio * otherMultiplier
+		actualQuota, clamp := common.QuotaFromPositiveFloatChecked(rawQuota)
+		reason := fmt.Sprintf("token recalculation: tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, billingContext.ModelRatio, billingContext.GroupRatio, otherMultiplier)
+		RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
+		return
+	}
 
 	// 获取模型价格和倍率
 	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
@@ -320,7 +334,8 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	}
 
 	// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio * otherMultiplier（饱和转换，防止溢出成负数）
-	actualQuota, clamp := common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)
+	rawQuota := float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier
+	actualQuota, clamp := common.QuotaFromPositiveFloatChecked(rawQuota)
 
 	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
 	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)

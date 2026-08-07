@@ -47,23 +47,18 @@ func hasCustomModelRatio(modelName string, currentRatio float64) bool {
 	return currentRatio != defaultRatio
 }
 
-func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
+func calculateAudioBaseQuota(info QuotaInfo) decimal.Decimal {
 	if info.UsePrice {
 		modelPrice := decimal.NewFromFloat(info.ModelPrice)
 		quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		groupRatio := decimal.NewFromFloat(info.GroupRatio)
-
-		quota := modelPrice.Mul(quotaPerUnit).Mul(groupRatio)
-		return common.QuotaFromDecimalChecked(quota)
+		return modelPrice.Mul(quotaPerUnit)
 	}
 
 	completionRatio := decimal.NewFromFloat(ratio_setting.GetCompletionRatio(info.ModelName))
 	audioRatio := decimal.NewFromFloat(ratio_setting.GetAudioRatio(info.ModelName))
 	audioCompletionRatio := decimal.NewFromFloat(ratio_setting.GetAudioCompletionRatio(info.ModelName))
 
-	groupRatio := decimal.NewFromFloat(info.GroupRatio)
 	modelRatio := decimal.NewFromFloat(info.ModelRatio)
-	ratio := groupRatio.Mul(modelRatio)
 
 	inputTextTokens := decimal.NewFromInt(int64(info.InputDetails.TextTokens))
 	outputTextTokens := decimal.NewFromInt(int64(info.OutputDetails.TextTokens))
@@ -76,14 +71,26 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 	quota = quota.Add(inputAudioTokens.Mul(audioRatio))
 	quota = quota.Add(outputAudioTokens.Mul(audioRatio).Mul(audioCompletionRatio))
 
-	quota = quota.Mul(ratio)
+	return quota.Mul(modelRatio)
+}
 
-	// If ratio is not zero and quota is less than or equal to zero, set quota to 1
-	if !ratio.IsZero() && quota.LessThanOrEqual(decimal.Zero) {
+func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
+	groupRatio := decimal.NewFromFloat(info.GroupRatio)
+	quota := calculateAudioBaseQuota(info).Mul(groupRatio)
+
+	if quota.IsNegative() {
+		common.SysError(fmt.Sprintf("negative audio quota prevented for model %s", info.ModelName))
+		quota = decimal.Zero
+	}
+
+	// Preserve the existing minimum charge when a paid token-based audio
+	// response lacks detailed token categories.
+	modelRatio := decimal.NewFromFloat(info.ModelRatio)
+	if !info.UsePrice && groupRatio.Mul(modelRatio).GreaterThan(decimal.Zero) && quota.IsZero() {
 		quota = decimal.NewFromInt(1)
 	}
 
-	return common.QuotaFromDecimalChecked(quota)
+	return common.QuotaFromPositiveDecimalChecked(quota)
 }
 
 func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
@@ -105,20 +112,13 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	textOutTokens := usage.OutputTokenDetails.TextTokens
 	audioInputTokens := usage.InputTokenDetails.AudioTokens
 	audioOutTokens := usage.OutputTokenDetails.AudioTokens
-	groupRatio := ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
+	groupRatio := relayInfo.PriceData.GroupRatioInfo.GroupRatio
 	modelRatio, _, _ := ratio_setting.GetModelRatio(modelName)
 
 	autoGroup, exists := common.GetContextKey(ctx, constant.ContextKeyAutoGroup)
 	if exists {
-		groupRatio = ratio_setting.GetGroupRatio(autoGroup.(string))
 		logger.LogDebug(ctx, "final group ratio: %f", groupRatio)
 		relayInfo.UsingGroup = autoGroup.(string)
-	}
-
-	actualGroupRatio := groupRatio
-	userGroupRatio, ok := ratio_setting.GetGroupGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup)
-	if ok {
-		actualGroupRatio = userGroupRatio
 	}
 
 	quotaInfo := QuotaInfo{
@@ -133,7 +133,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		ModelName:  modelName,
 		UsePrice:   relayInfo.UsePrice,
 		ModelRatio: modelRatio,
-		GroupRatio: actualGroupRatio,
+		GroupRatio: groupRatio,
 	}
 
 	quota, clamp := calculateAudioQuota(quotaInfo)
@@ -240,6 +240,18 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	if tieredResult != nil {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
+	}
+	formulaMode := "per_token"
+	formulaBaseQuota := calculateAudioBaseQuota(quotaInfo).InexactFloat64()
+	if usePrice {
+		formulaMode = "per_call"
+	}
+	if tieredResult != nil {
+		formulaMode = "tiered_expr"
+		formulaBaseQuota = tieredResult.ActualQuotaBeforeGroup
+	}
+	if totalTokens > 0 && (!tieredOk || tieredResult != nil) {
+		appendBillingFormula(other, relayInfo, formulaMode, formulaBaseQuota, 1, 0, quota)
 	}
 	attachQuotaSaturation(ctx, relayInfo, other)
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
@@ -363,6 +375,18 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	if tieredResult != nil {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
+	}
+	formulaMode := "per_token"
+	formulaBaseQuota := calculateAudioBaseQuota(quotaInfo).InexactFloat64()
+	if usePrice {
+		formulaMode = "per_call"
+	}
+	if tieredResult != nil {
+		formulaMode = "tiered_expr"
+		formulaBaseQuota = tieredResult.ActualQuotaBeforeGroup
+	}
+	if totalTokens > 0 && (!tieredOk || tieredResult != nil) {
+		appendBillingFormula(other, relayInfo, formulaMode, formulaBaseQuota, 1, 0, quota)
 	}
 	attachQuotaSaturation(ctx, relayInfo, other)
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{

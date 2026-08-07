@@ -157,6 +157,12 @@ type RelayInfo struct {
 	UpstreamRequestBodySize int64
 
 	PriceData hosttypes.PriceData
+	// BillingBaseGroupRatio captures the selected route ratio before discount.
+	// BillingDiscountRatio is resolved once from request start time and user
+	// group, then reused across retries and settlement for consistency.
+	BillingBaseGroupRatio   float64
+	BillingDiscountRatio    float64
+	BillingDiscountResolved bool
 
 	// QuotaClamp is set (non-nil) when a quota conversion saturated at the
 	// int32 bound (or NaN fallback) while computing this request's charge.

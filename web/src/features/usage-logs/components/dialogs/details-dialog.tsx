@@ -70,6 +70,8 @@ import {
   parseAuditLine,
   decodeBillingExprB64,
   getTieredBillingSummary,
+  getBillingFormula,
+  buildBillingFormulaText,
   hasAnyCacheTokens,
   isViolationFeeLog,
   getFirstResponseTimeColor,
@@ -226,6 +228,7 @@ function BillingBreakdown(props: {
   const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const tieredSummary = getTieredBillingSummary(other)
+  const billingFormula = getBillingFormula(other)
 
   const rows: Array<{ label: string; value: string }> = []
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
@@ -287,6 +290,13 @@ function BillingBreakdown(props: {
     rows.push({
       label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),
       value: `${formatRatio(effectiveGR)}x`,
+    })
+  }
+
+  if (billingFormula && billingFormula.discount_ratio !== 1) {
+    rows.push({
+      label: t('Discount Multiplier'),
+      value: `${formatRatio(billingFormula.discount_ratio)}x`,
     })
   }
 
@@ -391,6 +401,13 @@ function BillingBreakdown(props: {
     label: t('Total Cost'),
     value: formatLogQuota(log.quota),
   })
+
+  if (billingFormula) {
+    rows.push({
+      label: t('Calculation Formula'),
+      value: buildBillingFormulaText(billingFormula, formatLogQuota, t),
+    })
+  }
 
   if (rows.length === 0) return null
 

@@ -340,6 +340,65 @@ export function getTieredBillingSummary(
   return { tiers, tier, priceEntries }
 }
 
+export function getBillingFormula(
+  other: LogOtherData | null | undefined
+): NonNullable<LogOtherData['billing_formula']> | null {
+  const formula = other?.billing_formula
+  if (!formula) return null
+
+  const nonNegativeValues = [
+    formula.base_quota,
+    formula.base_group_ratio,
+    formula.effective_group_ratio,
+    formula.surcharge_quota,
+    formula.final_quota,
+  ]
+  if (
+    nonNegativeValues.some((value) => !Number.isFinite(value) || value < 0) ||
+    !Number.isFinite(formula.discount_ratio) ||
+    formula.discount_ratio <= 0 ||
+    formula.discount_ratio > 1 ||
+    !Number.isFinite(formula.other_ratio) ||
+    formula.other_ratio <= 0 ||
+    (formula.minimum_charge_applied != null &&
+      typeof formula.minimum_charge_applied !== 'boolean')
+  ) {
+    return null
+  }
+
+  return formula
+}
+
+export function buildBillingFormulaText(
+  formula: NonNullable<LogOtherData['billing_formula']>,
+  formatQuota: (quota: number) => string,
+  translate: (key: string) => string
+): string {
+  const formatFormulaRatio = (ratio: number) => ratio.toFixed(4)
+  const terms = [
+    `${formatQuota(formula.base_quota)} (${translate('Base Charge')})`,
+    `${formatFormulaRatio(formula.base_group_ratio)}x (${translate('Base Group Ratio')})`,
+  ]
+  if (formula.discount_ratio !== 1) {
+    terms.push(
+      `${formatFormulaRatio(formula.discount_ratio)}x (${translate('Discount Multiplier')})`
+    )
+  }
+  if (formula.other_ratio !== 1) {
+    terms.push(
+      `${formatFormulaRatio(formula.other_ratio)}x (${translate('Request Multiplier')})`
+    )
+  }
+  let text = terms.join(' × ')
+  if (formula.surcharge_quota > 0) {
+    text += ` + ${formatQuota(formula.surcharge_quota)} (${translate('Surcharge')})`
+  }
+  if (formula.minimum_charge_applied) {
+    return `max(${formatQuota(1)} (${translate('Minimum Charge')}), round(${text})) = ${formatQuota(formula.final_quota)}`
+  }
+  return `round(${text}) = ${formatQuota(formula.final_quota)}`
+}
+
 /**
  * Calculate duration and return formatted result with color variant
  * @param submitTime - Submit timestamp

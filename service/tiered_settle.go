@@ -3,6 +3,7 @@ package service
 import (
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -109,7 +110,7 @@ func refreshTieredBillingGroup(relayInfo *relaycommon.RelayInfo) (*billingexpr.B
 	}
 
 	estimatedQuotaAfterGroup := snap.EstimatedQuotaBeforeGroup * groupRatio
-	estimatedQuota, err := billingexpr.QuotaRoundStrict(estimatedQuotaAfterGroup)
+	estimatedQuota, err := common.QuotaRoundPositiveStrict(estimatedQuotaAfterGroup)
 	if err != nil {
 		return nil, err
 	}

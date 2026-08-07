@@ -124,3 +124,33 @@ func TestQuotaFromDecimalChecked(t *testing.T) {
 		assert.Equal(t, QuotaClampOverflow, clamp.Kind)
 	}
 }
+
+func TestPositiveChargeConversionsApplyMinimumWithoutChangingFreeValues(t *testing.T) {
+	quota, clamp := QuotaFromPositiveFloatChecked(0.1)
+	assert.Nil(t, clamp)
+	assert.Equal(t, 1, quota)
+
+	quota, err := QuotaFromPositiveFloatStrict(0.1)
+	require.NoError(t, err)
+	assert.Equal(t, 1, quota)
+
+	quota, clamp = QuotaRoundPositiveChecked(0.1)
+	assert.Nil(t, clamp)
+	assert.Equal(t, 1, quota)
+
+	quota, err = QuotaRoundPositiveStrict(0.1)
+	require.NoError(t, err)
+	assert.Equal(t, 1, quota)
+
+	quota, clamp = QuotaFromPositiveDecimalChecked(decimal.NewFromFloat(0.1))
+	assert.Nil(t, clamp)
+	assert.Equal(t, 1, quota)
+
+	quota, clamp = QuotaFromPositiveDecimalChecked(decimal.Zero)
+	assert.Nil(t, clamp)
+	assert.Equal(t, 0, quota)
+
+	quota, clamp = QuotaFromPositiveFloatChecked(-0.1)
+	assert.Nil(t, clamp)
+	assert.Equal(t, 0, quota)
+}

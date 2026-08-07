@@ -60,6 +60,8 @@ const defaultBillingSettings: BillingSettings = {
   MaxTokenAutoGroups: 5,
   DefaultUseAutoGroup: false,
   'group_ratio_setting.group_special_usable_group': '{}',
+  'discount_setting.schedule':
+    '{"enabled":false,"ratio":1,"groups":[],"daily_repeat":false,"start_at":"","end_at":"","start_time":"22:00","end_time":"06:00","timezone":"Asia/Shanghai"}',
   PayAddress: '',
   EpayId: '',
   EpayKey: '',

@@ -193,6 +193,17 @@ export interface LogOtherData {
   billing_mode?: string
   expr_b64?: string
   matched_tier?: string
+  billing_formula?: {
+    mode: string
+    base_quota: number
+    base_group_ratio: number
+    discount_ratio: number
+    effective_group_ratio: number
+    other_ratio: number
+    surcharge_quota: number
+    minimum_charge_applied?: boolean
+    final_quota: number
+  }
   reasoning_effort?: string
   image?: boolean
   image_ratio?: number

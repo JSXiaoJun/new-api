@@ -106,10 +106,28 @@ func QuotaFromFloatChecked(value float64) (int, *QuotaClamp) {
 	return saturateQuota(value, "QuotaFromFloat")
 }
 
+// QuotaFromPositiveFloatChecked converts a charge and guarantees that a
+// finite positive amount never truncates to zero. Explicit zero and negative
+// values keep the normal conversion behavior, so free configurations remain
+// free and invalid negative inputs are not disguised as positive charges.
+func QuotaFromPositiveFloatChecked(value float64) (int, *QuotaClamp) {
+	quota, clamp := QuotaFromFloatChecked(value)
+	if value > 0 && quota == 0 {
+		quota = 1
+	}
+	return quota, clamp
+}
+
 // QuotaFromFloatStrict converts an in-range value and returns a typed
 // *QuotaClamp error instead of allowing a saturated result to reach billing.
 func QuotaFromFloatStrict(value float64) (int, error) {
 	return strictQuota(QuotaFromFloatChecked(value))
+}
+
+// QuotaFromPositiveFloatStrict is the fail-fast pre-consume variant of
+// QuotaFromPositiveFloatChecked.
+func QuotaFromPositiveFloatStrict(value float64) (int, error) {
+	return strictQuota(QuotaFromPositiveFloatChecked(value))
 }
 
 // QuotaRound converts a float64 quota value to int using half-away-from-zero
@@ -127,10 +145,26 @@ func QuotaRoundChecked(value float64) (int, *QuotaClamp) {
 	return saturateQuota(math.Round(value), "QuotaRound")
 }
 
+// QuotaRoundPositiveChecked rounds a charge while guaranteeing that a finite
+// positive amount never rounds to zero.
+func QuotaRoundPositiveChecked(value float64) (int, *QuotaClamp) {
+	quota, clamp := QuotaRoundChecked(value)
+	if value > 0 && quota == 0 {
+		quota = 1
+	}
+	return quota, clamp
+}
+
 // QuotaRoundStrict rounds an in-range value and returns a typed *QuotaClamp
 // error instead of allowing a saturated result to reach billing.
 func QuotaRoundStrict(value float64) (int, error) {
 	return strictQuota(QuotaRoundChecked(value))
+}
+
+// QuotaRoundPositiveStrict is the fail-fast pre-consume variant of
+// QuotaRoundPositiveChecked.
+func QuotaRoundPositiveStrict(value float64) (int, error) {
+	return strictQuota(QuotaRoundPositiveChecked(value))
 }
 
 // QuotaFromDecimal converts a computed quota decimal to int with saturation.
@@ -145,4 +179,14 @@ func QuotaFromDecimal(d decimal.Decimal) int {
 func QuotaFromDecimalChecked(d decimal.Decimal) (int, *QuotaClamp) {
 	f, _ := d.Round(0).Float64()
 	return saturateQuota(f, "QuotaFromDecimal")
+}
+
+// QuotaFromPositiveDecimalChecked rounds a decimal charge while guaranteeing
+// that a positive amount never rounds to zero.
+func QuotaFromPositiveDecimalChecked(d decimal.Decimal) (int, *QuotaClamp) {
+	quota, clamp := QuotaFromDecimalChecked(d)
+	if d.GreaterThan(decimal.Zero) && quota == 0 {
+		quota = 1
+	}
+	return quota, clamp
 }

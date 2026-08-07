@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/discount_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -215,6 +216,9 @@ func validateOptionValue(key string, value string) error {
 	}
 	if key == "traffic_control.country_header" {
 		return traffic_control.ValidateCountryHeader(value)
+	}
+	if key == "discount_setting.schedule" {
+		return discount_setting.ValidateScheduleJSON(value)
 	}
 	return nil
 }
@@ -639,6 +643,8 @@ func handleConfigUpdate(key, value string) bool {
 		performance_setting.UpdateAndSync()
 	} else if configName == "traffic_control" {
 		traffic_control.UpdateAndSync()
+	} else if configName == "discount_setting" {
+		discount_setting.UpdateAndSync()
 	} else if configName == "billing_setting" {
 		InvalidatePricingCache()
 		ratio_setting.InvalidateExposedDataCache()

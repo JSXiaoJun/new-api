@@ -66,6 +66,8 @@ type textQuotaSummary struct {
 	AudioInputPrice        float64
 	ToolSurchargeItems     []ToolSurchargeItem
 	ToolCallSurchargeQuota decimal.Decimal
+	BaseQuotaBeforeGroup   decimal.Decimal
+	OtherRatioMultiplier   float64
 }
 
 // hasBillableUsage reports whether this request should incur any charge.
@@ -207,9 +209,10 @@ func composeTieredTextQuota(relayInfo *relaycommon.RelayInfo, summary textQuotaS
 
 	if tieredResult != nil {
 		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
-			quota, clamp := common.QuotaFromDecimalChecked(decimal.NewFromFloat(tieredResult.ActualQuotaBeforeGroup).
+			charge := decimal.NewFromFloat(tieredResult.ActualQuotaBeforeGroup).
 				Mul(decimal.NewFromFloat(snap.GroupRatio)).
-				Add(summary.ToolCallSurchargeQuota))
+				Add(summary.ToolCallSurchargeQuota)
+			quota, clamp := common.QuotaFromPositiveDecimalChecked(charge)
 			noteQuotaClamp(relayInfo, clamp)
 			return quota
 		}
@@ -218,9 +221,8 @@ func composeTieredTextQuota(relayInfo *relaycommon.RelayInfo, summary textQuotaS
 	// Saturate the final sum, not just the surcharge: tieredQuota can be near
 	// MaxQuota and adding the surcharge could push the total past the int32
 	// quota policy bound (persisted quota columns are 32-bit).
-	total, clamp := common.QuotaFromDecimalChecked(
-		decimal.NewFromInt(int64(tieredQuota)).Add(summary.ToolCallSurchargeQuota),
-	)
+	charge := decimal.NewFromInt(int64(tieredQuota)).Add(summary.ToolCallSurchargeQuota)
+	total, clamp := common.QuotaFromPositiveDecimalChecked(charge)
 	noteQuotaClamp(relayInfo, clamp)
 	return total
 }
@@ -301,6 +303,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	summary.ToolCallSurchargeQuota = calculateTextToolCallSurcharge(ctx, relayInfo, &summary)
 
 	var audioInputQuota decimal.Decimal
+	var audioInputQuotaBeforeGroup decimal.Decimal
 	if !relayInfo.PriceData.UsePrice {
 		baseTokens := dPromptTokens
 
@@ -339,8 +342,9 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 			summary.AudioInputPrice = operation_setting.GetGeminiInputAudioPricePerMillionTokens(summary.ModelName)
 			if summary.AudioInputPrice > 0 {
 				baseTokens = baseTokens.Sub(dAudioTokens)
-				audioInputQuota = decimal.NewFromFloat(summary.AudioInputPrice).
-					Div(decimal.NewFromInt(1000000)).Mul(dAudioTokens).Mul(dGroupRatio).Mul(dQuotaPerUnit)
+				audioInputQuotaBeforeGroup = decimal.NewFromFloat(summary.AudioInputPrice).
+					Div(decimal.NewFromInt(1000000)).Mul(dAudioTokens).Mul(dQuotaPerUnit)
+				audioInputQuota = audioInputQuotaBeforeGroup.Mul(dGroupRatio)
 			}
 		}
 
@@ -354,30 +358,42 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 
 		promptQuota := baseTokens.Add(cachedTokensWithRatio).Add(imageTokensWithRatio).Add(cachedCreationTokensWithRatio)
 		completionQuota := dCompletionTokens.Mul(dCompletionRatio)
+		summary.BaseQuotaBeforeGroup = promptQuota.Add(completionQuota).Mul(dModelRatio).Add(audioInputQuotaBeforeGroup)
+		summary.OtherRatioMultiplier = relayInfo.PriceData.OtherRatioMultiplier()
 		quotaCalculateDecimal := promptQuota.Add(completionQuota).Mul(ratio)
 		quotaCalculateDecimal = quotaCalculateDecimal.Add(audioInputQuota)
 		quotaCalculateDecimal = relayInfo.PriceData.ApplyOtherRatiosToDecimal(quotaCalculateDecimal)
 		quotaCalculateDecimal = quotaCalculateDecimal.Add(summary.ToolCallSurchargeQuota)
 
-		if !ratio.IsZero() && quotaCalculateDecimal.LessThanOrEqual(decimal.Zero) {
-			quotaCalculateDecimal = decimal.NewFromInt(1)
+		if quotaCalculateDecimal.IsNegative() {
+			common.SysError(fmt.Sprintf("negative text quota prevented for model %s", summary.ModelName))
+			quotaCalculateDecimal = decimal.Zero
 		}
-		quota, clamp := common.QuotaFromDecimalChecked(quotaCalculateDecimal)
+		quota, clamp := common.QuotaFromPositiveDecimalChecked(quotaCalculateDecimal)
 		summary.Quota = quota
 		noteQuotaClamp(relayInfo, clamp)
 	} else {
+		summary.BaseQuotaBeforeGroup = dModelPrice.Mul(dQuotaPerUnit)
+		summary.OtherRatioMultiplier = relayInfo.PriceData.OtherRatioMultiplier()
 		quotaCalculateDecimal := dModelPrice.Mul(dQuotaPerUnit).Mul(dGroupRatio)
 		quotaCalculateDecimal = quotaCalculateDecimal.Add(audioInputQuota)
 		quotaCalculateDecimal = relayInfo.PriceData.ApplyOtherRatiosToDecimal(quotaCalculateDecimal)
 		quotaCalculateDecimal = quotaCalculateDecimal.Add(summary.ToolCallSurchargeQuota)
-		quota, clamp := common.QuotaFromDecimalChecked(quotaCalculateDecimal)
+		if quotaCalculateDecimal.IsNegative() {
+			common.SysError(fmt.Sprintf("negative fixed-price text quota prevented for model %s", summary.ModelName))
+			quotaCalculateDecimal = decimal.Zero
+		}
+		quota, clamp := common.QuotaFromPositiveDecimalChecked(quotaCalculateDecimal)
 		summary.Quota = quota
 		noteQuotaClamp(relayInfo, clamp)
 	}
 
 	if !summary.hasBillableUsage() {
 		summary.Quota = 0
-	} else if !ratio.IsZero() && summary.Quota == 0 {
+	} else if summary.Quota == 0 && summary.GroupRatio > 0 && ((relayInfo.PriceData.UsePrice && summary.ModelPrice > 0) || (!relayInfo.PriceData.UsePrice && summary.ModelRatio > 0)) {
+		// Some upstreams return total_tokens without a usable prompt/completion
+		// split. Keep the existing minimum paid charge without turning explicit
+		// free model or group configurations into paid requests.
 		summary.Quota = 1
 	}
 
@@ -519,6 +535,20 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 	if tieredBillingApplied {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
+	}
+	formulaMode := "per_token"
+	formulaBaseQuota := summary.BaseQuotaBeforeGroup.InexactFloat64()
+	formulaOtherRatio := summary.OtherRatioMultiplier
+	if relayInfo.PriceData.UsePrice {
+		formulaMode = "per_call"
+	}
+	if tieredResult != nil {
+		formulaMode = "tiered_expr"
+		formulaBaseQuota = tieredResult.ActualQuotaBeforeGroup
+		formulaOtherRatio = 1
+	}
+	if summary.hasBillableUsage() && (!tieredBillingApplied || tieredResult != nil) {
+		appendBillingFormula(other, relayInfo, formulaMode, formulaBaseQuota, formulaOtherRatio, summary.ToolCallSurchargeQuota.InexactFloat64(), summary.Quota)
 	}
 
 	attachQuotaSaturation(ctx, relayInfo, other)
