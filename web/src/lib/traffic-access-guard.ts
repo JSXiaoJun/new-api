@@ -20,12 +20,13 @@ For commercial licensing, please contact support@quantumnous.com
 const ACCESS_CHECK_PATH = '/web-access-denied?check=1'
 const ACCESS_DENIED_PATH = '/web-access-denied'
 const ACCESS_CHECK_INTERVAL_MS = 10_000
+const ACCESS_CHECK_TIMEOUT_MS = 5_000
 const TRAFFIC_CONTROL_HEADER = 'X-Traffic-Control'
 
 type GuardListener = () => void
 
 export type TrafficAccessGuardRuntime = {
-  checkBlocked: () => Promise<boolean>
+  getDeniedURL: () => Promise<string | null>
   redirect: (path: string) => void
   setInterval: (callback: GuardListener, delay: number) => number
   clearInterval: (intervalId: number) => void
@@ -39,6 +40,46 @@ export type TrafficAccessGuardRuntime = {
   isVisible: () => boolean
 }
 
+export type TrafficAccessCheckRuntime = {
+  currentOrigin: string
+  readServerAddress: () => string | null
+  checkOrigin: (
+    origin: string,
+    mode: 'same-origin' | 'cross-origin-image'
+  ) => Promise<boolean>
+}
+
+export async function checkTrafficAccess(
+  runtime: TrafficAccessCheckRuntime
+): Promise<string | null> {
+  try {
+    if (await runtime.checkOrigin(runtime.currentOrigin, 'same-origin')) {
+      return `${runtime.currentOrigin}${ACCESS_DENIED_PATH}`
+    }
+  } catch {
+    // The primary-origin check below may still be reachable.
+  }
+
+  const serverAddress = runtime.readServerAddress()
+  if (!serverAddress) return null
+
+  try {
+    const canonicalOrigin = new URL(serverAddress).origin
+    if (canonicalOrigin === runtime.currentOrigin) return null
+    try {
+      const blocked = await runtime.checkOrigin(
+        canonicalOrigin,
+        'cross-origin-image'
+      )
+      return blocked ? `${canonicalOrigin}${ACCESS_DENIED_PATH}` : null
+    } catch {
+      return null
+    }
+  } catch {
+    return null
+  }
+}
+
 export function startTrafficAccessGuard(
   runtime: TrafficAccessGuardRuntime
 ): () => void {
@@ -50,9 +91,10 @@ export function startTrafficAccessGuard(
 
     checking = true
     try {
-      if (await runtime.checkBlocked()) {
+      const deniedURL = await runtime.getDeniedURL()
+      if (deniedURL) {
         stopped = true
-        runtime.redirect(ACCESS_DENIED_PATH)
+        runtime.redirect(deniedURL)
       }
     } catch {
       // A temporary network failure must not replace the current page.
@@ -90,17 +132,69 @@ export function installTrafficAccessGuard(): void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return
   installed = true
 
-  startTrafficAccessGuard({
-    checkBlocked: async () => {
-      const response = await window.fetch(ACCESS_CHECK_PATH, {
-        cache: 'no-store',
-        credentials: 'same-origin',
-      })
+  const checkOrigin = async (
+    origin: string,
+    mode: 'same-origin' | 'cross-origin-image'
+  ): Promise<boolean> => {
+    const cacheBuster = Date.now().toString()
+    if (mode === 'same-origin') {
+      const response = await window.fetch(
+        `${origin}${ACCESS_CHECK_PATH}&_=${cacheBuster}`,
+        {
+          cache: 'no-store',
+          credentials: 'same-origin',
+        }
+      )
       return (
         response.status === 403 &&
         response.headers.get(TRAFFIC_CONTROL_HEADER) === 'blocked'
       )
-    },
+    }
+
+    return new Promise((resolve) => {
+      const image = new Image()
+      let settled = false
+      let timeoutId = 0
+      const handleLoad = () => finish(true)
+      const handleError = () => finish(false)
+      const finish = (blocked: boolean) => {
+        if (settled) return
+        settled = true
+        window.clearTimeout(timeoutId)
+        image.removeEventListener('load', handleLoad)
+        image.removeEventListener('error', handleError)
+        resolve(blocked)
+      }
+      timeoutId = window.setTimeout(
+        () => finish(false),
+        ACCESS_CHECK_TIMEOUT_MS
+      )
+      image.addEventListener('load', handleLoad, { once: true })
+      image.addEventListener('error', handleError, { once: true })
+      image.src = `${origin}${ACCESS_DENIED_PATH}?check=image&_=${cacheBuster}`
+    })
+  }
+
+  startTrafficAccessGuard({
+    getDeniedURL: () =>
+      checkTrafficAccess({
+        currentOrigin: window.location.origin,
+        readServerAddress: () => {
+          try {
+            const status = JSON.parse(
+              window.localStorage.getItem('status') ?? '{}'
+            ) as {
+              server_address?: unknown
+            }
+            return typeof status.server_address === 'string'
+              ? status.server_address
+              : null
+          } catch {
+            return null
+          }
+        },
+        checkOrigin,
+      }),
     redirect: (path) => window.location.replace(path),
     setInterval: (callback, delay) => window.setInterval(callback, delay),
     clearInterval: (intervalId) => window.clearInterval(intervalId),

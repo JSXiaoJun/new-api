@@ -13,6 +13,13 @@ import (
 const mainlandWebDeniedPath = "/web-access-denied"
 const trafficControlHeader = "X-Traffic-Control"
 
+var trafficAccessBlockedGIF = []byte{
+	'G', 'I', 'F', '8', '9', 'a', 0x01, 0x00, 0x01, 0x00, 0x80, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x21, 0xf9, 0x04, 0x01,
+	0x00, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+	0x01, 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b,
+}
+
 var apiPathPrefixes = []string{
 	"/api",
 	"/v1",
@@ -138,6 +145,16 @@ func serveMainlandWebDeniedPage(c *gin.Context) {
 func RestrictMainlandWebAccess(c *gin.Context) bool {
 	blocked := isMainlandWebRequest(c)
 	if c.Request.URL.Path == mainlandWebDeniedPath {
+		if c.Query("check") == "image" {
+			c.Header("Cache-Control", "no-store")
+			if blocked {
+				c.Data(http.StatusOK, "image/gif", trafficAccessBlockedGIF)
+			} else {
+				c.Status(http.StatusNoContent)
+			}
+			c.Abort()
+			return true
+		}
 		if c.Query("check") == "1" {
 			c.Header("Cache-Control", "no-store")
 			if blocked {

@@ -276,6 +276,22 @@ func TestTrafficControlAccessCheckReflectsCurrentCountry(t *testing.T) {
 	assert.Empty(t, allowed.Header().Get(trafficControlHeader))
 }
 
+func TestTrafficControlImageCheckSupportsCrossOriginCountryDetection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	configureTrafficControl(t, true, "CF-IPCountry")
+	router := newTrafficControlRouter()
+
+	blocked := performTrafficControlRequest(router, mainlandWebDeniedPath+"?check=image", "CF-IPCountry", "CN")
+	assert.Equal(t, http.StatusOK, blocked.Code)
+	assert.Equal(t, "image/gif", blocked.Header().Get("Content-Type"))
+	assert.Equal(t, "no-store", blocked.Header().Get("Cache-Control"))
+	assert.Equal(t, trafficAccessBlockedGIF, blocked.Body.Bytes())
+
+	allowed := performTrafficControlRequest(router, mainlandWebDeniedPath+"?check=image", "CF-IPCountry", "US")
+	assert.Equal(t, http.StatusNoContent, allowed.Code)
+	assert.Empty(t, allowed.Body.Bytes())
+}
+
 func TestTrafficControlUsesForwardedHTTPSForAPIEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	configureTrafficControl(t, true, "CF-IPCountry")
