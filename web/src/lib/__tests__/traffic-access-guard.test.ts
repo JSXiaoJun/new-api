@@ -33,7 +33,7 @@ describe('traffic access guard', () => {
       readServerAddress: () => 'https://www.example.com/path',
       checkOrigin: async (origin, mode) => {
         checks.push([origin, mode])
-        return origin === 'https://www.example.com'
+        return origin === 'https://www.example.com' ? 'blocked' : 'unavailable'
       },
     })
 
@@ -52,7 +52,7 @@ describe('traffic access guard', () => {
       readServerAddress: () => 'https://www.example.com',
       checkOrigin: async (origin, mode) => {
         checks.push([origin, mode])
-        return false
+        return 'unavailable'
       },
     })
 
@@ -60,10 +60,43 @@ describe('traffic access guard', () => {
     assert.deepEqual(checks, [['https://www.example.com', 'same-origin']])
   })
 
+  test('does not call the primary origin when the CDN evaluated the visitor as allowed', async () => {
+    const checks: Array<[string, string]> = []
+
+    const deniedURL = await checkTrafficAccess({
+      currentOrigin: 'https://cdn.example.com',
+      readServerAddress: () => 'https://www.example.com',
+      checkOrigin: async (origin, mode) => {
+        checks.push([origin, mode])
+        return 'allowed'
+      },
+    })
+
+    assert.equal(deniedURL, null)
+    assert.deepEqual(checks, [['https://cdn.example.com', 'same-origin']])
+  })
+
+  test('redirects immediately when the current origin identifies blocked traffic', async () => {
+    const checks: Array<[string, string]> = []
+
+    const deniedURL = await checkTrafficAccess({
+      currentOrigin: 'https://cdn.example.com',
+      readServerAddress: () => 'https://www.example.com',
+      checkOrigin: async (origin, mode) => {
+        checks.push([origin, mode])
+        return 'blocked'
+      },
+    })
+
+    assert.equal(deniedURL, 'https://cdn.example.com/web-access-denied')
+    assert.deepEqual(checks, [['https://cdn.example.com', 'same-origin']])
+  })
+
   test('redirects an already loaded dashboard when a later check is blocked', async () => {
     const blockedChecks = [false, true]
     const redirects: string[] = []
     let intervalCallback: (() => void) | undefined
+    let intervalDelay = 0
 
     const stop = startTrafficAccessGuard({
       getDeniedURL: async () =>
@@ -71,8 +104,9 @@ describe('traffic access guard', () => {
           ? 'https://www.example.com/web-access-denied'
           : null,
       redirect: (path) => redirects.push(path),
-      setInterval: (callback) => {
+      setInterval: (callback, delay) => {
         intervalCallback = callback
+        intervalDelay = delay
         return 1
       },
       clearInterval: () => undefined,
@@ -85,6 +119,7 @@ describe('traffic access guard', () => {
 
     await Promise.resolve()
     assert.deepEqual(redirects, [])
+    assert.equal(intervalDelay, 30_000)
 
     intervalCallback?.()
     await Promise.resolve()

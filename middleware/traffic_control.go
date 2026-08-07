@@ -4,14 +4,20 @@ import (
 	"bytes"
 	"html/template"
 	"net/http"
+	"net/url"
+	"path"
 	"strings"
 
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/QuantumNous/new-api/setting/traffic_control"
 	"github.com/gin-gonic/gin"
 )
 
-const mainlandWebDeniedPath = "/web-access-denied"
+const TrafficControlPath = "/web-access-denied"
 const trafficControlHeader = "X-Traffic-Control"
+const trafficControlBlocked = "blocked"
+const trafficControlAllowed = "allowed"
+const trafficControlUnavailable = "unavailable"
 
 var trafficAccessBlockedGIF = []byte{
 	'G', 'I', 'F', '8', '9', 'a', 0x01, 0x00, 0x01, 0x00, 0x80, 0x00,
@@ -81,22 +87,39 @@ var mainlandWebDeniedTemplate = template.Must(template.New("mainland-web-denied"
           if (response.status === 204) window.location.replace("/");
         } catch {}
       };
-      window.setInterval(checkAccess, 5000);
+      window.setInterval(checkAccess, 15000);
     }
   </script>
 </body>
 </html>`))
 
-func isMainlandWebRequest(c *gin.Context) bool {
+func evaluateMainlandWebRequest(c *gin.Context) (bool, string) {
 	if !traffic_control.MainlandWebBlockEnabled() {
-		return false
+		return false, trafficControlAllowed
 	}
 
 	countryCode := strings.ToUpper(strings.TrimSpace(c.GetHeader(traffic_control.CountryHeader())))
-	if countryCode == "CN" {
-		return true
+	if len(countryCode) != 2 || countryCode == "XX" || countryCode[0] < 'A' || countryCode[0] > 'Z' || countryCode[1] < 'A' || countryCode[1] > 'Z' {
+		return false, trafficControlUnavailable
 	}
-	return traffic_control.IncludeHongKongTaiwan() && (countryCode == "HK" || countryCode == "TW")
+	if countryCode == "CN" {
+		return true, trafficControlBlocked
+	}
+	if traffic_control.IncludeHongKongTaiwan() && (countryCode == "HK" || countryCode == "TW") {
+		return true, trafficControlBlocked
+	}
+	return false, trafficControlAllowed
+}
+
+func primaryWebOrigin(c *gin.Context) (string, bool) {
+	serverAddress, err := url.Parse(strings.TrimSpace(system_setting.ServerAddress))
+	if err != nil || serverAddress.Scheme == "" || serverAddress.Host == "" {
+		return "", false
+	}
+	if strings.EqualFold(serverAddress.Hostname(), "localhost") || strings.EqualFold(serverAddress.Host, c.Request.Host) {
+		return "", false
+	}
+	return serverAddress.Scheme + "://" + serverAddress.Host, true
 }
 
 func isAPIPath(path string) bool {
@@ -106,6 +129,11 @@ func isAPIPath(path string) bool {
 		}
 	}
 	return false
+}
+
+func isWebDocumentPath(requestPath string) bool {
+	extension := path.Ext(requestPath)
+	return extension == "" || extension == ".html"
 }
 
 func serveMainlandWebDeniedPage(c *gin.Context) {
@@ -143,8 +171,16 @@ func serveMainlandWebDeniedPage(c *gin.Context) {
 }
 
 func RestrictMainlandWebAccess(c *gin.Context) bool {
-	blocked := isMainlandWebRequest(c)
-	if c.Request.URL.Path == mainlandWebDeniedPath {
+	blocked, decision := evaluateMainlandWebRequest(c)
+	primaryOrigin, redirectToPrimary := "", false
+	if traffic_control.MainlandWebBlockEnabled() {
+		primaryOrigin, redirectToPrimary = primaryWebOrigin(c)
+	}
+	if redirectToPrimary {
+		blocked = false
+		decision = trafficControlUnavailable
+	}
+	if c.Request.URL.Path == TrafficControlPath {
 		if c.Query("check") == "image" {
 			c.Header("Cache-Control", "no-store")
 			if blocked {
@@ -157,8 +193,8 @@ func RestrictMainlandWebAccess(c *gin.Context) bool {
 		}
 		if c.Query("check") == "1" {
 			c.Header("Cache-Control", "no-store")
+			c.Header(trafficControlHeader, decision)
 			if blocked {
-				c.Header(trafficControlHeader, "blocked")
 				c.Status(http.StatusForbidden)
 			} else {
 				c.Status(http.StatusNoContent)
@@ -181,15 +217,31 @@ func RestrictMainlandWebAccess(c *gin.Context) bool {
 	if isAPIPath(c.Request.URL.Path) {
 		return false
 	}
+	documentRequest := isWebDocumentPath(c.Request.URL.Path)
+	if redirectToPrimary && documentRequest {
+		c.Header("Cache-Control", "no-store")
+		c.Redirect(http.StatusFound, primaryOrigin+c.Request.URL.RequestURI())
+		c.Abort()
+		return true
+	}
+	if traffic_control.MainlandWebBlockEnabled() && documentRequest {
+		c.Header("Cache-Control", "no-store")
+	}
 
 	if !blocked {
 		return false
 	}
 
 	c.Header("Cache-Control", "no-store")
-	c.Redirect(http.StatusFound, mainlandWebDeniedPath)
+	c.Redirect(http.StatusFound, TrafficControlPath)
 	c.Abort()
 	return true
+}
+
+func TrafficControlEndpoint() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		RestrictMainlandWebAccess(c)
+	}
 }
 
 func TrafficControl() gin.HandlerFunc {

@@ -19,6 +19,14 @@ type WebAssets struct {
 	IndexPage []byte
 }
 
+func SetTrafficControlRouter(router *gin.Engine) {
+	router.Match(
+		[]string{http.MethodGet, http.MethodHead},
+		middleware.TrafficControlPath,
+		middleware.TrafficControlEndpoint(),
+	)
+}
+
 func SetWebRouter(router *gin.Engine, assets WebAssets) {
 	frontendFS := common.EmbedFolder(assets.BuildFS, "web/dist")
 
@@ -33,7 +41,9 @@ func SetWebRouter(router *gin.Engine, assets WebAssets) {
 			controller.RelayNotFound(c)
 			return
 		}
-		c.Header("Cache-Control", "no-cache")
+		if c.Writer.Header().Get("Cache-Control") != "no-store" {
+			c.Header("Cache-Control", "no-cache")
+		}
 		c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
 	})
 }

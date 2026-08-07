@@ -50,7 +50,6 @@ import './styles/index.css'
 // VChart theme is driven by our ThemeProvider (html.light/html.dark) via per-chart `theme` prop.
 initializeFrontendCache()
 installBuildMetadata()
-installTrafficAccessGuard()
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -127,18 +126,21 @@ if (!rootElement) {
       if (metaTitle) metaTitle.setAttribute('content', name)
     }
     // Cache-first
+    let hasCachedStatus = false
     try {
       const saved = localStorage.getItem('status')
       if (saved) {
         const s = JSON.parse(saved)
+        hasCachedStatus = true
         if (s?.system_name) apply(s.system_name)
         if (s?.logo) applyFaviconToDom(s.logo)
       }
     } catch {
       /* empty */
     }
+    if (hasCachedStatus) installTrafficAccessGuard()
     // Background refresh
-    getStatus()
+    void getStatus()
       .then((s) => {
         if (s?.system_name) {
           apply(s.system_name as string)
@@ -150,6 +152,7 @@ if (!rootElement) {
         }
         if (s?.logo) applyFaviconToDom(s.logo as string)
       })
+      .finally(installTrafficAccessGuard)
       .catch(() => {
         /* empty */
       })

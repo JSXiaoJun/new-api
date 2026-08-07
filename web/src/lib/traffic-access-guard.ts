@@ -16,12 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-
 const ACCESS_CHECK_PATH = '/web-access-denied?check=1'
 const ACCESS_DENIED_PATH = '/web-access-denied'
-const ACCESS_CHECK_INTERVAL_MS = 10_000
+const ACCESS_CHECK_INTERVAL_MS = 30_000
 const ACCESS_CHECK_TIMEOUT_MS = 5_000
 const TRAFFIC_CONTROL_HEADER = 'X-Traffic-Control'
+
+type TrafficAccessDecision = 'blocked' | 'allowed' | 'unavailable'
 
 type GuardListener = () => void
 
@@ -46,16 +47,21 @@ export type TrafficAccessCheckRuntime = {
   checkOrigin: (
     origin: string,
     mode: 'same-origin' | 'cross-origin-image'
-  ) => Promise<boolean>
+  ) => Promise<TrafficAccessDecision>
 }
 
 export async function checkTrafficAccess(
   runtime: TrafficAccessCheckRuntime
 ): Promise<string | null> {
   try {
-    if (await runtime.checkOrigin(runtime.currentOrigin, 'same-origin')) {
+    const decision = await runtime.checkOrigin(
+      runtime.currentOrigin,
+      'same-origin'
+    )
+    if (decision === 'blocked') {
       return `${runtime.currentOrigin}${ACCESS_DENIED_PATH}`
     }
+    if (decision === 'allowed') return null
   } catch {
     // The primary-origin check below may still be reachable.
   }
@@ -67,11 +73,13 @@ export async function checkTrafficAccess(
     const canonicalOrigin = new URL(serverAddress).origin
     if (canonicalOrigin === runtime.currentOrigin) return null
     try {
-      const blocked = await runtime.checkOrigin(
+      const decision = await runtime.checkOrigin(
         canonicalOrigin,
         'cross-origin-image'
       )
-      return blocked ? `${canonicalOrigin}${ACCESS_DENIED_PATH}` : null
+      return decision === 'blocked'
+        ? `${canonicalOrigin}${ACCESS_DENIED_PATH}`
+        : null
     } catch {
       return null
     }
@@ -135,7 +143,7 @@ export function installTrafficAccessGuard(): void {
   const checkOrigin = async (
     origin: string,
     mode: 'same-origin' | 'cross-origin-image'
-  ): Promise<boolean> => {
+  ): Promise<TrafficAccessDecision> => {
     const cacheBuster = Date.now().toString()
     if (mode === 'same-origin') {
       const response = await window.fetch(
@@ -145,28 +153,28 @@ export function installTrafficAccessGuard(): void {
           credentials: 'same-origin',
         }
       )
-      return (
-        response.status === 403 &&
-        response.headers.get(TRAFFIC_CONTROL_HEADER) === 'blocked'
-      )
+      const decision = response.headers.get(TRAFFIC_CONTROL_HEADER)
+      if (response.status === 403 && decision === 'blocked') return 'blocked'
+      if (response.status === 204 && decision === 'allowed') return 'allowed'
+      return 'unavailable'
     }
 
     return new Promise((resolve) => {
       const image = new Image()
       let settled = false
       let timeoutId = 0
-      const handleLoad = () => finish(true)
-      const handleError = () => finish(false)
-      const finish = (blocked: boolean) => {
+      const handleLoad = () => finish('blocked')
+      const handleError = () => finish('allowed')
+      const finish = (decision: TrafficAccessDecision) => {
         if (settled) return
         settled = true
         window.clearTimeout(timeoutId)
         image.removeEventListener('load', handleLoad)
         image.removeEventListener('error', handleError)
-        resolve(blocked)
+        resolve(decision)
       }
       timeoutId = window.setTimeout(
-        () => finish(false),
+        () => finish('allowed'),
         ACCESS_CHECK_TIMEOUT_MS
       )
       image.addEventListener('load', handleLoad, { once: true })

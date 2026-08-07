@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/QuantumNous/new-api/setting/traffic_control"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -68,12 +69,13 @@ func TestTrafficControlCanAlsoBlockHongKongAndTaiwan(t *testing.T) {
 	for _, countryCode := range []string{"CN", "HK", "TW"} {
 		response := performTrafficControlRequest(router, "/", "CF-IPCountry", countryCode)
 		assert.Equal(t, http.StatusFound, response.Code, countryCode)
-		assert.Equal(t, mainlandWebDeniedPath, response.Header().Get("Location"), countryCode)
+		assert.Equal(t, TrafficControlPath, response.Header().Get("Location"), countryCode)
 	}
 
 	allowedResponse := performTrafficControlRequest(router, "/", "CF-IPCountry", "US")
 	assert.Equal(t, http.StatusOK, allowedResponse.Code)
 	assert.Equal(t, "dashboard", allowedResponse.Body.String())
+	assert.Equal(t, "no-store", allowedResponse.Header().Get("Cache-Control"))
 }
 
 func performTrafficControlRequest(router http.Handler, path string, headerName string, countryCode string) *httptest.ResponseRecorder {
@@ -96,11 +98,9 @@ func newTrafficControlRouter() *gin.Engine {
 			c.Status(http.StatusNoContent)
 		})
 	}
+	router.Match([]string{http.MethodGet, http.MethodHead}, TrafficControlPath, TrafficControlEndpoint())
 	router.Use(TrafficControl())
 	router.GET("/", func(c *gin.Context) {
-		c.String(http.StatusOK, "dashboard")
-	})
-	router.GET(mainlandWebDeniedPath, func(c *gin.Context) {
 		c.String(http.StatusOK, "dashboard")
 	})
 	return router
@@ -113,7 +113,7 @@ func TestTrafficControlBlocksOnlyMainlandChinaWebRequests(t *testing.T) {
 
 	mainlandResponse := performTrafficControlRequest(router, "/", "CF-IPCountry", "cn")
 	assert.Equal(t, http.StatusFound, mainlandResponse.Code)
-	assert.Equal(t, mainlandWebDeniedPath, mainlandResponse.Header().Get("Location"))
+	assert.Equal(t, TrafficControlPath, mainlandResponse.Header().Get("Location"))
 
 	for _, countryCode := range []string{"HK", "TW", "US", ""} {
 		response := performTrafficControlRequest(router, "/", "CF-IPCountry", countryCode)
@@ -127,7 +127,7 @@ func TestTrafficControlServesEnglishWarningPageWithRequiredNotice(t *testing.T) 
 	configureTrafficControl(t, true, "CF-IPCountry")
 	router := newTrafficControlRouter()
 
-	response := performTrafficControlRequest(router, mainlandWebDeniedPath, "CF-IPCountry", "CN")
+	response := performTrafficControlRequest(router, TrafficControlPath, "CF-IPCountry", "CN")
 
 	assert.Equal(t, http.StatusForbidden, response.Code)
 	assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
@@ -137,7 +137,7 @@ func TestTrafficControlServesEnglishWarningPageWithRequiredNotice(t *testing.T) 
 	assert.Contains(t, body, "This site has suspended access from mainland China and is available only to overseas users.")
 	assert.NotContains(t, body, "API access remains available.")
 	assert.Contains(t, body, "http://example.com/v1")
-	assert.Contains(t, body, "window.setInterval(checkAccess, 5000)")
+	assert.Contains(t, body, "window.setInterval(checkAccess, 15000)")
 }
 
 func TestTrafficControlWarningPageUsesEscapedConfiguredCopy(t *testing.T) {
@@ -153,7 +153,7 @@ func TestTrafficControlWarningPageUsesEscapedConfiguredCopy(t *testing.T) {
 	traffic_control.UpdateAndSync()
 	router := newTrafficControlRouter()
 
-	response := performTrafficControlRequest(router, mainlandWebDeniedPath, "CF-IPCountry", "CN")
+	response := performTrafficControlRequest(router, TrafficControlPath, "CF-IPCountry", "CN")
 	body := response.Body.String()
 
 	assert.Equal(t, http.StatusForbidden, response.Code)
@@ -244,7 +244,7 @@ func TestTrafficControlWarningPageCanBePreviewedDirectly(t *testing.T) {
 	configureTrafficControl(t, false, "CF-IPCountry")
 	router := newTrafficControlRouter()
 
-	response := performTrafficControlRequest(router, mainlandWebDeniedPath+"?preview=1", "CF-IPCountry", "")
+	response := performTrafficControlRequest(router, TrafficControlPath+"?preview=1", "CF-IPCountry", "")
 
 	assert.Equal(t, http.StatusForbidden, response.Code)
 	assert.Contains(t, response.Body.String(), "Mainland China IP addresses")
@@ -255,7 +255,7 @@ func TestTrafficControlWarningPageRedirectsHomeWhenAccessIsRestored(t *testing.T
 	configureTrafficControl(t, true, "CF-IPCountry")
 	router := newTrafficControlRouter()
 
-	response := performTrafficControlRequest(router, mainlandWebDeniedPath, "CF-IPCountry", "US")
+	response := performTrafficControlRequest(router, TrafficControlPath, "CF-IPCountry", "US")
 
 	assert.Equal(t, http.StatusFound, response.Code)
 	assert.Equal(t, "/", response.Header().Get("Location"))
@@ -267,13 +267,53 @@ func TestTrafficControlAccessCheckReflectsCurrentCountry(t *testing.T) {
 	configureTrafficControl(t, true, "CF-IPCountry")
 	router := newTrafficControlRouter()
 
-	blocked := performTrafficControlRequest(router, mainlandWebDeniedPath+"?check=1", "CF-IPCountry", "CN")
+	blocked := performTrafficControlRequest(router, TrafficControlPath+"?check=1", "CF-IPCountry", "CN")
 	assert.Equal(t, http.StatusForbidden, blocked.Code)
 	assert.Equal(t, "blocked", blocked.Header().Get(trafficControlHeader))
 
-	allowed := performTrafficControlRequest(router, mainlandWebDeniedPath+"?check=1", "CF-IPCountry", "HK")
+	allowed := performTrafficControlRequest(router, TrafficControlPath+"?check=1", "CF-IPCountry", "HK")
 	assert.Equal(t, http.StatusNoContent, allowed.Code)
-	assert.Empty(t, allowed.Header().Get(trafficControlHeader))
+	assert.Equal(t, "allowed", allowed.Header().Get(trafficControlHeader))
+
+	unavailable := performTrafficControlRequest(router, TrafficControlPath+"?check=1", "CF-IPCountry", "")
+	assert.Equal(t, http.StatusNoContent, unavailable.Code)
+	assert.Equal(t, "unavailable", unavailable.Header().Get(trafficControlHeader))
+}
+
+func TestTrafficControlRedirectsUnidentifiedCDNWebRequestsToPrimaryOrigin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	configureTrafficControl(t, true, "CF-IPCountry")
+	previousServerAddress := system_setting.ServerAddress
+	system_setting.ServerAddress = "https://www.example.com/base-path"
+	t.Cleanup(func() {
+		system_setting.ServerAddress = previousServerAddress
+	})
+	router := newTrafficControlRouter()
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/wallet?tab=history", nil)
+	request.Host = "cdn.example.com"
+	request.Header.Set("CF-IPCountry", "US")
+
+	router.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusFound, recorder.Code)
+	assert.Equal(t, "https://www.example.com/wallet?tab=history", recorder.Header().Get("Location"))
+	assert.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
+}
+
+func TestTrafficControlEndpointBypassesWebMiddlewareRegisteredLater(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	configureTrafficControl(t, true, "CF-IPCountry")
+	router := gin.New()
+	router.GET(TrafficControlPath, TrafficControlEndpoint())
+	router.Use(func(c *gin.Context) {
+		c.AbortWithStatus(http.StatusTooManyRequests)
+	})
+
+	response := performTrafficControlRequest(router, TrafficControlPath+"?check=1", "CF-IPCountry", "CN")
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Equal(t, "blocked", response.Header().Get(trafficControlHeader))
 }
 
 func TestTrafficControlImageCheckSupportsCrossOriginCountryDetection(t *testing.T) {
@@ -281,13 +321,13 @@ func TestTrafficControlImageCheckSupportsCrossOriginCountryDetection(t *testing.
 	configureTrafficControl(t, true, "CF-IPCountry")
 	router := newTrafficControlRouter()
 
-	blocked := performTrafficControlRequest(router, mainlandWebDeniedPath+"?check=image", "CF-IPCountry", "CN")
+	blocked := performTrafficControlRequest(router, TrafficControlPath+"?check=image", "CF-IPCountry", "CN")
 	assert.Equal(t, http.StatusOK, blocked.Code)
 	assert.Equal(t, "image/gif", blocked.Header().Get("Content-Type"))
 	assert.Equal(t, "no-store", blocked.Header().Get("Cache-Control"))
 	assert.Equal(t, trafficAccessBlockedGIF, blocked.Body.Bytes())
 
-	allowed := performTrafficControlRequest(router, mainlandWebDeniedPath+"?check=image", "CF-IPCountry", "US")
+	allowed := performTrafficControlRequest(router, TrafficControlPath+"?check=image", "CF-IPCountry", "US")
 	assert.Equal(t, http.StatusNoContent, allowed.Code)
 	assert.Empty(t, allowed.Body.Bytes())
 }
@@ -297,7 +337,7 @@ func TestTrafficControlUsesForwardedHTTPSForAPIEndpoint(t *testing.T) {
 	configureTrafficControl(t, true, "CF-IPCountry")
 	router := newTrafficControlRouter()
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, mainlandWebDeniedPath, nil)
+	request := httptest.NewRequest(http.MethodGet, TrafficControlPath, nil)
 	request.Host = "api.example.com"
 	request.Header.Set("CF-IPCountry", "CN")
 	request.Header.Set("X-Forwarded-Proto", "https")
