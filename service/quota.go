@@ -92,10 +92,10 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 }
 
 func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
-	if relayInfo.Billing != nil {
-		return nil
-	}
-	if relayInfo.UsePrice {
+	// Fixed-price and expression-based models are billed once from the final
+	// aggregate. Token-ratio realtime responses are billed independently so
+	// each response.done keeps its own integer rounding boundary.
+	if relayInfo.UsePrice || relayInfo.PriceData.UsePrice || relayInfo.TieredBillingSnapshot != nil {
 		return nil
 	}
 	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
@@ -140,22 +140,41 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	quota, clamp := calculateAudioQuota(quotaInfo)
 	noteQuotaClamp(relayInfo, clamp)
 	quota = ApplyBillingDiscount(relayInfo, quota)
-
-	if userQuota < quota {
-		return fmt.Errorf("user quota is not enough, user quota: %s, need quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(quota))
+	if quota < 0 {
+		return fmt.Errorf("realtime response quota cannot be negative: %d", quota)
+	}
+	perResponseTotal, totalClamp := common.QuotaFromFloatChecked(float64(relayInfo.WssPerResponseQuota) + float64(quota))
+	noteQuotaClamp(relayInfo, totalClamp)
+	if totalClamp != nil {
+		return totalClamp
 	}
 
-	if !token.UnlimitedQuota && token.RemainQuota < quota {
-		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
+	if relayInfo.Billing != nil {
+		targetQuota := perResponseTotal
+		if preConsumedQuota := relayInfo.Billing.GetPreConsumedQuota(); preConsumedQuota > targetQuota {
+			targetQuota = preConsumedQuota
+		}
+		if err := relayInfo.Billing.Reserve(targetQuota); err != nil {
+			return err
+		}
+	} else {
+		if userQuota < quota {
+			return fmt.Errorf("user quota is not enough, user quota: %s, need quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(quota))
+		}
+		if !token.UnlimitedQuota && token.RemainQuota < quota {
+			return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
+		}
+		if err := PostConsumeQuota(relayInfo, quota, 0, false); err != nil {
+			return err
+		}
+		relayInfo.FinalPreConsumedQuota += quota
 	}
 
-	err = PostConsumeQuota(relayInfo, quota, 0, false)
-	if err != nil {
-		return err
-	}
-	// Keep the legacy incremental path reconciled with the final aggregate
-	// settlement below. BillingSession requests skip this path entirely.
-	relayInfo.FinalPreConsumedQuota += quota
+	// Record this response only after its charge has been successfully reserved
+	// or consumed. Failed responses must not inflate the final settlement.
+	relayInfo.WssPerResponseQuota = perResponseTotal
+	relayInfo.WssPerResponseCalculated = true
+	relayInfo.WssPerResponseCount++
 	logger.LogInfo(ctx, "realtime streaming consume quota success, quota: "+fmt.Sprintf("%d", quota))
 	return nil
 }
@@ -210,7 +229,11 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	if tieredOk {
 		quota = tieredQuota
 	}
-	quota = ApplyBillingDiscount(relayInfo, quota)
+	if relayInfo.WssPerResponseCalculated {
+		quota = relayInfo.WssPerResponseQuota
+	} else {
+		quota = ApplyBillingDiscount(relayInfo, quota)
+	}
 	totalTokens := usage.TotalTokens
 	var logContent string
 	if !usePrice {
@@ -246,6 +269,12 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	if tieredResult != nil {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
+	if relayInfo.WssPerResponseCalculated {
+		// A single aggregate formula cannot faithfully represent the independent
+		// rounding (and discount fallback) of multiple response.done events.
+		other["wss_per_response_billing"] = true
+		other["wss_response_count"] = relayInfo.WssPerResponseCount
+	}
 	formulaMode := "per_token"
 	formulaBaseQuota := calculateAudioBaseQuota(quotaInfo).InexactFloat64()
 	if usePrice {
@@ -255,7 +284,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		formulaMode = "tiered_expr"
 		formulaBaseQuota = tieredResult.ActualQuotaBeforeGroup
 	}
-	if totalTokens > 0 && (!tieredOk || tieredResult != nil) {
+	if totalTokens > 0 && !relayInfo.WssPerResponseCalculated && (!tieredOk || tieredResult != nil) {
 		appendBillingFormula(other, relayInfo, formulaMode, formulaBaseQuota, 1, 0, quota)
 	}
 	attachQuotaSaturation(ctx, relayInfo, other)
