@@ -19,7 +19,8 @@ var ErrorLogEnabled bool
 var TaskQueryLimit int
 var TaskTimeoutMinutes int
 
-// temporary variable for sora patch, will be removed in future
+// Legacy model-name overrides for task pay-per-call billing. Sora channels are
+// detected dynamically by channel type and do not need this list.
 var TaskPricePatches []string
 
 // TrustedRedirectDomains is a list of trusted domains for redirect URL validation.

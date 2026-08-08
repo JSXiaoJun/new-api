@@ -15,13 +15,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// IsTaskPerCallBilling identifies task requests whose submit charge is the
+// complete charge for the task. Sora models are selected by channel type, so
+// newly added Sora model names do not need to be added to TASK_PRICE_PATCH.
+// The environment list remains supported for legacy non-Sora exceptions.
+func IsTaskPerCallBilling(info *relaycommon.RelayInfo) bool {
+	if info == nil {
+		return false
+	}
+	channelType := 0
+	if info.ChannelMeta != nil {
+		channelType = info.ChannelMeta.ChannelType
+	}
+	modelName := strings.ToLower(strings.TrimSpace(info.OriginModelName))
+	return channelType == constant.ChannelTypeSora ||
+		strings.HasPrefix(modelName, "sora-") ||
+		common.StringsContains(constant.TaskPricePatches, info.OriginModelName)
+}
+
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
 // 实际扣费已由 BillingSession（PreConsumeBilling + SettleBilling）完成。
 func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	tokenName := c.GetString("token_name")
 	logContent := fmt.Sprintf("操作 %s", info.Action)
 	// 支持任务仅按次计费
-	if common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+	if IsTaskPerCallBilling(info) {
 		logContent = fmt.Sprintf("%s，按次计费", logContent)
 	} else {
 		if otherRatios := info.PriceData.OtherRatios(); len(otherRatios) > 0 {
@@ -51,7 +69,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
-	if !common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+	if !IsTaskPerCallBilling(info) {
 		appendBillingFormula(other, info, "task", info.PriceData.QuotaBeforeGroup, info.PriceData.OtherRatioMultiplier(), 0, info.PriceData.Quota)
 	}
 	attachQuotaSaturation(c, info, other)
@@ -138,7 +156,7 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 		// Token and provider-adjusted settlements can no longer be reconstructed
 		// from the submit-time base quota. Only emit a formula for stable per-call
 		// billing snapshots whose final quota still follows the original inputs.
-		if bc.PerCallBilling && bc.QuotaBeforeGroup > 0 && !common.StringsContains(constant.TaskPricePatches, bc.OriginModelName) {
+		if bc.PerCallBilling && !bc.IgnoreOtherRatios && bc.QuotaBeforeGroup > 0 {
 			discountRatio := bc.DiscountRatio
 			if discountRatio <= 0 {
 				discountRatio = 1

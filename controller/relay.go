@@ -593,16 +593,17 @@ func RelayTask(c *gin.Context) {
 		task.PrivateData.TokenId = relayInfo.TokenId
 		task.PrivateData.NodeName = common.NodeName
 		task.PrivateData.BillingContext = &model.TaskBillingContext{
-			ModelPrice:       relayInfo.PriceData.ModelPrice,
-			GroupRatio:       relayInfo.PriceData.GroupRatioInfo.GroupRatio,
-			BaseGroupRatio:   relayInfo.BillingBaseGroupRatio,
-			DiscountRatio:    relayInfo.BillingDiscountRatio,
-			DiscountSkipped:  relayInfo.BillingDiscountSkipped,
-			ModelRatio:       relayInfo.PriceData.ModelRatio,
-			QuotaBeforeGroup: relayInfo.PriceData.QuotaBeforeGroup,
-			OtherRatios:      relayInfo.PriceData.OtherRatios(),
-			OriginModelName:  relayInfo.OriginModelName,
-			PerCallBilling:   common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+			ModelPrice:        relayInfo.PriceData.ModelPrice,
+			GroupRatio:        relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+			BaseGroupRatio:    relayInfo.BillingBaseGroupRatio,
+			DiscountRatio:     relayInfo.BillingDiscountRatio,
+			DiscountSkipped:   relayInfo.BillingDiscountSkipped,
+			ModelRatio:        relayInfo.PriceData.ModelRatio,
+			QuotaBeforeGroup:  relayInfo.PriceData.QuotaBeforeGroup,
+			OtherRatios:       relayInfo.PriceData.OtherRatios(),
+			OriginModelName:   relayInfo.OriginModelName,
+			PerCallBilling:    service.IsTaskPerCallBilling(relayInfo) || relayInfo.PriceData.UsePrice,
+			IgnoreOtherRatios: service.IsTaskPerCallBilling(relayInfo),
 		}
 		task.Quota = result.Quota
 		task.Data = result.TaskData
