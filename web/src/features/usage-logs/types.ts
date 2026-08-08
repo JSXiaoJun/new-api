@@ -201,7 +201,9 @@ export interface LogOtherData {
     effective_group_ratio: number
     other_ratio: number
     surcharge_quota: number
+    /** Kept for compatibility with historical consume logs. */
     minimum_charge_applied?: boolean
+    discount_skipped_to_avoid_zero?: boolean
     final_quota: number
   }
   reasoning_effort?: string

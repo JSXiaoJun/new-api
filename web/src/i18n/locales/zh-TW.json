@@ -1419,6 +1419,7 @@
     "Discount Rate:": "折扣率：",
     "Discount ratio for cache hits.": "緩存命中時的折扣比例。",
     "Discount Settings": "折扣設定",
+    "Discount skipped to avoid a zero charge": "為避免扣費為零，本筆未套用折扣",
     "Discounted user groups": "參與折扣的使用者群組",
     "Discouraged": "不推薦",
     "Discover curated AI models, compare pricing and capabilities, and choose the right model for every scenario.": "探索精選 AI 模型，清晰比較價格與能力，為不同場景選擇合適的模型。",

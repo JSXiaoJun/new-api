@@ -32,7 +32,8 @@ func TestIsResponsesEventStreamContentType(t *testing.T) {
 func TestRecalcQuotaFromRatiosIgnoresInvalidMultipliers(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		PriceData: types.PriceData{
-			Quota: 100,
+			QuotaBeforeGroup: 50,
+			GroupRatioInfo:   types.GroupRatioInfo{GroupRatio: 1},
 		},
 	}
 	info.PriceData.AddOtherRatio("duration", 2)
@@ -53,7 +54,8 @@ func TestRecalcQuotaFromRatiosIgnoresInvalidMultipliers(t *testing.T) {
 func TestRecalcQuotaFromRatiosRejectsAllInvalidAdjustedRatios(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		PriceData: types.PriceData{
-			Quota: 100,
+			QuotaBeforeGroup: 50,
+			GroupRatioInfo:   types.GroupRatioInfo{GroupRatio: 1},
 		},
 	}
 	info.PriceData.AddOtherRatio("duration", 2)
@@ -68,4 +70,28 @@ func TestRecalcQuotaFromRatiosRejectsAllInvalidAdjustedRatios(t *testing.T) {
 	require.False(t, ok)
 	assert.Equal(t, 0, quota)
 	assert.True(t, info.PriceData.HasOtherRatio("duration"))
+}
+
+func TestCalculateTaskQuotaRoundsOnlyAfterAllRatios(t *testing.T) {
+	tests := []struct {
+		name       string
+		baseQuota  float64
+		groupRatio float64
+		want       int
+	}{
+		{name: "positive fractional charge remains billable", baseQuota: 0.5, groupRatio: 0.6, want: 1},
+		{name: "preserves fractional base before large ratio", baseQuota: 0.5, groupRatio: 60, want: 30},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			quota, clamp := calculateTaskQuota(types.PriceData{
+				QuotaBeforeGroup: tt.baseQuota,
+				GroupRatioInfo:   types.GroupRatioInfo{GroupRatio: tt.groupRatio},
+			})
+
+			assert.Nil(t, clamp)
+			assert.Equal(t, tt.want, quota)
+		})
+	}
 }

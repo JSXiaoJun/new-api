@@ -1419,6 +1419,7 @@
     "Discount Rate:": "Ставка скидки:",
     "Discount ratio for cache hits.": "Коэффициент скидки для попаданий в кэш.",
     "Discount Settings": "Настройки скидок",
+    "Discount skipped to avoid a zero charge": "Скидка не применена, чтобы избежать нулевого списания",
     "Discounted user groups": "Группы со скидкой",
     "Discouraged": "Не рекомендуется",
     "Discover curated AI models, compare pricing and capabilities, and choose the right model for every scenario.": "Откройте для себя подобранные AI-модели, сравнивайте цены и возможности и выбирайте подходящую модель для каждого сценария.",

@@ -73,13 +73,6 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		relayInfo.BillingDiscountRatio = discount_setting.RatioFor(relayInfo.UserGroup, relayInfo.StartTime)
 		relayInfo.BillingDiscountResolved = true
 	}
-	if relayInfo.BillingDiscountRatio > 0 && relayInfo.BillingDiscountRatio != 1 {
-		groupRatioInfo.GroupRatio *= relayInfo.BillingDiscountRatio
-		if groupRatioInfo.HasSpecialRatio {
-			groupRatioInfo.GroupSpecialRatio = groupRatioInfo.GroupRatio
-		}
-	}
-
 	return groupRatioInfo
 }
 
@@ -225,11 +218,13 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	}
 
 	var quota int
+	var quotaBeforeGroup float64
 	freeModel := false
 
 	if usePrice {
 		var err error
-		quotaToPreConsume := modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio
+		quotaBeforeGroup = modelPrice * common.QuotaPerUnit
+		quotaToPreConsume := quotaBeforeGroup * groupRatioInfo.GroupRatio
 		quota, err = common.QuotaFromPositiveFloatStrict(quotaToPreConsume)
 		if err != nil {
 			return hosttypes.PriceData{}, err
@@ -243,7 +238,8 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	} else {
 		// 按量计费：以模型倍率的一半作为预扣额度
 		var err error
-		quotaToPreConsume := modelRatio / 2 * common.QuotaPerUnit * groupRatioInfo.GroupRatio
+		quotaBeforeGroup = modelRatio / 2 * common.QuotaPerUnit
+		quotaToPreConsume := quotaBeforeGroup * groupRatioInfo.GroupRatio
 		quota, err = common.QuotaFromPositiveFloatStrict(quotaToPreConsume)
 		if err != nil {
 			return hosttypes.PriceData{}, err
@@ -258,12 +254,13 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	}
 
 	priceData := hosttypes.PriceData{
-		FreeModel:      freeModel,
-		ModelPrice:     modelPrice,
-		ModelRatio:     modelRatio,
-		UsePrice:       usePrice,
-		Quota:          quota,
-		GroupRatioInfo: groupRatioInfo,
+		FreeModel:        freeModel,
+		ModelPrice:       modelPrice,
+		ModelRatio:       modelRatio,
+		UsePrice:         usePrice,
+		QuotaBeforeGroup: quotaBeforeGroup,
+		Quota:            quota,
+		GroupRatioInfo:   groupRatioInfo,
 	}
 	return priceData, nil
 }

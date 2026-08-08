@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHandleGroupRatioAppliesResolvedBillingDiscount(t *testing.T) {
+func TestHandleGroupRatioKeepsDiscountSeparateFromBaseRatio(t *testing.T) {
 	original := ratio_setting.GroupRatio2JSONString()
 	originalSpecial := ratio_setting.GroupGroupRatio2JSONString()
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1.5}`))
@@ -38,17 +38,17 @@ func TestHandleGroupRatioAppliesResolvedBillingDiscount(t *testing.T) {
 	groupRatio := HandleGroupRatio(ctx, info)
 	assert.True(t, groupRatio.HasSpecialRatio)
 	assert.InDelta(t, 1.25, info.BillingBaseGroupRatio, 0.000001)
-	assert.InDelta(t, 1.0, groupRatio.GroupRatio, 0.000001)
-	assert.InDelta(t, 1.0, groupRatio.GroupSpecialRatio, 0.000001)
+	assert.InDelta(t, 1.25, groupRatio.GroupRatio, 0.000001)
+	assert.InDelta(t, 1.25, groupRatio.GroupSpecialRatio, 0.000001)
 
 	info.BillingDiscountRatio = 0.6
 	groupRatio = HandleGroupRatio(ctx, info)
 	assert.InDelta(t, 1.25, info.BillingBaseGroupRatio, 0.000001)
-	assert.InDelta(t, 0.75, groupRatio.GroupRatio, 0.000001)
-	assert.InDelta(t, 0.75, groupRatio.GroupSpecialRatio, 0.000001)
+	assert.InDelta(t, 1.25, groupRatio.GroupRatio, 0.000001)
+	assert.InDelta(t, 1.25, groupRatio.GroupSpecialRatio, 0.000001)
 }
 
-func TestModelPriceHelperAppliesDiscountToRatioFixedAndTieredBilling(t *testing.T) {
+func TestModelPriceHelperKeepsBasePricingSeparateFromDiscount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	originalGroupRatios := ratio_setting.GroupRatio2JSONString()
@@ -102,9 +102,9 @@ func TestModelPriceHelperAppliesDiscountToRatioFixedAndTieredBilling(t *testing.
 		meta      *relaytypes.TokenCountMeta
 		wantQuota int
 	}{
-		{name: "ratio billing", model: "discount-ratio-model", meta: &relaytypes.TokenCountMeta{}, wantQuota: 2400},
-		{name: "fixed price billing", model: "discount-fixed-model", meta: &relaytypes.TokenCountMeta{}, wantQuota: 6000},
-		{name: "tiered expression billing", model: "discount-tiered-model", meta: &relaytypes.TokenCountMeta{MaxTokens: 1}, wantQuota: 1200},
+		{name: "ratio billing", model: "discount-ratio-model", meta: &relaytypes.TokenCountMeta{}, wantQuota: 3000},
+		{name: "fixed price billing", model: "discount-fixed-model", meta: &relaytypes.TokenCountMeta{}, wantQuota: 7500},
+		{name: "tiered expression billing", model: "discount-tiered-model", meta: &relaytypes.TokenCountMeta{MaxTokens: 1}, wantQuota: 1500},
 	}
 
 	for _, tt := range tests {
@@ -112,13 +112,13 @@ func TestModelPriceHelperAppliesDiscountToRatioFixedAndTieredBilling(t *testing.
 			ctx, info := newRequest(tt.model)
 			priceData, err := ModelPriceHelper(ctx, info, 1000, tt.meta)
 			require.NoError(t, err)
-			assert.InDelta(t, 1.2, priceData.GroupRatioInfo.GroupRatio, 0.000001)
+			assert.InDelta(t, 1.5, priceData.GroupRatioInfo.GroupRatio, 0.000001)
 			assert.Equal(t, tt.wantQuota, priceData.QuotaToPreConsume)
 		})
 	}
 }
 
-func TestModelPriceHelperMinimumChargeDoesNotTurnFreePricingPaid(t *testing.T) {
+func TestModelPriceHelperPreservesPositiveBasePricing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	originalGroupRatios := ratio_setting.GroupRatio2JSONString()

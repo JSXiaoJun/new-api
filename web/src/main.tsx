@@ -126,19 +126,17 @@ if (!rootElement) {
       if (metaTitle) metaTitle.setAttribute('content', name)
     }
     // Cache-first
-    let hasCachedStatus = false
     try {
       const saved = localStorage.getItem('status')
       if (saved) {
         const s = JSON.parse(saved)
-        hasCachedStatus = true
         if (s?.system_name) apply(s.system_name)
         if (s?.logo) applyFaviconToDom(s.logo)
+        installTrafficAccessGuard(s?.mainland_web_block_enabled === true)
       }
     } catch {
       /* empty */
     }
-    if (hasCachedStatus) installTrafficAccessGuard()
     // Background refresh
     void getStatus()
       .then((s) => {
@@ -151,8 +149,8 @@ if (!rootElement) {
           }
         }
         if (s?.logo) applyFaviconToDom(s.logo as string)
+        installTrafficAccessGuard(s?.mainland_web_block_enabled === true)
       })
-      .finally(installTrafficAccessGuard)
       .catch(() => {
         /* empty */
       })

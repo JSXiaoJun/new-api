@@ -52,7 +52,7 @@ func TestComputeTieredQuota_NoClampInRange(t *testing.T) {
 	assert.Nil(t, result.Clamp, "in-range settlement must not report a clamp")
 }
 
-func TestComputeTieredQuota_MinimumChargePreservesFreeConfigurations(t *testing.T) {
+func TestComputeTieredQuotaPreservesPositiveCharges(t *testing.T) {
 	exprStr := `tier("base", p * 0.000001)`
 	params := billingexpr.TokenParams{P: 1}
 

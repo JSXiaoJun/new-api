@@ -138,6 +138,10 @@ func HeaderNavModuleAuth(module string) gin.HandlerFunc {
 func HeaderNavModulePublicOrUserAuth(module string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		access := getHeaderNavAccess(module)
+		if access.AdminOnly {
+			AdminAuth()(c)
+			return
+		}
 		if !access.Enabled || access.RequireAuth {
 			UserAuth()(c)
 			return

@@ -1419,6 +1419,7 @@
     "Discount Rate:": "割引率:",
     "Discount ratio for cache hits.": "キャッシュヒットに対する割引率。",
     "Discount Settings": "割引設定",
+    "Discount skipped to avoid a zero charge": "請求が無料になるのを防ぐため、割引は適用されませんでした",
     "Discounted user groups": "割引対象ユーザーグループ",
     "Discouraged": "非推奨",
     "Discover curated AI models, compare pricing and capabilities, and choose the right model for every scenario.": "厳選された AI モデルを見つけ、価格と機能を比較し、あらゆるシナリオに適したモデルを選択できます。",

@@ -163,6 +163,9 @@ type RelayInfo struct {
 	BillingBaseGroupRatio   float64
 	BillingDiscountRatio    float64
 	BillingDiscountResolved bool
+	// BillingDiscountSkipped is set when applying a scheduled discount would
+	// round a positive charge down to zero, so the original charge is retained.
+	BillingDiscountSkipped bool
 
 	// QuotaClamp is set (non-nil) when a quota conversion saturated at the
 	// int32 bound (or NaN fallback) while computing this request's charge.

@@ -133,12 +133,16 @@ export function startTrafficAccessGuard(
   }
 }
 
-let installed = false
+let stopInstalledGuard: (() => void) | null = null
 
-export function installTrafficAccessGuard(): void {
-  if (installed) return
+export function installTrafficAccessGuard(enabled: boolean): void {
+  if (!enabled) {
+    stopInstalledGuard?.()
+    stopInstalledGuard = null
+    return
+  }
+  if (stopInstalledGuard) return
   if (typeof window === 'undefined' || typeof document === 'undefined') return
-  installed = true
 
   const checkOrigin = async (
     origin: string,
@@ -183,7 +187,7 @@ export function installTrafficAccessGuard(): void {
     })
   }
 
-  startTrafficAccessGuard({
+  stopInstalledGuard = startTrafficAccessGuard({
     getDeniedURL: () =>
       checkTrafficAccess({
         currentOrigin: window.location.origin,

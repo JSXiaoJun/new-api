@@ -388,12 +388,12 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		noteQuotaClamp(relayInfo, clamp)
 	}
 
+	if summary.hasBillableUsage() {
+		summary.Quota = ApplyBillingDiscount(relayInfo, summary.Quota)
+	}
 	if !summary.hasBillableUsage() {
 		summary.Quota = 0
 	} else if summary.Quota == 0 && summary.GroupRatio > 0 && ((relayInfo.PriceData.UsePrice && summary.ModelPrice > 0) || (!relayInfo.PriceData.UsePrice && summary.ModelRatio > 0)) {
-		// Some upstreams return total_tokens without a usable prompt/completion
-		// split. Keep the existing minimum paid charge without turning explicit
-		// free model or group configurations into paid requests.
 		summary.Quota = 1
 	}
 
@@ -435,6 +435,11 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			tieredBillingApplied = true
 			tieredResult = tieredRes
 			summary.Quota = composeTieredTextQuota(relayInfo, summary, tieredQuota, tieredRes)
+			// Tiered settlement replaces the preliminary estimate, so apply the
+			// frozen scheduled discount to the actual integer charge as well.
+			if tieredRes != nil {
+				summary.Quota = ApplyBillingDiscount(relayInfo, summary.Quota)
+			}
 		}
 	}
 

@@ -361,7 +361,9 @@ export function getBillingFormula(
     !Number.isFinite(formula.other_ratio) ||
     formula.other_ratio <= 0 ||
     (formula.minimum_charge_applied != null &&
-      typeof formula.minimum_charge_applied !== 'boolean')
+      typeof formula.minimum_charge_applied !== 'boolean') ||
+    (formula.discount_skipped_to_avoid_zero != null &&
+      typeof formula.discount_skipped_to_avoid_zero !== 'boolean')
   ) {
     return null
   }
@@ -379,7 +381,7 @@ export function buildBillingFormulaText(
     `${formatQuota(formula.base_quota)} (${translate('Base Charge')})`,
     `${formatFormulaRatio(formula.base_group_ratio)}x (${translate('Base Group Ratio')})`,
   ]
-  if (formula.discount_ratio !== 1) {
+  if (formula.discount_ratio !== 1 && !formula.discount_skipped_to_avoid_zero) {
     terms.push(
       `${formatFormulaRatio(formula.discount_ratio)}x (${translate('Discount Multiplier')})`
     )
@@ -396,7 +398,11 @@ export function buildBillingFormulaText(
   if (formula.minimum_charge_applied) {
     return `max(${formatQuota(1)} (${translate('Minimum Charge')}), round(${text})) = ${formatQuota(formula.final_quota)}`
   }
-  return `round(${text}) = ${formatQuota(formula.final_quota)}`
+  const result = `round(${text}) = ${formatQuota(formula.final_quota)}`
+  if (formula.discount_skipped_to_avoid_zero) {
+    return `${result} (${translate('Discount skipped to avoid a zero charge')})`
+  }
+  return result
 }
 
 /**

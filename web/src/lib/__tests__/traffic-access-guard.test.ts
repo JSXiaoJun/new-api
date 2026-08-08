@@ -164,4 +164,32 @@ describe('traffic access guard', () => {
 
     stop()
   })
+
+  test('stopping the guard removes its polling and event listeners', () => {
+    const removedWindowListeners: string[] = []
+    let clearedInterval = 0
+    let visibilityListenerRemoved = false
+
+    const stop = startTrafficAccessGuard({
+      getDeniedURL: async () => null,
+      redirect: () => undefined,
+      setInterval: () => 42,
+      clearInterval: (intervalId) => {
+        clearedInterval = intervalId
+      },
+      addWindowListener: () => undefined,
+      removeWindowListener: (type) => removedWindowListeners.push(type),
+      addVisibilityListener: () => undefined,
+      removeVisibilityListener: () => {
+        visibilityListenerRemoved = true
+      },
+      isVisible: () => true,
+    })
+
+    stop()
+
+    assert.equal(clearedInterval, 42)
+    assert.deepEqual(removedWindowListeners, ['focus', 'online'])
+    assert.equal(visibilityListenerRemoved, true)
+  })
 })

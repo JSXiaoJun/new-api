@@ -189,6 +189,19 @@ func TestHeaderNavModulePublicOrUserAuthRequiresLoginForLegacyDisabledModule(t *
 	require.Equal(t, http.StatusUnauthorized, recorder.Code)
 }
 
+func TestHeaderNavModulePublicOrUserAuthRequiresAdminWhenConfigured(t *testing.T) {
+	raw := `{"pricing":{"enabled":true,"requireAuth":false,"adminOnly":true}}`
+	withHeaderNavModules(t, raw)
+
+	unauthenticated := performHeaderNavRequestWithRole(t, HeaderNavModulePublicOrUserAuth("pricing"), 0)
+	commonUser := performHeaderNavRequestWithRole(t, HeaderNavModulePublicOrUserAuth("pricing"), common.RoleCommonUser)
+	adminUser := performHeaderNavRequestWithRole(t, HeaderNavModulePublicOrUserAuth("pricing"), common.RoleAdminUser)
+
+	require.Equal(t, http.StatusUnauthorized, unauthenticated.Code)
+	require.Equal(t, http.StatusForbidden, commonUser.Code)
+	require.Equal(t, http.StatusOK, adminUser.Code)
+}
+
 func TestHeaderNavPublicRouteRejectsExpiredInternalAccessToken(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
 	withHeaderNavModules(t, "")

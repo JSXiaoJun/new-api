@@ -1284,6 +1284,68 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	return tx.Save(sub).Error
 }
 
+// GetActiveUserSubscriptionForBilling selects an active subscription without
+// creating a pre-consume record or changing its used quota. It is used when a
+// valid estimated charge rounds to zero but later settlement may still need a
+// subscription source.
+func GetActiveUserSubscriptionForBilling(userId int) (*SubscriptionPreConsumeResult, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	now := GetDBTimestamp()
+	result := &SubscriptionPreConsumeResult{}
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var subs []UserSubscription
+		if err := lockForUpdate(tx).
+			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+			Order("end_time asc, id asc").
+			Find(&subs).Error; err != nil {
+			return err
+		}
+		if len(subs) == 0 {
+			return errors.New("no active subscription")
+		}
+
+		var fallback *SubscriptionPreConsumeResult
+		for _, candidate := range subs {
+			sub := candidate
+			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+			if err != nil {
+				return err
+			}
+			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
+				return err
+			}
+			candidateResult := &SubscriptionPreConsumeResult{
+				UserSubscriptionId: sub.Id,
+				AmountTotal:        sub.AmountTotal,
+				AmountUsedBefore:   sub.AmountUsed,
+				AmountUsedAfter:    sub.AmountUsed,
+			}
+			if fallback == nil {
+				fallback = candidateResult
+			}
+			// Prefer a subscription that can cover at least one unit should later
+			// settlement become positive. An exhausted subscription still remains
+			// valid for a final zero-charge request.
+			if sub.AmountTotal == 0 || sub.AmountUsed < sub.AmountTotal {
+				*result = *candidateResult
+				return nil
+			}
+		}
+		if fallback == nil {
+			return errors.New("no active subscription")
+		}
+		*result = *fallback
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
 func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDiscountedTextQuotaMinimumChargePreservesFreePricing(t *testing.T) {
+func TestPaidTextQuotaDoesNotDisappearAtIntegerBoundary(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	usage := &dto.Usage{PromptTokens: 1, TotalTokens: 1}
@@ -38,7 +38,7 @@ func TestDiscountedTextQuotaMinimumChargePreservesFreePricing(t *testing.T) {
 	assert.Equal(t, 0, calculateTextQuotaSummary(ctx, free, usage).Quota)
 }
 
-func TestDiscountedTextQuotaChargesMinimumWhenBillableUsageRoundsToZero(t *testing.T) {
+func TestPaidTextQuotaPreservesExistingNonzeroCharge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	usage := &dto.Usage{CompletionTokens: 1, TotalTokens: 1}
@@ -57,7 +57,7 @@ func TestDiscountedTextQuotaChargesMinimumWhenBillableUsageRoundsToZero(t *testi
 	assert.Equal(t, 0, calculateTextQuotaSummary(ctx, paid, usage).Quota)
 }
 
-func TestDiscountedAudioQuotaMinimumChargePreservesFreePricing(t *testing.T) {
+func TestPaidAudioQuotaDoesNotDisappearAtIntegerBoundary(t *testing.T) {
 	paid, paidClamp := calculateAudioQuota(QuotaInfo{
 		InputDetails: TokenDetails{TextTokens: 1},
 		ModelName:    "tiny-audio-price",
@@ -79,7 +79,7 @@ func TestDiscountedAudioQuotaMinimumChargePreservesFreePricing(t *testing.T) {
 	assert.Equal(t, 0, free)
 }
 
-func TestViolationFeeUsesSafeMinimumAndSaturatingConversion(t *testing.T) {
+func TestViolationFeeUsesSafePositiveAndSaturatingConversion(t *testing.T) {
 	quota, clamp := calcViolationFeeQuota(0.000000001, 0.01)
 	assert.Nil(t, clamp)
 	assert.Equal(t, 1, quota)
@@ -92,4 +92,27 @@ func TestViolationFeeUsesSafeMinimumAndSaturatingConversion(t *testing.T) {
 	assert.Equal(t, common.MaxQuota, quota)
 	assert.NotNil(t, clamp)
 	assert.Equal(t, common.QuotaClampOverflow, clamp.Kind)
+}
+
+func TestApplyBillingDiscountNeverTurnsPaidRequestFree(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		BillingDiscountResolved: true,
+		BillingDiscountRatio:    0.9,
+	}
+
+	assert.Equal(t, 0, ApplyBillingDiscount(info, 0))
+	assert.Equal(t, 1, ApplyBillingDiscount(info, 1))
+	assert.Equal(t, 9, ApplyBillingDiscount(info, 10))
+
+	// A positive integer charge whose discounted value is below 0.5 must
+	// retain the original charge instead of rounding to a free request.
+	info.BillingDiscountRatio = 0.49
+	assert.Equal(t, 1, ApplyBillingDiscount(info, 1))
+	assert.Equal(t, 1, ApplyBillingDiscount(info, 2))
+	// Exactly 0.5 rounds to one quota unit, so the normal discount remains
+	// active at this boundary.
+	info.BillingDiscountRatio = 0.5
+	assert.Equal(t, 1, ApplyBillingDiscount(info, 1))
+	info.BillingDiscountRatio = 0.01
+	assert.Equal(t, 1, ApplyBillingDiscount(info, 100))
 }

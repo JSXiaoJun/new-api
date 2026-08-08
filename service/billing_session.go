@@ -41,11 +41,47 @@ type BillingSession struct {
 func (s *BillingSession) Settle(actualQuota int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if actualQuota < 0 {
+		return fmt.Errorf("actual quota cannot be negative: %d", actualQuota)
+	}
 	if s.settled {
 		return nil
 	}
 	delta := actualQuota - s.preConsumedQuota
 	if delta == 0 {
+		s.settled = true
+		return nil
+	}
+	// A zero estimate has not reserved any token quota. For a later positive
+	// settlement, reserve the actual token quota before touching the funding
+	// source so an exhausted token cannot leave the user's subscription charged.
+	if s.preConsumedQuota == 0 && delta > 0 && !s.relayInfo.IsPlayground {
+		if !s.relayInfo.TokenUnlimited {
+			token, err := model.GetTokenById(s.relayInfo.TokenId)
+			if err != nil {
+				return err
+			}
+			if !token.UnlimitedQuota && token.RemainQuota < delta {
+				return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s",
+					logger.FormatQuota(token.RemainQuota), logger.FormatQuota(delta))
+			}
+		}
+		if err := model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta); err != nil {
+			return err
+		}
+		if !s.fundingSettled {
+			if err := s.funding.Settle(delta); err != nil {
+				if rollbackErr := model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta); rollbackErr != nil {
+					common.SysError(fmt.Sprintf("error rolling back token quota after funding settlement failed (userId=%d, tokenId=%d, delta=%d): %s",
+						s.relayInfo.UserId, s.relayInfo.TokenId, delta, rollbackErr.Error()))
+				}
+				return err
+			}
+			s.fundingSettled = true
+		}
+		if s.funding.Source() == BillingSourceSubscription {
+			s.relayInfo.SubscriptionPostDelta += int64(delta)
+		}
 		s.settled = true
 		return nil
 	}
@@ -382,9 +418,6 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	trySubscription := func() (*BillingSession, *types.NewAPIError) {
 		subConsume := int64(preConsumedQuota)
-		if subConsume <= 0 {
-			subConsume = 1
-		}
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
@@ -394,8 +427,9 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 				amount:    subConsume,
 			},
 		}
-		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、
-		// preConsume 参数和 FinalPreConsumedQuota 三者一致，避免订阅多扣费。
+		// Keep SubscriptionFunding.amount, the pre-consume argument, and
+		// FinalPreConsumedQuota consistent. A zero estimate only binds a funding
+		// source; it must not create an artificial minimum pre-consume record.
 		if apiErr := session.preConsume(c, int(subConsume)); apiErr != nil {
 			return nil, apiErr
 		}

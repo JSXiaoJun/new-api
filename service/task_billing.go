@@ -51,6 +51,9 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
+	if !common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+		appendBillingFormula(other, info, "task", info.PriceData.QuotaBeforeGroup, info.PriceData.OtherRatioMultiplier(), 0, info.PriceData.Quota)
+	}
 	attachQuotaSaturation(c, info, other)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
@@ -132,6 +135,29 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 				other[k] = v
 			}
 		}
+		// Token and provider-adjusted settlements can no longer be reconstructed
+		// from the submit-time base quota. Only emit a formula for stable per-call
+		// billing snapshots whose final quota still follows the original inputs.
+		if bc.PerCallBilling && bc.QuotaBeforeGroup > 0 && !common.StringsContains(constant.TaskPricePatches, bc.OriginModelName) {
+			discountRatio := bc.DiscountRatio
+			if discountRatio <= 0 {
+				discountRatio = 1
+			}
+			billingInfo := &relaycommon.RelayInfo{
+				BillingBaseGroupRatio:   bc.BaseGroupRatio,
+				BillingDiscountRatio:    discountRatio,
+				BillingDiscountResolved: true,
+				BillingDiscountSkipped:  bc.DiscountSkipped,
+				PriceData: types.PriceData{
+					GroupRatioInfo: types.GroupRatioInfo{GroupRatio: bc.GroupRatio},
+				},
+			}
+			otherRatio := 1.0
+			if priceData := taskBillingContextPriceData(bc); priceData != nil {
+				otherRatio = priceData.OtherRatioMultiplier()
+			}
+			appendBillingFormula(other, billingInfo, "task", bc.QuotaBeforeGroup, otherRatio, 0, task.Quota)
+		}
 	}
 	props := task.Properties
 	if props.UpstreamModelName != "" && props.UpstreamModelName != props.OriginModelName {
@@ -208,7 +234,17 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
 // clamps 可选：若计算 actualQuota 时发生额度饱和，将其记入日志 admin_info（仅管理员可见）。
 func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string, clamps ...*common.QuotaClamp) {
-	if actualQuota <= 0 {
+	if task != nil && task.PrivateData.BillingContext != nil {
+		actualQuota = applyBillingDiscountRatio(actualQuota, task.PrivateData.BillingContext.DiscountRatio, nil)
+	}
+	recalculateTaskQuota(ctx, task, actualQuota, reason, false, clamps...)
+}
+
+// recalculateTaskQuota settles a task's known final charge. Only token-based
+// settlement may explicitly resolve to zero; generic adaptor deductions keep
+// treating zero as "no adjustment" because some providers omit that field.
+func recalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string, settleZero bool, clamps ...*common.QuotaClamp) {
+	if actualQuota < 0 || (actualQuota == 0 && !settleZero) {
 		return
 	}
 	preConsumedQuota := task.Quota
@@ -293,8 +329,9 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		}
 		rawQuota := float64(totalTokens) * billingContext.ModelRatio * billingContext.GroupRatio * otherMultiplier
 		actualQuota, clamp := common.QuotaFromPositiveFloatChecked(rawQuota)
+		actualQuota = applyBillingDiscountRatio(actualQuota, billingContext.DiscountRatio, nil)
 		reason := fmt.Sprintf("token recalculation: tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, billingContext.ModelRatio, billingContext.GroupRatio, otherMultiplier)
-		RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
+		recalculateTaskQuota(ctx, task, actualQuota, reason, true, clamp)
 		return
 	}
 
@@ -338,5 +375,5 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	actualQuota, clamp := common.QuotaFromPositiveFloatChecked(rawQuota)
 
 	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
-	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
+	recalculateTaskQuota(ctx, task, actualQuota, reason, true, clamp)
 }

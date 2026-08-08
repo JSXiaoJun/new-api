@@ -83,8 +83,6 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 		quota = decimal.Zero
 	}
 
-	// Preserve the existing minimum charge when a paid token-based audio
-	// response lacks detailed token categories.
 	modelRatio := decimal.NewFromFloat(info.ModelRatio)
 	if !info.UsePrice && groupRatio.Mul(modelRatio).GreaterThan(decimal.Zero) && quota.IsZero() {
 		quota = decimal.NewFromInt(1)
@@ -94,6 +92,9 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 }
 
 func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
+	if relayInfo.Billing != nil {
+		return nil
+	}
 	if relayInfo.UsePrice {
 		return nil
 	}
@@ -138,6 +139,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 
 	quota, clamp := calculateAudioQuota(quotaInfo)
 	noteQuotaClamp(relayInfo, clamp)
+	quota = ApplyBillingDiscount(relayInfo, quota)
 
 	if userQuota < quota {
 		return fmt.Errorf("user quota is not enough, user quota: %s, need quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(quota))
@@ -151,6 +153,9 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if err != nil {
 		return err
 	}
+	// Keep the legacy incremental path reconciled with the final aggregate
+	// settlement below. BillingSession requests skip this path entirely.
+	relayInfo.FinalPreConsumedQuota += quota
 	logger.LogInfo(ctx, "realtime streaming consume quota success, quota: "+fmt.Sprintf("%d", quota))
 	return nil
 }
@@ -205,7 +210,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	if tieredOk {
 		quota = tieredQuota
 	}
-
+	quota = ApplyBillingDiscount(relayInfo, quota)
 	totalTokens := usage.TotalTokens
 	var logContent string
 	if !usePrice {
@@ -340,6 +345,8 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	if tieredOk {
 		quota = tieredQuota
 	}
+	quota = ApplyBillingDiscount(relayInfo, quota)
+	usingBillingSession := relayInfo.Billing != nil
 
 	totalTokens := usage.TotalTokens
 	var logContent string
@@ -358,7 +365,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		logContent += "（可能是上游超时）"
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, relayInfo.OriginModelName, relayInfo.FinalPreConsumedQuota))
-	} else {
+	} else if !usingBillingSession {
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}

@@ -47,17 +47,17 @@ describe('billing formula log formatting', () => {
     )
   })
 
-  test('shows when the minimum positive charge was applied', () => {
+  test('explains when a discount is skipped to avoid a zero charge', () => {
     const formula = getBillingFormula({
       billing_formula: {
         mode: 'per_call',
         base_quota: 0.1,
         base_group_ratio: 1,
         discount_ratio: 0.01,
-        effective_group_ratio: 0.01,
+        effective_group_ratio: 1,
         other_ratio: 1,
         surcharge_quota: 0,
-        minimum_charge_applied: true,
+        discount_skipped_to_avoid_zero: true,
         final_quota: 1,
       },
     })
@@ -69,7 +69,32 @@ describe('billing formula log formatting', () => {
         (quota) => `Q${quota}`,
         (key) => key
       ),
-      'max(Q1 (Minimum Charge), round(Q0.1 (Base Charge) × 1.0000x (Base Group Ratio) × 0.0100x (Discount Multiplier))) = Q1'
+      'round(Q0.1 (Base Charge) × 1.0000x (Base Group Ratio)) = Q1 (Discount skipped to avoid a zero charge)'
+    )
+  })
+
+  test('keeps rendering historical minimum-charge logs', () => {
+    const formula = getBillingFormula({
+      billing_formula: {
+        mode: 'per_call',
+        base_quota: 0.1,
+        base_group_ratio: 1,
+        discount_ratio: 1,
+        effective_group_ratio: 1,
+        other_ratio: 1,
+        surcharge_quota: 0,
+        minimum_charge_applied: true,
+        final_quota: 1,
+      },
+    })
+
+    assert.equal(
+      buildBillingFormulaText(
+        formula!,
+        (quota) => `Q${quota}`,
+        (key) => key
+      ),
+      'max(Q1 (Minimum Charge), round(Q0.1 (Base Charge) × 1.0000x (Base Group Ratio))) = Q1'
     )
   })
 

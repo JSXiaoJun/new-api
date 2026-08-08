@@ -125,7 +125,7 @@ func TestQuotaFromDecimalChecked(t *testing.T) {
 	}
 }
 
-func TestPositiveChargeConversionsApplyMinimumWithoutChangingFreeValues(t *testing.T) {
+func TestPositiveChargeConversionsPreservePaidAndFreeValues(t *testing.T) {
 	quota, clamp := QuotaFromPositiveFloatChecked(0.1)
 	assert.Nil(t, clamp)
 	assert.Equal(t, 1, quota)

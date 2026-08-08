@@ -2,8 +2,10 @@ package service
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -14,6 +16,44 @@ const (
 	BillingSourceWallet       = "wallet"
 	BillingSourceSubscription = "subscription"
 )
+
+// ApplyBillingDiscount applies the frozen scheduled multiplier to an already
+// computed integer charge. A paid request never becomes free solely because
+// the discounted integer rounds to zero (for example, 1 * 0.49); in that
+// boundary case the original charge is retained and the discount is skipped.
+func ApplyBillingDiscount(relayInfo *relaycommon.RelayInfo, baseQuota int) int {
+	if relayInfo == nil {
+		return baseQuota
+	}
+	if baseQuota <= 0 || !relayInfo.BillingDiscountResolved {
+		relayInfo.BillingDiscountSkipped = false
+		return baseQuota
+	}
+	ratio := relayInfo.BillingDiscountRatio
+	if ratio <= 0 || ratio >= 1 || math.IsNaN(ratio) || math.IsInf(ratio, 0) {
+		relayInfo.BillingDiscountSkipped = false
+		return baseQuota
+	}
+	rounded, _ := common.QuotaRoundChecked(float64(baseQuota) * ratio)
+	relayInfo.BillingDiscountSkipped = rounded <= 0
+	return applyBillingDiscountRatio(baseQuota, ratio, func(clamp *common.QuotaClamp) {
+		noteQuotaClamp(relayInfo, clamp)
+	})
+}
+
+func applyBillingDiscountRatio(baseQuota int, ratio float64, noteClamp func(*common.QuotaClamp)) int {
+	if ratio <= 0 || ratio >= 1 || math.IsNaN(ratio) || math.IsInf(ratio, 0) {
+		return baseQuota
+	}
+	discounted, clamp := common.QuotaRoundChecked(float64(baseQuota) * ratio)
+	if noteClamp != nil {
+		noteClamp(clamp)
+	}
+	if discounted <= 0 {
+		return baseQuota
+	}
+	return discounted
+}
 
 // PreConsumeBilling 根据用户计费偏好创建 BillingSession 并执行预扣费。
 // 会话存储在 relayInfo.Billing 上，供后续 Settle / Refund 使用。
@@ -34,6 +74,7 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 			types.ErrOptionWithSkipRetry(),
 		)
 	}
+	preConsumedQuota = ApplyBillingDiscount(relayInfo, preConsumedQuota)
 	session, apiErr := NewBillingSession(c, relayInfo, preConsumedQuota)
 	if apiErr != nil {
 		return apiErr
@@ -49,6 +90,9 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 // SettleBilling 执行计费结算。如果 RelayInfo 上有 BillingSession 则通过 session 结算，
 // 否则回退到旧的 PostConsumeQuota 路径（兼容按次计费等场景）。
 func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuota int) error {
+	if actualQuota < 0 {
+		return fmt.Errorf("actual quota cannot be negative: %d", actualQuota)
+	}
 	if relayInfo.Billing != nil {
 		preConsumed := relayInfo.Billing.GetPreConsumedQuota()
 		delta := actualQuota - preConsumed

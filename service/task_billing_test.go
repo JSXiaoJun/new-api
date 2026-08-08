@@ -46,7 +46,9 @@ func TestMain(m *testing.M) {
 		&model.Log{},
 		&model.Channel{},
 		&model.TopUp{},
+		&model.SubscriptionPlan{},
 		&model.UserSubscription{},
+		&model.SubscriptionPreConsumeRecord{},
 		&model.SystemTask{},
 		&model.SystemTaskLock{},
 	); err != nil {
@@ -69,7 +71,9 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM logs")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
+		model.DB.Exec("DELETE FROM subscription_pre_consume_records")
 		model.DB.Exec("DELETE FROM user_subscriptions")
+		model.DB.Exec("DELETE FROM subscription_plans")
 		model.DB.Exec("DELETE FROM system_task_locks")
 		model.DB.Exec("DELETE FROM system_tasks")
 	})
@@ -214,6 +218,49 @@ func TestTaskBillingOtherFiltersHistoricalOtherRatios(t *testing.T) {
 	assert.NotContains(t, other, "negative")
 	assert.NotContains(t, other, "nan")
 	assert.NotContains(t, other, "inf")
+}
+
+func TestTaskBillingOtherRecordsAuditablePerCallFormula(t *testing.T) {
+	task := makeTask(1, 1, 144, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext = &model.TaskBillingContext{
+		ModelPrice:       0.02,
+		GroupRatio:       0.8,
+		BaseGroupRatio:   1,
+		DiscountRatio:    0.8,
+		QuotaBeforeGroup: 120,
+		OtherRatios:      map[string]float64{"duration": 1.5},
+		OriginModelName:  "test-model",
+		PerCallBilling:   true,
+	}
+
+	other := taskBillingOther(task)
+
+	formula, ok := other["billing_formula"].(billingFormulaLog)
+	require.True(t, ok)
+	assert.Equal(t, "task", formula.Mode)
+	assert.Equal(t, 120.0, formula.BaseQuota)
+	assert.Equal(t, 1.0, formula.BaseGroupRatio)
+	assert.Equal(t, 0.8, formula.DiscountRatio)
+	assert.Equal(t, 0.8, formula.EffectiveGroupRatio)
+	assert.Equal(t, 1.5, formula.OtherRatio)
+	assert.Equal(t, 144, formula.FinalQuota)
+}
+
+func TestTaskBillingOtherOmitsSubmitFormulaForTokenSettlement(t *testing.T) {
+	task := makeTask(1, 1, 300, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext = &model.TaskBillingContext{
+		GroupRatio:       0.5,
+		BaseGroupRatio:   1,
+		DiscountRatio:    0.5,
+		ModelRatio:       2,
+		QuotaBeforeGroup: 600,
+		OriginModelName:  "test-model",
+		PerCallBilling:   false,
+	}
+
+	other := taskBillingOther(task)
+
+	assert.NotContains(t, other, "billing_formula")
 }
 
 func TestTaskBillingContextPriceDataFiltersMultiplier(t *testing.T) {

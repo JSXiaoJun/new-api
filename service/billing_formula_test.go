@@ -53,22 +53,43 @@ func TestAppendBillingFormulaRejectsNegativeAuditValues(t *testing.T) {
 	assert.NotContains(t, other, "billing_formula")
 }
 
-func TestAppendBillingFormulaMarksMinimumCharge(t *testing.T) {
+func TestViolationFeeFormulaDoesNotApplyScheduledDiscount(t *testing.T) {
 	other := map[string]interface{}{}
 	info := &relaycommon.RelayInfo{
 		BillingBaseGroupRatio:   1,
 		BillingDiscountRatio:    0.01,
 		BillingDiscountResolved: true,
 		PriceData: types.PriceData{
-			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 0.01},
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1},
 		},
 	}
 
-	appendBillingFormula(other, info, "per_call", 0.1, 1, 0, 1)
+	appendBillingFormula(other, info, "violation_fee", 100, 1, 0, 100)
 
 	formula, ok := other["billing_formula"].(billingFormulaLog)
 	require.True(t, ok)
-	assert.True(t, formula.MinimumChargeApplied)
+	assert.Equal(t, 1.0, formula.DiscountRatio)
+	assert.Equal(t, 1.0, formula.EffectiveGroupRatio)
+}
+
+func TestAppendBillingFormulaRecordsSkippedDiscount(t *testing.T) {
+	other := map[string]interface{}{}
+	info := &relaycommon.RelayInfo{
+		BillingBaseGroupRatio:   1,
+		BillingDiscountRatio:    0.01,
+		BillingDiscountResolved: true,
+		BillingDiscountSkipped:  true,
+		PriceData: types.PriceData{
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1},
+		},
+	}
+
+	appendBillingFormula(other, info, "per_call", 1, 1, 0, 1)
+
+	formula, ok := other["billing_formula"].(billingFormulaLog)
+	require.True(t, ok)
+	assert.True(t, formula.DiscountSkipped)
+	assert.Equal(t, 1.0, formula.EffectiveGroupRatio)
 }
 
 func TestTextBillingFormulaRecomposesDiscountedQuota(t *testing.T) {
@@ -83,7 +104,7 @@ func TestTextBillingFormulaRecomposesDiscountedQuota(t *testing.T) {
 		PriceData: types.PriceData{
 			ModelRatio:      2,
 			CompletionRatio: 2,
-			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 0.8},
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
 		},
 	}
 	info.PriceData.AddOtherRatio("request", 1.5)
