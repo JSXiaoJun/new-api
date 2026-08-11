@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -51,6 +52,7 @@ type responseTask struct {
 	Seconds            string `json:"seconds,omitempty"`
 	Size               string `json:"size,omitempty"`
 	RemixedFromVideoID string `json:"remixed_from_video_id,omitempty"`
+	VideoURL           string `json:"video_url,omitempty"`
 	Error              *struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
@@ -140,6 +142,9 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
 	req.Header.Set("Authorization", "Bearer "+a.apiKey)
 	req.Header.Set("Content-Type", c.Request.Header.Get("Content-Type"))
+	if info != nil && info.TaskRelayInfo != nil && info.PublicTaskID != "" {
+		req.Header.Set("X-Public-Task-ID", info.PublicTaskID)
+	}
 	return nil
 }
 
@@ -304,7 +309,9 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusInProgress
 	case "completed":
 		taskResult.Status = model.TaskStatusSuccess
-		// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
+		if isTrustedPublicVideoURL(resTask.VideoURL, a.baseURL, "") {
+			taskResult.Url = resTask.VideoURL
+		}
 	case "failed", "cancelled":
 		taskResult.Status = model.TaskStatusFailure
 		if resTask.Error != nil {
@@ -328,9 +335,38 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 		return nil, errors.Wrap(err, "set id failed")
 	}
 	if task.Status == model.TaskStatusSuccess {
-		if data, err = sjson.SetBytes(data, "video_url", taskcommon.BuildProxyURL(task.TaskID)); err != nil {
+		videoURL := taskcommon.BuildProxyURL(task.TaskID)
+		if directURL := task.GetResultURL(); isTrustedPublicVideoURL(directURL, a.baseURL, task.TaskID) {
+			videoURL = directURL
+		}
+		if data, err = sjson.SetBytes(data, "video_url", videoURL); err != nil {
 			return nil, errors.Wrap(err, "set public video url failed")
 		}
 	}
 	return data, nil
+}
+
+func isTrustedPublicVideoURL(rawURL, baseURL, expectedTaskID string) bool {
+	publicURL, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || publicURL.Scheme == "" || publicURL.Host == "" || publicURL.User != nil ||
+		publicURL.RawQuery != "" || publicURL.Fragment != "" {
+		return false
+	}
+	base, err := url.Parse(strings.TrimRight(strings.TrimSpace(baseURL), "/"))
+	if err != nil || !strings.EqualFold(publicURL.Scheme, base.Scheme) ||
+		!strings.EqualFold(publicURL.Host, base.Host) {
+		return false
+	}
+
+	const prefix = "/public/videos/"
+	const suffix = "/content"
+	path := publicURL.EscapedPath()
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return false
+	}
+	taskID, err := url.PathUnescape(strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix))
+	if err != nil || !strings.HasPrefix(taskID, "task_") || strings.Contains(taskID, "/") {
+		return false
+	}
+	return expectedTaskID == "" || taskID == expectedTaskID
 }
