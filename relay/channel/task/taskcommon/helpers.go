@@ -3,6 +3,7 @@ package taskcommon
 import (
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -60,10 +61,10 @@ func DecodeLocalTaskID(id string) (string, error) {
 	return string(b), nil
 }
 
-// BuildProxyURL constructs the video proxy URL using the public task ID.
-// e.g., "https://your-server.com/v1/videos/task_xxxx/content"
+// BuildProxyURL constructs the public video proxy URL using the public task ID.
+// e.g., "https://your-server.com/public/videos/task_xxxx/content"
 func BuildProxyURL(taskID string) string {
-	return fmt.Sprintf("%s/v1/videos/%s/content", system_setting.ServerAddress, taskID)
+	return fmt.Sprintf("%s/public/videos/%s/content", strings.TrimRight(system_setting.ServerAddress, "/"), taskID)
 }
 
 // Status-to-progress mapping constants for polling updates.

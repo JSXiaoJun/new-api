@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -39,6 +40,23 @@ func VideoProxy(c *gin.Context) {
 
 	userID := c.GetInt("id")
 	task, exists, err := model.GetByTaskId(userID, taskID)
+	proxyVideo(c, taskID, task, exists, err)
+}
+
+// PublicVideoProxy serves completed video content using the opaque public
+// task ID returned by video APIs. It deliberately has no auth middleware.
+func PublicVideoProxy(c *gin.Context) {
+	taskID := c.Param("public_task_id")
+	if taskID == "" {
+		videoProxyError(c, http.StatusBadRequest, "invalid_request_error", "public_task_id is required")
+		return
+	}
+
+	task, exists, err := model.GetByPublicTaskID(taskID)
+	proxyVideo(c, taskID, task, exists, err)
+}
+
+func proxyVideo(c *gin.Context, taskID string, task *model.Task, exists bool, err error) {
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to query task %s: %s", taskID, err.Error()))
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to query task")
@@ -168,14 +186,16 @@ func VideoProxy(c *gin.Context) {
 			fmt.Sprintf("Upstream service returned status %d", resp.StatusCode))
 		return
 	}
-
-	for key, values := range resp.Header {
-		for _, value := range values {
-			c.Writer.Header().Add(key, value)
-		}
+	mediaType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if err != nil || !isSupportedPublicVideoType(mediaType) {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Video upstream returned unsupported content type %q for task %s", mediaType, taskID))
+		videoProxyError(c, http.StatusBadGateway, "server_error", "Upstream service did not return a supported video")
+		return
 	}
 
+	copyPublicMediaResponseHeaders(c, resp)
 	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
+	c.Writer.Header().Set("X-Content-Type-Options", "nosniff")
 	c.Writer.WriteHeader(resp.StatusCode)
 	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream video content: %s", err.Error()))
@@ -199,6 +219,10 @@ func writeVideoDataURL(c *gin.Context, dataURL string) error {
 	if mimeType == "" {
 		mimeType = "video/mp4"
 	}
+	mediaType, _, err := mime.ParseMediaType(mimeType)
+	if err != nil || !isSupportedPublicVideoType(mediaType) || !strings.HasPrefix(strings.ToLower(mediaType), "video/") {
+		return fmt.Errorf("unsupported video data url content type")
+	}
 
 	videoBytes, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
@@ -210,7 +234,21 @@ func writeVideoDataURL(c *gin.Context, dataURL string) error {
 
 	c.Writer.Header().Set("Content-Type", mimeType)
 	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
+	c.Writer.Header().Set("X-Content-Type-Options", "nosniff")
 	c.Writer.WriteHeader(http.StatusOK)
 	_, err = c.Writer.Write(videoBytes)
 	return err
+}
+
+func isSupportedPublicVideoType(mediaType string) bool {
+	mediaType = strings.ToLower(mediaType)
+	return strings.HasPrefix(mediaType, "video/") || mediaType == "application/octet-stream"
+}
+
+func copyPublicMediaResponseHeaders(c *gin.Context, resp *http.Response) {
+	for _, key := range []string{"Content-Type", "Content-Length"} {
+		if value := resp.Header.Get(key); value != "" {
+			c.Writer.Header().Set(key, value)
+		}
+	}
 }

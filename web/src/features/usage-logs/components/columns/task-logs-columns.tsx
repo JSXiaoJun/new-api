@@ -42,6 +42,7 @@ import {
   createChannelColumn,
   createProgressColumn,
 } from './column-helpers'
+import { VideoPreviewCell } from './video-preview-cell'
 
 function parseTaskData(data: unknown): unknown[] {
   if (Array.isArray(data)) return data
@@ -245,20 +246,9 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
           log.action === TASK_ACTIONS.REFERENCE_GENERATE ||
           log.action === TASK_ACTIONS.REMIX_GENERATE
         const isSuccess = status === TASK_STATUS.SUCCESS
-        const isUrl = failReason?.startsWith('http')
 
-        if (isSuccess && isVideoTask && isUrl) {
-          const videoUrl = `/v1/videos/${log.task_id}/content`
-          return (
-            <a
-              href={videoUrl}
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-foreground text-xs hover:underline'
-            >
-              {t('Click to preview video')}
-            </a>
-          )
+        if (isSuccess && isVideoTask && log.task_id) {
+          return <VideoPreviewCell taskId={log.task_id} />
         }
 
         if (!failReason) {

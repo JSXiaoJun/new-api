@@ -36,6 +36,7 @@ func TestMain(m *testing.M) {
 
 	if err := db.AutoMigrate(
 		&Task{},
+		&ImageAsset{},
 		&User{},
 		&UserSession{},
 		&AuthFlow{},
@@ -68,6 +69,7 @@ func truncateTables(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
 		DB.Exec("DELETE FROM tasks")
+		DB.Exec("DELETE FROM image_assets")
 		DB.Exec("DELETE FROM auth_flows")
 		DB.Exec("DELETE FROM external_identity_claims")
 		DB.Exec("DELETE FROM user_sessions")
@@ -97,6 +99,38 @@ func insertTask(t *testing.T, task *Task) {
 	task.CreatedAt = time.Now().Unix()
 	task.UpdatedAt = time.Now().Unix()
 	require.NoError(t, DB.Create(task).Error)
+}
+
+func TestGetByPublicTaskID(t *testing.T) {
+	truncateTables(t)
+
+	task := &Task{TaskID: "task_public_lookup", UserId: 42, Status: TaskStatusSuccess}
+	insertTask(t, task)
+
+	found, exists, err := GetByPublicTaskID(task.TaskID)
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.NotNil(t, found)
+	assert.Equal(t, task.UserId, found.UserId)
+
+	found, exists, err = GetByPublicTaskID("task_missing")
+	require.NoError(t, err)
+	assert.False(t, exists)
+	assert.Nil(t, found)
+}
+
+func TestUpsertImageAsset(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, UpsertImageAsset("img_public", 12, "https://upstream.example/public/images/assets/img_public"))
+	require.NoError(t, UpsertImageAsset("img_public", 18, "https://replacement.example/public/images/assets/img_public"))
+
+	asset, exists, err := GetImageAssetByAssetID("img_public")
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.NotNil(t, asset)
+	assert.Equal(t, 18, asset.ChannelID)
+	assert.Equal(t, "https://replacement.example/public/images/assets/img_public", asset.URL)
 }
 
 // ---------------------------------------------------------------------------

@@ -202,7 +202,9 @@ func isTaskProxyContentURL(url string, taskID string) bool {
 	if strings.TrimSpace(url) == "" || strings.TrimSpace(taskID) == "" {
 		return false
 	}
-	return strings.Contains(url, "/v1/videos/"+taskID+"/content")
+	legacyPath := "/v1/videos/" + taskID + "/content"
+	publicPath := "/public/videos/" + taskID + "/content"
+	return strings.Contains(url, legacyPath) || strings.Contains(url, publicPath)
 }
 
 func getVertexTaskKey(channel *model.Channel, task *model.Task) string {

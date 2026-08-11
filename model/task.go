@@ -354,6 +354,24 @@ func GetByTaskId(userId int, taskId string) (*Task, bool, error) {
 	return task, exist, err
 }
 
+// GetByPublicTaskID resolves a task without requiring the owning user. The
+// caller must already have an unguessable public task ID.
+func GetByPublicTaskID(taskID string) (*Task, bool, error) {
+	if taskID == "" {
+		return nil, false, nil
+	}
+	var task *Task
+	err := DB.Where("task_id = ?", taskID).First(&task).Error
+	exist, err := RecordExist(err)
+	if err != nil {
+		return nil, false, err
+	}
+	if !exist {
+		return nil, false, nil
+	}
+	return task, true, nil
+}
+
 func GetByTaskIds(userId int, taskIds []any) ([]*Task, error) {
 	if len(taskIds) == 0 {
 		return nil, nil

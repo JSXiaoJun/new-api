@@ -5,17 +5,20 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -50,6 +53,7 @@ func OpenaiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	}
 
 	updateOpenAIImageCount(info, gjson.GetBytes(responseBody, "data.#").Int())
+	responseBody = rewriteOpenAIImageAssetURLs(c, responseBody, info)
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
@@ -115,6 +119,7 @@ func OpenaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp 
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		raw := common.StringToByteSlice(data)
+		raw = rewriteOpenAIImageAssetURLs(c, raw, info)
 		lastStreamData = raw
 		if isOpenAIImageStreamErrorEvent(raw) {
 			// Record the error as a soft error; the scanner drives the final
@@ -249,6 +254,7 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 	if oaiError := usageResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
+	responseBody = rewriteOpenAIImageAssetURLs(c, responseBody, info)
 	normalizeOpenAIUsage(&usageResp.Usage)
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 
@@ -330,4 +336,68 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 
 func writeOpenaiImageStreamDone(c *gin.Context) error {
 	return helper.StringData(c, "[DONE]")
+}
+
+func rewriteOpenAIImageAssetURLs(c *gin.Context, responseBody []byte, info *relaycommon.RelayInfo) []byte {
+	if info == nil || info.ChannelMeta == nil || len(responseBody) == 0 {
+		return responseBody
+	}
+
+	rewritten := responseBody
+	imageCount := gjson.GetBytes(responseBody, "data.#").Int()
+	for i := int64(0); i < imageCount; i++ {
+		path := "data." + strconv.FormatInt(i, 10) + ".url"
+		rawURL := strings.TrimSpace(gjson.GetBytes(responseBody, path).String())
+		assetID, upstreamURL, ok := resolvePublicImageAsset(rawURL, info.ChannelBaseUrl)
+		if !ok {
+			continue
+		}
+		if err := model.UpsertImageAsset(assetID, info.ChannelId, upstreamURL); err != nil {
+			logger.LogError(c, fmt.Sprintf("failed to persist image asset %s: %s", assetID, err.Error()))
+			continue
+		}
+		publicURL := strings.TrimRight(system_setting.ServerAddress, "/") + "/public/images/assets/" + url.PathEscape(assetID)
+		var err error
+		rewritten, err = sjson.SetBytes(rewritten, path, publicURL)
+		if err != nil {
+			logger.LogError(c, fmt.Sprintf("failed to rewrite image asset %s: %s", assetID, err.Error()))
+		}
+	}
+	return rewritten
+}
+
+func resolvePublicImageAsset(rawURL string, channelBaseURL string) (string, string, bool) {
+	if rawURL == "" {
+		return "", "", false
+	}
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", "", false
+	}
+	const assetPathPrefix = "/public/images/assets/"
+	if !strings.HasPrefix(parsedURL.Path, assetPathPrefix) {
+		return "", "", false
+	}
+	assetID, err := url.PathUnescape(strings.TrimPrefix(parsedURL.Path, assetPathPrefix))
+	if err != nil || assetID == "" || strings.Contains(assetID, "/") {
+		return "", "", false
+	}
+
+	if parsedURL.IsAbs() && !sameImageAssetOrigin(parsedURL, system_setting.ServerAddress) {
+		return assetID, parsedURL.String(), true
+	}
+	baseURL, err := url.Parse(strings.TrimRight(channelBaseURL, "/") + "/")
+	if err != nil || !baseURL.IsAbs() {
+		return "", "", false
+	}
+	assetReference := &url.URL{Path: parsedURL.Path, RawQuery: parsedURL.RawQuery}
+	return assetID, baseURL.ResolveReference(assetReference).String(), true
+}
+
+func sameImageAssetOrigin(assetURL *url.URL, otherRawURL string) bool {
+	otherURL, err := url.Parse(otherRawURL)
+	if err != nil || !otherURL.IsAbs() {
+		return false
+	}
+	return strings.EqualFold(assetURL.Scheme, otherURL.Scheme) && strings.EqualFold(assetURL.Host, otherURL.Host)
 }

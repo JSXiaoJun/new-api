@@ -8,6 +8,15 @@ import (
 )
 
 func SetVideoRouter(router *gin.Engine) {
+	// Public media uses opaque IDs and intentionally does not require session or
+	// token authentication.
+	publicMediaRouter := router.Group("/public")
+	publicMediaRouter.Use(middleware.RouteTag("relay"))
+	{
+		publicMediaRouter.GET("/videos/:public_task_id/content", controller.PublicVideoProxy)
+		publicMediaRouter.GET("/images/assets/:asset_id", controller.PublicImageAssetProxy)
+	}
+
 	// Video proxy: accepts either session auth (dashboard) or token auth (API clients)
 	videoProxyRouter := router.Group("/v1")
 	videoProxyRouter.Use(middleware.RouteTag("relay"))
