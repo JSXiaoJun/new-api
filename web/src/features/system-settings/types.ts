@@ -370,6 +370,7 @@ export type OperationsSettings = {
   'traffic_control.warning_title': string
   'traffic_control.warning_content': string
   'traffic_control.warning_annotation': string
+  'traffic_control.schedule': string
 }
 
 export type SecuritySettings = {

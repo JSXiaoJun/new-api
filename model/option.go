@@ -217,6 +217,9 @@ func validateOptionValue(key string, value string) error {
 	if key == "traffic_control.country_header" {
 		return traffic_control.ValidateCountryHeader(value)
 	}
+	if key == "traffic_control.schedule" {
+		return traffic_control.ValidateScheduleJSON(value)
+	}
 	if key == "discount_setting.schedule" {
 		return discount_setting.ValidateScheduleJSON(value)
 	}

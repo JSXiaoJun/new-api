@@ -5,6 +5,7 @@ import (
 	"net/textproto"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/QuantumNous/new-api/setting/config"
 	"golang.org/x/net/http/httpguts"
@@ -18,12 +19,13 @@ const (
 )
 
 type TrafficControlSetting struct {
-	MainlandWebBlockEnabled bool   `json:"mainland_web_block_enabled"`
-	IncludeHongKongTaiwan   bool   `json:"include_hong_kong_taiwan"`
-	CountryHeader           string `json:"country_header"`
-	WarningTitle            string `json:"warning_title"`
-	WarningContent          string `json:"warning_content"`
-	WarningAnnotation       string `json:"warning_annotation"`
+	MainlandWebBlockEnabled bool            `json:"mainland_web_block_enabled"`
+	IncludeHongKongTaiwan   bool            `json:"include_hong_kong_taiwan"`
+	CountryHeader           string          `json:"country_header"`
+	WarningTitle            string          `json:"warning_title"`
+	WarningContent          string          `json:"warning_content"`
+	WarningAnnotation       string          `json:"warning_annotation"`
+	Schedule                TrafficSchedule `json:"schedule"`
 }
 
 var (
@@ -34,6 +36,7 @@ var (
 		WarningTitle:            defaultWarningTitle,
 		WarningContent:          defaultWarningContent,
 		WarningAnnotation:       defaultWarningAnnotation,
+		Schedule:                defaultTrafficSchedule(),
 	}
 	mainlandWebBlockEnabled atomic.Bool
 	includeHongKongTaiwan   atomic.Bool
@@ -67,10 +70,15 @@ func UpdateAndSync() {
 	warningTitle.Store(trafficControlSetting.WarningTitle)
 	warningContent.Store(trafficControlSetting.WarningContent)
 	warningAnnotation.Store(trafficControlSetting.WarningAnnotation)
+	compiled, err := compileTrafficSchedule(trafficControlSetting.Schedule)
+	if err != nil {
+		compiled = &compiledTrafficSchedule{}
+	}
+	activeTrafficSchedule.Store(compiled)
 }
 
 func MainlandWebBlockEnabled() bool {
-	return mainlandWebBlockEnabled.Load()
+	return mainlandWebBlockEnabledAt(time.Now())
 }
 
 func IncludeHongKongTaiwan() bool {

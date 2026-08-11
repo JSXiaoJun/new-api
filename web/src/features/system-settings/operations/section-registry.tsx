@@ -23,6 +23,7 @@ import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
 import { PerformanceSection } from '../maintenance/performance-section'
 import { trafficControlWarningDefaults } from '../maintenance/traffic-control-defaults'
+import { DEFAULT_TRAFFIC_CONTROL_SCHEDULE_JSON } from '../maintenance/traffic-control-schedule'
 import { TrafficControlSection } from '../maintenance/traffic-control-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
@@ -106,6 +107,9 @@ const OPERATIONS_SECTIONS = [
             settings['traffic_control.include_hong_kong_taiwan'] ?? false,
           'traffic_control.country_header':
             settings['traffic_control.country_header'] ?? 'CF-IPCountry',
+          'traffic_control.schedule':
+            settings['traffic_control.schedule'] ??
+            DEFAULT_TRAFFIC_CONTROL_SCHEDULE_JSON,
           'traffic_control.warning_title':
             settings['traffic_control.warning_title'] ??
             trafficControlWarningDefaults['traffic_control.warning_title'],

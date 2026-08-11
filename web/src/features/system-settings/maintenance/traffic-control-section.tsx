@@ -17,8 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useMemo } from 'react'
+import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import * as z from 'zod'
 
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -44,19 +45,13 @@ import { SettingsSection } from '../components/settings-section'
 import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { trafficControlWarningDefaults } from './traffic-control-defaults'
-
-const trafficControlSchema = z.object({
-  traffic_control: z.object({
-    mainland_web_block_enabled: z.boolean(),
-    include_hong_kong_taiwan: z.boolean(),
-    country_header: z.string().trim().min(1),
-    warning_title: z.string(),
-    warning_content: z.string(),
-    warning_annotation: z.string(),
-  }),
-})
-
-type TrafficControlFormValues = z.infer<typeof trafficControlSchema>
+import {
+  buildDefaultScheduleDate,
+  createTrafficControlSchema,
+  parseTrafficControlSchedule,
+  type TrafficControlFormValues,
+} from './traffic-control-schedule'
+import { TrafficControlScheduleFields } from './traffic-control-schedule-fields'
 
 type TrafficControlSectionProps = {
   defaultValues: {
@@ -66,15 +61,25 @@ type TrafficControlSectionProps = {
     'traffic_control.warning_title': string
     'traffic_control.warning_content': string
     'traffic_control.warning_annotation': string
+    'traffic_control.schedule': string
   }
 }
 
 export function TrafficControlSection(props: TrafficControlSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const schema = useMemo(() => createTrafficControlSchema(t), [t])
+  const scheduleValue = props.defaultValues['traffic_control.schedule']
+  const schedule = useMemo(() => {
+    const value = parseTrafficControlSchedule(scheduleValue)
+    return {
+      ...value,
+      date: value.date || buildDefaultScheduleDate(new Date()),
+    }
+  }, [scheduleValue])
   const { form, handleSubmit, isSubmitting } =
     useSettingsForm<TrafficControlFormValues>({
-      resolver: zodResolver(trafficControlSchema),
+      resolver: zodResolver(schema) as Resolver<TrafficControlFormValues>,
       defaultValues: {
         traffic_control: {
           mainland_web_block_enabled:
@@ -92,16 +97,29 @@ export function TrafficControlSection(props: TrafficControlSectionProps) {
             props.defaultValues['traffic_control.warning_annotation'] ??
             trafficControlWarningDefaults['traffic_control.warning_annotation'],
         },
+        schedule,
       },
-      onSubmit: async (_data, changedFields) => {
+      onSubmit: async (data, changedFields) => {
+        let scheduleChanged = false
         for (const [key, value] of Object.entries(changedFields)) {
+          if (key.startsWith('schedule.')) {
+            scheduleChanged = true
+            continue
+          }
           await updateOption.mutateAsync({
             key,
             value: value as string | boolean,
           })
         }
+        if (scheduleChanged) {
+          await updateOption.mutateAsync({
+            key: 'traffic_control.schedule',
+            value: JSON.stringify(data.schedule),
+          })
+        }
       },
     })
+  const automaticControlEnabled = form.watch('schedule.enabled')
 
   return (
     <SettingsSection title={t('Traffic Control')}>
@@ -128,11 +146,14 @@ export function TrafficControlSection(props: TrafficControlSectionProps) {
                   <Switch
                     checked={field.value}
                     onCheckedChange={field.onChange}
+                    disabled={automaticControlEnabled}
                   />
                 </FormControl>
               </SettingsSwitchItem>
             )}
           />
+
+          <TrafficControlScheduleFields />
 
           <FormField
             control={form.control}

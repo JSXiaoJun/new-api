@@ -66,6 +66,15 @@ await i18n.use(initReactI18next).init({
         'When enabled, visitors identified as HK, MO, or TW will see the same warning page.':
           'When enabled, visitors identified as HK, MO, or TW will see the same warning page.',
         'Country header': 'Country header',
+        'Automatic traffic control': 'Automatic traffic control',
+        'Repeat every day': 'Repeat every day',
+        'Schedule date': 'Schedule date',
+        'Schedule timezone': 'Schedule timezone',
+        'Time periods': 'Time periods',
+        'Start time': 'Start time',
+        'End time': 'End time',
+        'Add time period': 'Add time period',
+        'Remove time period': 'Remove time period',
         'Traffic Control': 'Traffic Control',
         'Warning page title': 'Warning page title',
         'Warning page content': 'Warning page content',
@@ -102,6 +111,8 @@ describe('traffic control settings', () => {
                 'traffic_control.mainland_web_block_enabled': false,
                 'traffic_control.include_hong_kong_taiwan': false,
                 'traffic_control.country_header': 'CF-IPCountry',
+                'traffic_control.schedule':
+                  '{"enabled":false,"daily_repeat":true,"date":"","time_ranges":[{"start_time":"09:00","end_time":"18:00"}],"timezone":"Asia/Shanghai"}',
                 'traffic_control.warning_title': 'WEB ACCESS UNAVAILABLE',
                 'traffic_control.warning_content':
                   'Mainland China IP addresses are not permitted to access web content.',
@@ -181,6 +192,22 @@ describe('traffic control settings', () => {
     assert.equal(titleInput.value, 'CUSTOM TITLE')
     assert.equal(contentInput.value, 'Custom content')
     assert.equal(annotationInput.value, 'Custom note')
+
+    const scheduleSwitches =
+      container.querySelectorAll<HTMLElement>('[role="switch"]')
+    assert.equal(scheduleSwitches.length, 3)
+    assert.equal(scheduleSwitches[1].getAttribute('aria-checked'), 'false')
+    assert.equal(scheduleSwitches[2].getAttribute('aria-checked'), 'true')
+
+    const addTimePeriod = [
+      ...container.querySelectorAll<HTMLButtonElement>('button'),
+    ].find((button) => button.textContent?.includes('Add time period'))
+    assert.ok(addTimePeriod)
+    await act(async () => addTimePeriod.click())
+    assert.equal(container.querySelectorAll('input[type="time"]').length, 4)
+
+    await act(async () => scheduleSwitches[2].click())
+    assert.ok(container.querySelector('input[type="date"]'))
 
     await act(async () => root.unmount())
     container.remove()

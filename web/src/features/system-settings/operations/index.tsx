@@ -20,6 +20,7 @@ import { useStatus } from '@/hooks/use-status'
 
 import { SettingsPage } from '../components/settings-page'
 import { trafficControlWarningDefaults } from '../maintenance/traffic-control-defaults'
+import { DEFAULT_TRAFFIC_CONTROL_SCHEDULE_JSON } from '../maintenance/traffic-control-schedule'
 import type { OperationsSettings } from '../types'
 import {
   OPERATIONS_DEFAULT_SECTION,
@@ -60,6 +61,7 @@ const defaultOperationsSettings: OperationsSettings = {
   'traffic_control.mainland_web_block_enabled': false,
   'traffic_control.include_hong_kong_taiwan': false,
   'traffic_control.country_header': 'CF-IPCountry',
+  'traffic_control.schedule': DEFAULT_TRAFFIC_CONTROL_SCHEDULE_JSON,
   ...trafficControlWarningDefaults,
 }
 
