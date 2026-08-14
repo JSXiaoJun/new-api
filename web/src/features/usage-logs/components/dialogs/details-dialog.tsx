@@ -225,6 +225,7 @@ function BillingBreakdown(props: {
   const { t } = useTranslation()
   const { log, other, isAdmin } = props
   const isPerCall = isPerCallBilling(other.model_price)
+  const isPerSecond = other.billing_mode === 'per_second'
   const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const tieredSummary = getTieredBillingSummary(other)
@@ -257,6 +258,20 @@ function BillingBreakdown(props: {
       rows.push({
         label: t('Matched Tier'),
         value: t('No matching results'),
+      })
+    }
+  } else if (isPerSecond) {
+    rows.push({ label: t('Billing Mode'), value: t('Per-second') })
+    if (other.model_price != null) {
+      rows.push({
+        label: t('Model Price'),
+        value: `${fmtPrice(other.model_price)} / ${t('second')}`,
+      })
+    }
+    if (other.seconds != null) {
+      rows.push({
+        label: t('Duration'),
+        value: `${other.seconds} ${t('seconds')}`,
       })
     }
   } else if (isPerCall) {

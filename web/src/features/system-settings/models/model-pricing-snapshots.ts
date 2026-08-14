@@ -82,6 +82,7 @@ const ratioToPrice = (ratio?: string, denominator?: string) => {
 
 export const getModeLabel = (mode?: string) => {
   if (mode === 'per-request') return 'Per-request'
+  if (mode === 'per-second') return 'Per-second'
   if (mode === 'tiered_expr') return 'Expression'
   return 'Per-token'
 }
@@ -90,6 +91,7 @@ export const getModeVariant = (
   mode?: string
 ): 'warning' | 'info' | 'success' => {
   if (mode === 'per-request') return 'warning'
+  if (mode === 'per-second') return 'warning'
   if (mode === 'tiered_expr') return 'info'
   return 'success'
 }
@@ -114,6 +116,9 @@ export const getPriceSummary = (
   }
   if (row.billingMode === 'per-request') {
     return row.price ? `$${row.price} / ${t('request')}` : t('Unset price')
+  }
+  if (row.billingMode === 'per-second') {
+    return row.price ? `$${row.price} / ${t('second')}` : t('Unset price')
   }
 
   const inputPrice = ratioToPrice(row.ratio)
@@ -144,6 +149,9 @@ export const getPriceDetail = (
   }
   if (row.billingMode === 'per-request') {
     return t('Fixed request price')
+  }
+  if (row.billingMode === 'per-second') {
+    return t('Price per second')
   }
 
   const inputPrice = ratioToPrice(row.ratio)
@@ -229,7 +237,7 @@ export const buildModelSnapshots = ({
     ...Object.keys(billingExprMap),
   ])
 
-  return Array.from(modelNames).map((name) => {
+  return [...modelNames].map((name) => {
     const price = priceMap[name]?.toString() || ''
     const ratio = ratioMap[name]?.toString() || ''
     const cache = cacheMap[name]?.toString() || ''
@@ -240,6 +248,29 @@ export const buildModelSnapshots = ({
     const audioCompletion = audioCompletionMap[name]?.toString() || ''
 
     const modeForModel = billingModeMap[name]
+    if (modeForModel === 'per_second') {
+      return {
+        name,
+        price,
+        ratio,
+        cacheRatio: cache,
+        createCacheRatio: createCache,
+        completionRatio: completion,
+        imageRatio: image,
+        audioRatio: audio,
+        audioCompletionRatio: audioCompletion,
+        billingMode: 'per-second',
+        hasConflict:
+          price !== '' &&
+          (ratio !== '' ||
+            completion !== '' ||
+            cache !== '' ||
+            createCache !== '' ||
+            image !== '' ||
+            audio !== '' ||
+            audioCompletion !== ''),
+      }
+    }
     if (modeForModel === 'tiered_expr') {
       const fullExpr = billingExprMap[name] || ''
       const { billingExpr: pureExpr, requestRuleExpr } =

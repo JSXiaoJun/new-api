@@ -216,7 +216,11 @@ function buildTypeDetailSegments(
   } else {
     const modelPrice = other.model_price
     const isPerCall = isPerCallBilling(modelPrice)
-    if (isPerCall && modelPrice != null) {
+    if (other.billing_mode === 'per_second' && modelPrice != null) {
+      segments.push({
+        text: `${t('Per-second')} · ${formatBillingCurrencyFromUSD(modelPrice, priceOpts)}`,
+      })
+    } else if (isPerCall && modelPrice != null) {
       segments.push({
         text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(modelPrice, priceOpts)}`,
       })

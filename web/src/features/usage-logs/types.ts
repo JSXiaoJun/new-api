@@ -176,6 +176,7 @@ export interface LogOtherData {
   model_ratio?: number
   completion_ratio?: number
   model_price?: number
+  seconds?: number
   group_ratio?: number
   user_group_ratio?: number
   cache_ratio?: number
@@ -187,9 +188,8 @@ export interface LogOtherData {
   audio_ratio?: number
   audio_completion_ratio?: number
   frt?: number
-  // Tiered (expression-based) billing fields, set by backend when
-  // billing_mode === 'tiered_expr'. expr_b64 is the base64-encoded billing
-  // expression and matched_tier is the label of the tier that fired.
+  // Billing mode metadata. Expression-specific fields are populated when
+  // billing_mode === 'tiered_expr'.
   billing_mode?: string
   expr_b64?: string
   matched_tier?: string

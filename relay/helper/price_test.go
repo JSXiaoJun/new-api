@@ -272,3 +272,40 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 	require.Equal(t, common.QuotaClampOverflow, clamp.Kind)
 	require.Nil(t, info.Billing)
 }
+
+func TestPerSecondBillingRequiresTaskAPIAndExplicitPrice(t *testing.T) {
+	savedConfig := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		savedConfig[key] = value
+		return nil
+	}))
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(savedConfig))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+	})
+
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"per-second-priced":"per_second","per-second-unpriced":"per_second"}`,
+	}))
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"per-second-priced":0.3}`))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	pricedInfo := &relaycommon.RelayInfo{
+		OriginModelName: "per-second-priced",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	_, err := ModelPriceHelper(ctx, pricedInfo, 1000, &types.TokenCountMeta{})
+	require.ErrorContains(t, err, "must be called through a task API")
+
+	unpricedInfo := &relaycommon.RelayInfo{
+		OriginModelName: "per-second-unpriced",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+	_, err = ModelPriceHelperPerCall(ctx, unpricedInfo)
+	require.ErrorContains(t, err, "has no per-second model price")
+}

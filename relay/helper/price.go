@@ -81,9 +81,12 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
-	// Check if this model uses tiered_expr billing
-	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
+	billingMode := billing_setting.GetBillingMode(info.OriginModelName)
+	if billingMode == billing_setting.BillingModeTieredExpr {
 		return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo)
+	}
+	if billingMode == billing_setting.BillingModePerSecond {
+		return hosttypes.PriceData{}, fmt.Errorf("model %s uses per-second billing and must be called through a task API", info.OriginModelName)
 	}
 
 	var preConsumedQuota int
@@ -199,6 +202,9 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	var modelRatio float64
 
 	if !success {
+		if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModePerSecond {
+			return hosttypes.PriceData{}, fmt.Errorf("model %s uses per-second billing but has no per-second model price", info.OriginModelName)
+		}
 		defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[info.OriginModelName]
 		if ok {
 			modelPrice = defaultPrice

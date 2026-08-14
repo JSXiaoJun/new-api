@@ -24,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -602,6 +603,7 @@ func RelayTask(c *gin.Context) {
 			QuotaBeforeGroup:  relayInfo.PriceData.QuotaBeforeGroup,
 			OtherRatios:       relayInfo.PriceData.OtherRatios(),
 			OriginModelName:   relayInfo.OriginModelName,
+			BillingMode:       billing_setting.GetBillingMode(relayInfo.OriginModelName),
 			PerCallBilling:    service.IsTaskPerCallBilling(relayInfo) || relayInfo.PriceData.UsePrice,
 			IgnoreOtherRatios: service.IsTaskPerCallBilling(relayInfo),
 		}

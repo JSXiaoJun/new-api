@@ -194,6 +194,13 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			info.PriceData.AddOtherRatio(k, v)
 		}
 	}
+	if service.IsTaskPerSecondBilling(info) && !info.PriceData.HasOtherRatio("seconds") {
+		return nil, service.TaskErrorWrapperLocal(
+			errors.New("per-second billing requires a positive duration from the task adaptor"),
+			"billing_seconds_unavailable",
+			http.StatusBadRequest,
+		)
+	}
 
 	// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）
 	if !service.IsTaskPerCallBilling(info) {

@@ -107,3 +107,7 @@ export function replaceModelInPath(path: string, modelName: string): string {
 export function isTokenBasedModel(model: PricingModel): boolean {
   return model.quota_type === QUOTA_TYPE_VALUES.TOKEN
 }
+
+export function isPerSecondPricingModel(model: PricingModel): boolean {
+  return model.billing_mode === 'per_second'
+}

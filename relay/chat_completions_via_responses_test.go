@@ -95,3 +95,17 @@ func TestCalculateTaskQuotaRoundsOnlyAfterAllRatios(t *testing.T) {
 		})
 	}
 }
+
+func TestCalculateTaskQuotaAppliesPerSecondAndAdditionalRatios(t *testing.T) {
+	priceData := types.PriceData{
+		QuotaBeforeGroup: 0.3 * 500_000,
+		GroupRatioInfo:   types.GroupRatioInfo{GroupRatio: 0.5},
+	}
+	priceData.AddOtherRatio("seconds", 8)
+	priceData.AddOtherRatio("size", 2)
+
+	quota, clamp := calculateTaskQuota(priceData)
+
+	assert.Nil(t, clamp)
+	assert.Equal(t, 1_200_000, quota)
+}

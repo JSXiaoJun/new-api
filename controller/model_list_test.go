@@ -321,6 +321,30 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	require.Empty(t, missingExprPricing.BillingExpr)
 }
 
+func TestPricingIncludesPerSecondBillingMode(t *testing.T) {
+	withTieredBillingConfig(t, map[string]string{
+		"zz-per-second-model": "per_second",
+	}, nil)
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+		model.InvalidatePricingCache()
+	})
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"zz-per-second-model":0.3}`))
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.Ability{
+		Group: "default", Model: "zz-per-second-model", ChannelId: 1, Enabled: true,
+	}).Error)
+	model.InvalidatePricingCache()
+
+	pricing, ok := pricingByModelName(model.GetPricing())["zz-per-second-model"]
+	require.True(t, ok)
+	assert.Equal(t, 1, pricing.QuotaType)
+	assert.Equal(t, 0.3, pricing.ModelPrice)
+	assert.Equal(t, "per_second", pricing.BillingMode)
+}
+
 func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T) {
 	withSelfUseModeEnabled(t)
 	db := setupModelListControllerTestDB(t)

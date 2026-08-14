@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -23,6 +24,9 @@ func IsTaskPerCallBilling(info *relaycommon.RelayInfo) bool {
 	if info == nil {
 		return false
 	}
+	if IsTaskPerSecondBilling(info) {
+		return false
+	}
 	channelType := 0
 	if info.ChannelMeta != nil {
 		channelType = info.ChannelMeta.ChannelType
@@ -31,6 +35,14 @@ func IsTaskPerCallBilling(info *relaycommon.RelayInfo) bool {
 	return channelType == constant.ChannelTypeSora ||
 		strings.HasPrefix(modelName, "sora-") ||
 		common.StringsContains(constant.TaskPricePatches, info.OriginModelName)
+}
+
+// IsTaskPerSecondBilling identifies task models whose fixed model price is the
+// price of one generated second. The task adaptor supplies the duration as the
+// "seconds" billing multiplier.
+func IsTaskPerSecondBilling(info *relaycommon.RelayInfo) bool {
+	return info != nil &&
+		billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModePerSecond
 }
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
@@ -58,6 +70,12 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	other["is_task"] = true
 	other["request_path"] = c.Request.URL.Path
 	other["model_price"] = info.PriceData.ModelPrice
+	if IsTaskPerSecondBilling(info) {
+		other["billing_mode"] = billing_setting.BillingModePerSecond
+	}
+	for key, ratio := range info.PriceData.OtherRatios() {
+		other[key] = ratio
+	}
 	if info.PriceData.ModelRatio > 0 {
 		other["model_ratio"] = info.PriceData.ModelRatio
 	}
@@ -144,6 +162,9 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
 	if bc := task.PrivateData.BillingContext; bc != nil {
 		other["model_price"] = bc.ModelPrice
+		if bc.BillingMode != "" && bc.BillingMode != billing_setting.BillingModeRatio {
+			other["billing_mode"] = bc.BillingMode
+		}
 		if bc.ModelRatio > 0 {
 			other["model_ratio"] = bc.ModelRatio
 		}
