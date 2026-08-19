@@ -32,6 +32,7 @@ const defaultBillingSettings: BillingSettings = {
   TopUpLink: '',
   'general_setting.docs_link': '',
   'general_setting.gallery_link': '',
+  'general_setting.infinite_canvas_link': '',
   'quota_setting.enable_free_model_pre_consume': true,
   QuotaPerUnit: 500000,
   USDExchangeRate: 7,

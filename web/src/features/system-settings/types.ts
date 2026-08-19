@@ -254,6 +254,7 @@ export type BillingSettings = {
   TopUpLink: string
   'general_setting.docs_link': string
   'general_setting.gallery_link': string
+  'general_setting.infinite_canvas_link': string
   'quota_setting.enable_free_model_pre_consume': boolean
   QuotaPerUnit: number
   USDExchangeRate: number

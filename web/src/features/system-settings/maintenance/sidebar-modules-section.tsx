@@ -154,6 +154,10 @@ export function SidebarModulesSection({
         title: t('Subscription Management'),
         description: t('Manage subscription plans and pricing.'),
       },
+      topup_order: {
+        title: t('Recharge Orders'),
+        description: t('Search recharge orders and identify users.'),
+      },
     },
   }
   const formDefaults = useMemo(() => config, [config])

@@ -59,6 +59,7 @@ const quotaSchema = z.object({
   general_setting: z.object({
     docs_link: z.string(),
     gallery_link: z.string(),
+    infinite_canvas_link: z.string(),
   }),
   quota_setting: z.object({
     enable_free_model_pre_consume: z.boolean(),
@@ -318,6 +319,26 @@ export function QuotaSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t('Link to your gallery site')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='general_setting.infinite_canvas_link'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Infinite Canvas Link')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder={t('https://canvas.example.com')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Link to your infinite canvas site')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

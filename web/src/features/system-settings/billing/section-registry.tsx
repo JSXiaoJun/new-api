@@ -68,6 +68,8 @@ const BILLING_SECTIONS = [
           general_setting: {
             docs_link: settings['general_setting.docs_link'],
             gallery_link: settings['general_setting.gallery_link'],
+            infinite_canvas_link:
+              settings['general_setting.infinite_canvas_link'],
           },
           quota_setting: {
             enable_free_model_pre_consume:

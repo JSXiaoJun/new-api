@@ -24,6 +24,13 @@ type TopUp struct {
 	Status          string  `json:"status"`
 }
 
+type AdminTopUp struct {
+	TopUp
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
+}
+
 const (
 	PaymentMethodStripe       = "stripe"
 	PaymentMethodCreem        = "creem"
@@ -204,7 +211,7 @@ func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, tota
 }
 
 // GetAllTopUps 获取全平台的充值记录（管理员使用，不限制时间窗口）
-func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+func GetAllTopUps(pageInfo *common.PageInfo) (topups []*AdminTopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -220,7 +227,13 @@ func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err 
 		return nil, 0, err
 	}
 
-	if err = tx.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
+	var records []*TopUp
+	if err = tx.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&records).Error; err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+	topups, err = attachAdminTopUpUsers(tx, records)
+	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
@@ -277,7 +290,7 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 }
 
 // SearchAllTopUps 按订单号搜索全平台充值记录（管理员使用，不限制时间窗口）
-func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*AdminTopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -304,9 +317,16 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 		return nil, 0, errors.New("搜索充值记录失败")
 	}
 
-	if err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
+	var records []*TopUp
+	if err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&records).Error; err != nil {
 		tx.Rollback()
 		common.SysError("failed to search topups: " + err.Error())
+		return nil, 0, errors.New("搜索充值记录失败")
+	}
+	topups, err = attachAdminTopUpUsers(tx, records)
+	if err != nil {
+		tx.Rollback()
+		common.SysError("failed to load topup users: " + err.Error())
 		return nil, 0, errors.New("搜索充值记录失败")
 	}
 
@@ -314,6 +334,36 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 		return nil, 0, err
 	}
 	return topups, total, nil
+}
+
+func attachAdminTopUpUsers(tx *gorm.DB, topups []*TopUp) ([]*AdminTopUp, error) {
+	userIds := make([]int, 0, len(topups))
+	for _, topUp := range topups {
+		userIds = append(userIds, topUp.UserId)
+	}
+
+	usersById := make(map[int]User, len(userIds))
+	if len(userIds) > 0 {
+		var users []User
+		if err := tx.Unscoped().Select("id", "username", "display_name", "email").Where("id IN ?", userIds).Find(&users).Error; err != nil {
+			return nil, err
+		}
+		for _, user := range users {
+			usersById[user.Id] = user
+		}
+	}
+
+	result := make([]*AdminTopUp, 0, len(topups))
+	for _, topUp := range topups {
+		user := usersById[topUp.UserId]
+		result = append(result, &AdminTopUp{
+			TopUp:       *topUp,
+			Username:    user.Username,
+			DisplayName: user.DisplayName,
+			Email:       user.Email,
+		})
+	}
+	return result, nil
 }
 
 // ManualCompleteTopUp 管理员手动完成订单并给用户充值

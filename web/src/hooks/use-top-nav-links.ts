@@ -20,7 +20,10 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
-import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
+import {
+  parseHeaderNavModulesFromStatus,
+  type HeaderNavModules,
+} from '@/lib/nav-modules'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -30,6 +33,89 @@ export type TopNavLink = {
   disabled?: boolean
   requiresAuth?: boolean
   external?: boolean
+}
+
+type BuildTopNavLinksOptions = {
+  t: (key: string) => string
+  modules: HeaderNavModules
+  docsLink?: string
+  galleryLink: string
+  infiniteCanvasLink: string
+  isAuthed: boolean
+  isAdmin: boolean
+}
+
+export function buildTopNavLinks(
+  options: BuildTopNavLinksOptions
+): TopNavLink[] {
+  const links: TopNavLink[] = []
+
+  if (options.modules.home !== false) {
+    links.push({ title: options.t('Home'), href: '/' })
+  }
+
+  if (options.modules.console !== false) {
+    links.push({ title: options.t('Console'), href: '/dashboard' })
+  }
+
+  const pricing = options.modules.pricing
+  if (pricing && typeof pricing === 'object' && pricing.enabled) {
+    const requiresAuth = pricing.requireAuth && !options.isAuthed
+    links.push({
+      title: options.t('Model Square'),
+      href: '/pricing',
+      requiresAuth,
+    })
+  }
+
+  const rankings = options.modules.rankings
+  if (
+    rankings &&
+    typeof rankings === 'object' &&
+    rankings.enabled &&
+    (!rankings.adminOnly || options.isAdmin)
+  ) {
+    const requiresAuth = rankings.requireAuth && !options.isAuthed
+    links.push({
+      title: options.t('Rankings'),
+      href: '/rankings',
+      requiresAuth,
+    })
+  }
+
+  if (options.modules.docs !== false) {
+    if (options.docsLink) {
+      links.push({
+        title: options.t('Docs'),
+        href: options.docsLink,
+        external: true,
+      })
+    } else {
+      links.push({ title: options.t('Docs'), href: '/docs' })
+    }
+  }
+
+  if (options.galleryLink) {
+    links.push({
+      title: options.t('Gallery'),
+      href: options.galleryLink,
+      external: true,
+    })
+  }
+
+  if (options.infiniteCanvasLink) {
+    links.push({
+      title: options.t('Infinite Canvas'),
+      href: options.infiniteCanvasLink,
+      external: true,
+    })
+  }
+
+  if (options.modules.about !== false) {
+    links.push({ title: options.t('About'), href: '/about' })
+  }
+
+  return links
 }
 
 /**
@@ -59,58 +145,18 @@ export function useTopNavLinks(): TopNavLink[] {
   // Documentation link (may be external)
   const docsLink: string | undefined = status?.docs_link as string | undefined
   const galleryLink = String(status?.gallery_link ?? '').trim()
+  const infiniteCanvasLink = String(status?.infinite_canvas_link ?? '').trim()
 
   const isAuthed = !!auth?.user
   const isAdmin = (auth?.user?.role ?? 0) >= ROLE.ADMIN
 
-  const links: TopNavLink[] = []
-
-  // Home
-  if (modules?.home !== false) {
-    links.push({ title: t('Home'), href: '/' })
-  }
-
-  // Console -> /dashboard (new console path)
-  if (modules?.console !== false) {
-    links.push({ title: t('Console'), href: '/dashboard' })
-  }
-
-  // Pricing
-  const pricing = modules?.pricing
-  if (pricing && typeof pricing === 'object' && pricing.enabled) {
-    const requiresAuth = pricing.requireAuth && !isAuthed
-    links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
-  }
-
-  // Rankings
-  const rankings = modules?.rankings
-  if (
-    rankings &&
-    typeof rankings === 'object' &&
-    rankings.enabled &&
-    (!rankings.adminOnly || isAdmin)
-  ) {
-    const requiresAuth = rankings.requireAuth && !isAuthed
-    links.push({ title: t('Rankings'), href: '/rankings', requiresAuth })
-  }
-
-  // Docs (supports external links)
-  if (modules?.docs !== false) {
-    if (docsLink) {
-      links.push({ title: t('Docs'), href: docsLink, external: true })
-    } else {
-      links.push({ title: t('Docs'), href: '/docs' })
-    }
-  }
-
-  if (galleryLink) {
-    links.push({ title: t('Gallery'), href: galleryLink, external: true })
-  }
-
-  // About
-  if (modules?.about !== false) {
-    links.push({ title: t('About'), href: '/about' })
-  }
-
-  return links
+  return buildTopNavLinks({
+    t,
+    modules,
+    docsLink,
+    galleryLink,
+    infiniteCanvasLink,
+    isAuthed,
+    isAdmin,
+  })
 }
