@@ -388,7 +388,9 @@ export function useDataTable<TData>(options: UseDataTableOptions<TData>) {
       columnSizing,
       rowSelection,
       expanded,
-      columnFilters: options.columnFilters,
+      // TanStack Table does not provide a fallback once a controlled state
+      // field is explicitly present. Toolbars always expect an array here.
+      columnFilters: options.columnFilters ?? [],
       globalFilter: options.globalFilter,
       pagination,
     },
