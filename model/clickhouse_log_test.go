@@ -152,3 +152,20 @@ func TestAssignDisplayLogIds(t *testing.T) {
 
 	assert.NotPanics(t, func() { assignDisplayLogIds(nil, 0) })
 }
+
+func TestStripResponseBodyFromLogsKeepsOtherAdminInfo(t *testing.T) {
+	logs := []*Log{{
+		Other: `{"admin_info":{"response_body":"secret","response_status":200,"use_channel":[3]},"model_ratio":2}`,
+	}}
+
+	stripResponseBodyFromLogs(logs)
+
+	other, err := common.StrToMap(logs[0].Other)
+	require.NoError(t, err)
+	adminInfo, ok := other["admin_info"].(map[string]interface{})
+	require.True(t, ok)
+	assert.NotContains(t, adminInfo, "response_body")
+	assert.NotContains(t, adminInfo, "response_status")
+	assert.Contains(t, adminInfo, "use_channel")
+	assert.Equal(t, float64(2), other["model_ratio"])
+}

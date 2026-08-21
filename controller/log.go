@@ -3,12 +3,31 @@ package controller
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
 )
+
+func GetLogResponseBody(c *gin.Context) {
+	requestId := strings.TrimSpace(c.Query("request_id"))
+	if requestId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "request_id is required"})
+		return
+	}
+	response, found, err := model.GetLogResponseBody(requestId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !found {
+		common.ApiSuccess(c, nil)
+		return
+	}
+	common.ApiSuccess(c, response)
+}
 
 func GetAllLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)

@@ -89,6 +89,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		defer ws.Close()
 	}
+	if common.LogConsumeEnabled && relayFormat != types.RelayFormatOpenAIRealtime {
+		common.CaptureResponseBody(c)
+	}
 
 	defer func() {
 		if newAPIError != nil {
@@ -491,6 +494,9 @@ func RelayTaskFetch(c *gin.Context) {
 }
 
 func RelayTask(c *gin.Context) {
+	if common.LogConsumeEnabled {
+		common.CaptureResponseBody(c)
+	}
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &taskdto.TaskError{

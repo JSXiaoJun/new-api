@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 /*
 Copyright (C) 2023-2026 QuantumNous
@@ -49,6 +50,7 @@ import {
   UserCog,
   Info,
   LogIn,
+  FileJson2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -61,7 +63,10 @@ import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-p
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
+import { api } from '@/lib/http-client'
+import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 
 import type { UsageLog } from '../../data/schema'
 import {
@@ -508,9 +513,31 @@ interface DetailsDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+interface LogResponseBody {
+  body: string
+  encoding: 'utf-8' | 'base64' | string
+  content_type: string
+  status: number
+}
+
 export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
+  const isSuperAdmin = useAuthStore(
+    (state) => state.auth.user?.role === ROLE.SUPER_ADMIN
+  )
+  const responseBodyQuery = useQuery({
+    queryKey: ['usage-log-response-body', props.log.request_id],
+    queryFn: async () => {
+      const res = await api.get('/api/log/response_body', {
+        params: { request_id: props.log.request_id },
+        disableDuplicate: true,
+      })
+      return (res.data?.data ?? null) as LogResponseBody | null
+    },
+    enabled: props.open && isSuperAdmin && !!props.log.request_id,
+    staleTime: Infinity,
+  })
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
   const typeConfig = getLogTypeConfig(props.log.type)
@@ -1282,6 +1309,67 @@ export function DetailsDialog(props: DetailsDialogProps) {
               </p>
             </div>
           </div>
+        )}
+
+        {isSuperAdmin && props.log.request_id && (
+          <DetailSection
+            icon={<FileJson2 className='size-3.5' aria-hidden='true' />}
+            iconTone='info'
+            label={t('Full Response Body')}
+          >
+            {responseBodyQuery.isLoading && (
+              <p className='text-muted-foreground text-xs'>{t('Loading...')}</p>
+            )}
+            {responseBodyQuery.isError && (
+              <p className='text-destructive text-xs'>{t('Failed to load')}</p>
+            )}
+            {!responseBodyQuery.isLoading &&
+              !responseBodyQuery.isError &&
+              !responseBodyQuery.data && (
+                <p className='text-muted-foreground text-xs'>
+                  {t('No response body recorded')}
+                </p>
+              )}
+            {responseBodyQuery.data && (
+              <div className='min-w-0'>
+                <div className='mb-2 flex min-w-0 items-start justify-between gap-2'>
+                  <div className='text-muted-foreground flex min-w-0 flex-wrap gap-x-3 gap-y-1 font-mono text-[10px]'>
+                    {responseBodyQuery.data.status > 0 && (
+                      <span>HTTP {responseBodyQuery.data.status}</span>
+                    )}
+                    {responseBodyQuery.data.content_type && (
+                      <span className='break-all'>
+                        {responseBodyQuery.data.content_type}
+                      </span>
+                    )}
+                    {responseBodyQuery.data.encoding === 'base64' && (
+                      <span>base64</span>
+                    )}
+                  </div>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    className='h-7 shrink-0 gap-1.5 px-2 text-xs'
+                    onClick={() =>
+                      copyToClipboard(responseBodyQuery.data?.body ?? '')
+                    }
+                  >
+                    {copiedText === responseBodyQuery.data.body ? (
+                      <Check className='size-3 text-green-600' />
+                    ) : (
+                      <Copy className='size-3' />
+                    )}
+                    {copiedText === responseBodyQuery.data.body
+                      ? t('Copied')
+                      : t('Copy to clipboard')}
+                  </Button>
+                </div>
+                <pre className='bg-background/60 max-h-80 min-w-0 overflow-auto rounded border p-2.5 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap'>
+                  {responseBodyQuery.data.body}
+                </pre>
+              </div>
+            )}
+          </DetailSection>
         )}
       </div>
     </Dialog>

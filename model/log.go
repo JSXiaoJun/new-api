@@ -131,6 +131,46 @@ func formatUserLogs(logs []*Log, startIdx int) {
 	assignDisplayLogIds(logs, startIdx)
 }
 
+func stripResponseBodyFromLogs(logs []*Log) {
+	for _, log := range logs {
+		otherMap, _ := common.StrToMap(log.Other)
+		if otherMap == nil {
+			continue
+		}
+		adminInfo, ok := otherMap["admin_info"].(map[string]interface{})
+		if !ok || adminInfo == nil {
+			continue
+		}
+		delete(adminInfo, "response_body")
+		delete(adminInfo, "response_body_encoding")
+		delete(adminInfo, "response_content_type")
+		delete(adminInfo, "response_status")
+		log.Other = common.MapToJsonStr(otherMap)
+	}
+}
+
+func addCapturedResponseToOther(c *gin.Context, other map[string]interface{}) map[string]interface{} {
+	body, encoding, contentType, status, ok := common.GetCapturedResponseBody(c)
+	if !ok {
+		return other
+	}
+	if other == nil {
+		other = make(map[string]interface{})
+	}
+	adminInfo, valid := other["admin_info"].(map[string]interface{})
+	if !valid || adminInfo == nil {
+		adminInfo = make(map[string]interface{})
+		other["admin_info"] = adminInfo
+	}
+	adminInfo["response_body"] = body
+	adminInfo["response_body_encoding"] = encoding
+	adminInfo["response_status"] = status
+	if contentType != "" {
+		adminInfo["response_content_type"] = contentType
+	}
+	return other
+}
+
 func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	order := "id desc"
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
@@ -345,6 +385,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		return
 	}
 	logger.LogInfo(c, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
+	params.Other = addCapturedResponseToOther(c, params.Other)
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
@@ -555,8 +596,52 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 			logs[i].ChannelName = channelMap[logs[i].ChannelId]
 		}
 	}
+	stripResponseBodyFromLogs(logs)
 
 	return logs, total, err
+}
+
+type LogResponseBody struct {
+	Body        string `json:"body"`
+	Encoding    string `json:"encoding"`
+	ContentType string `json:"content_type"`
+	Status      int    `json:"status"`
+}
+
+func GetLogResponseBody(requestId string) (*LogResponseBody, bool, error) {
+	if requestId == "" {
+		return nil, false, nil
+	}
+	order := "id desc"
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		order = clickHouseLogOrder("")
+	}
+	var logs []*Log
+	if err := LOG_DB.Select("other").Where("request_id = ?", requestId).Order(order).Find(&logs).Error; err != nil {
+		return nil, false, err
+	}
+	for _, log := range logs {
+		otherMap, _ := common.StrToMap(log.Other)
+		adminInfo, ok := otherMap["admin_info"].(map[string]interface{})
+		if !ok || adminInfo == nil {
+			continue
+		}
+		body, ok := adminInfo["response_body"].(string)
+		if !ok {
+			continue
+		}
+		response := &LogResponseBody{Body: body}
+		response.Encoding, _ = adminInfo["response_body_encoding"].(string)
+		response.ContentType, _ = adminInfo["response_content_type"].(string)
+		switch status := adminInfo["response_status"].(type) {
+		case int:
+			response.Status = status
+		case float64:
+			response.Status = int(status)
+		}
+		return response, true, nil
+	}
+	return nil, false, nil
 }
 
 const logSearchCountLimit = 10000
