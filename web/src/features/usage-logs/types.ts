@@ -19,8 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 /**
  * Type definitions for usage logs
  */
-import type { UsageLog } from './data/schema'
+import type { RequestRuleTrace } from '@/features/pricing/lib/billing-expr'
 
+import type { UsageLog } from './data/schema'
 // ============================================================================
 // Log Category Types
 // ============================================================================
@@ -188,11 +189,11 @@ export interface LogOtherData {
   audio_ratio?: number
   audio_completion_ratio?: number
   frt?: number
-  // Billing mode metadata. Expression-specific fields are populated when
-  // billing_mode === 'tiered_expr'.
+  // Tiered (expression-based) billing metadata populated from settlement.
   billing_mode?: string
   expr_b64?: string
   matched_tier?: string
+  request_rules?: RequestRuleTrace[]
   billing_formula?: {
     mode: string
     base_quota: number

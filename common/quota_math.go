@@ -185,3 +185,9 @@ func QuotaFromPositiveDecimalChecked(d decimal.Decimal) (int, *QuotaClamp) {
 	}
 	return quota, clamp
 }
+
+// QuotaFromDecimalStrict converts an in-range decimal quota and rejects a
+// value that would otherwise be saturated at the database's int32 boundary.
+func QuotaFromDecimalStrict(d decimal.Decimal) (int, error) {
+	return strictQuota(QuotaFromDecimalChecked(d))
+}

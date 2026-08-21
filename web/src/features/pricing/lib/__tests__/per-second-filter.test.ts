@@ -16,8 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { assert, describe, it } from 'vitest'
 
 import { QUOTA_TYPES } from '../../constants'
 import type { PricingModel } from '../../types'
