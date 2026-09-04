@@ -28,3 +28,24 @@ func TestCaptureResponseBodyPreservesResponseAndMetadata(t *testing.T) {
 	assert.Equal(t, 201, status)
 	assert.Equal(t, `{"ok":true}`, recorder.Body.String())
 }
+
+func TestCaptureResponseBodyLimitsCapturedBytes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+
+	CaptureResponseBody(c)
+	payload := make([]byte, responseBodyCaptureLimit+128)
+	for i := range payload {
+		payload[i] = byte('a' + i%26)
+	}
+	_, err := c.Writer.Write(payload)
+	require.NoError(t, err)
+
+	body, encoding, _, _, ok := GetCapturedResponseBody(c)
+	require.True(t, ok)
+	assert.Equal(t, "utf-8", encoding)
+	assert.Equal(t, string(payload[:responseBodyCaptureLimit]), body)
+	assert.Len(t, body, responseBodyCaptureLimit)
+	assert.Equal(t, string(payload), recorder.Body.String())
+}

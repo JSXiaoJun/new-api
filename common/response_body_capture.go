@@ -9,6 +9,7 @@ import (
 )
 
 const responseBodyCaptureKey = "response_body_capture"
+const responseBodyCaptureLimit = 1024
 
 type responseBodyCaptureWriter struct {
 	gin.ResponseWriter
@@ -19,9 +20,14 @@ func (w *responseBodyCaptureWriter) record(data []byte, n int) {
 	if n > len(data) {
 		n = len(data)
 	}
-	if n > 0 {
-		_, _ = w.body.Write(data[:n])
+	if n <= 0 || w.body.Len() >= responseBodyCaptureLimit {
+		return
 	}
+	remaining := responseBodyCaptureLimit - w.body.Len()
+	if n > remaining {
+		n = remaining
+	}
+	_, _ = w.body.Write(data[:n])
 }
 
 func (w *responseBodyCaptureWriter) Write(data []byte) (int, error) {
