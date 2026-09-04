@@ -487,6 +487,25 @@ func keepUpstreamRedirectResponse(_ *http.Request, _ []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
+type upstreamTimingBody struct {
+	io.ReadCloser
+	info *common.RelayInfo
+}
+
+func (body *upstreamTimingBody) Read(p []byte) (int, error) {
+	n, err := body.ReadCloser.Read(p)
+	if err == io.EOF {
+		body.info.MarkUpstreamEnd()
+	}
+	return n, err
+}
+
+func (body *upstreamTimingBody) Close() error {
+	err := body.ReadCloser.Close()
+	body.info.MarkUpstreamEnd()
+	return err
+}
+
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
@@ -529,6 +548,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
+	info.MarkUpstreamStart()
 	resp, err := relayClient.Do(req)
 	if err != nil {
 		logger.LogError(c, "do request failed: "+err.Error())
@@ -536,6 +556,9 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	}
 	if resp == nil {
 		return nil, errors.New("resp is nil")
+	}
+	if resp.Body != nil {
+		resp.Body = &upstreamTimingBody{ReadCloser: resp.Body, info: info}
 	}
 	if common2.DebugEnabled {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)

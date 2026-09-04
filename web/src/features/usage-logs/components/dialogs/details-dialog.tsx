@@ -83,6 +83,7 @@ import {
   getResponseTimeColor,
   getReasoningEffortVariant,
   renderAuditContent,
+  resolveLogTiming,
 } from '../../lib/format'
 import {
   getLogTypeConfig,
@@ -541,6 +542,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   })
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
+  const timing = resolveLogTiming(props.log.use_time, other)
   const typeConfig = getLogTypeConfig(props.log.type)
 
   const isViolation = isViolationFeeLog(other)
@@ -760,7 +762,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
-          {showTiming && props.log.use_time > 0 && (
+          {showTiming && timing.durationSec > 0 && (
             <DetailRow
               label={t('Response Time')}
               value={
@@ -769,26 +771,26 @@ export function DetailsDialog(props: DetailsDialogProps) {
                     'font-medium',
                     timingTextColorClass(
                       getResponseTimeColor(
-                        props.log.use_time,
+                        timing.durationSec,
                         props.log.completion_tokens
                       )
                     )
                   )}
                 >
-                  {formatUseTime(props.log.use_time)}
+                  {formatUseTime(timing.durationSec)}
                   {props.log.is_stream &&
-                    other?.frt != null &&
-                    other.frt > 0 && (
+                    timing.frtMs != null &&
+                    timing.frtMs > 0 && (
                       <span
                         className={cn(
                           'font-normal',
                           timingTextColorClass(
-                            getFirstResponseTimeColor(other.frt / 1000)
+                            getFirstResponseTimeColor(timing.frtMs / 1000)
                           )
                         )}
                       >
                         {' '}
-                        (FRT: {formatUseTime(other.frt / 1000)})
+                        (FRT: {formatUseTime(timing.frtMs / 1000)})
                       </span>
                     )}
                 </span>

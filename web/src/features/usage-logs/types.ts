@@ -189,6 +189,9 @@ export interface LogOtherData {
   audio_ratio?: number
   audio_completion_ratio?: number
   frt?: number
+  upstream_frt?: number
+  upstream_duration?: number
+  gateway_overhead?: number
   // Tiered (expression-based) billing metadata populated from settlement.
   billing_mode?: string
   expr_b64?: string

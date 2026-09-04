@@ -231,6 +231,31 @@ export function getResponseTimeColor(
 }
 
 /**
+ * Prefer attempt-scoped upstream timing for new logs while preserving the
+ * historical end-to-end fields as a fallback for older records.
+ */
+export function resolveLogTiming(
+  useTimeSec: number,
+  other: LogOtherData | null
+): { durationSec: number; frtMs?: number } {
+  const upstreamDuration = other?.upstream_duration
+  const upstreamFrt = other?.upstream_frt
+  const hasUpstreamTiming =
+    upstreamDuration != null &&
+    Number.isFinite(upstreamDuration) &&
+    upstreamDuration >= 0 &&
+    upstreamFrt != null &&
+    Number.isFinite(upstreamFrt) &&
+    upstreamFrt >= 0
+
+  if (hasUpstreamTiming) {
+    return { durationSec: upstreamDuration, frtMs: upstreamFrt }
+  }
+
+  return { durationSec: useTimeSec, frtMs: other?.frt }
+}
+
+/**
  * Format model name with mapping indicator
  */
 export function formatModelName(log: UsageLog): {

@@ -91,6 +91,11 @@ type RelayInfo struct {
 	StartTime         time.Time
 	FirstResponseTime time.Time
 	isFirstResponse   bool
+	// Upstream timing is tracked separately from the end-to-end request timing.
+	// It excludes local parsing, token estimation, pricing, and billing work.
+	UpstreamStartTime         time.Time
+	UpstreamFirstResponseTime time.Time
+	UpstreamEndTime           time.Time
 	//SendLastReasoningResponse bool
 	IsStream               bool
 	IsGeminiBatchEmbedding bool
@@ -855,10 +860,35 @@ func (info *RelayInfo) ConvOptions() *convmeta.Options {
 }
 
 func (info *RelayInfo) SetFirstResponseTime() {
+	now := time.Now()
 	if info.isFirstResponse {
-		info.FirstResponseTime = time.Now()
+		info.FirstResponseTime = now
 		info.isFirstResponse = false
 	}
+	if !info.UpstreamStartTime.IsZero() && info.UpstreamFirstResponseTime.IsZero() && !now.Before(info.UpstreamStartTime) {
+		info.UpstreamFirstResponseTime = now
+	}
+}
+
+// MarkUpstreamStart starts timing the current upstream attempt. Retries reset
+// these attempt-scoped timestamps without changing the end-to-end start time.
+func (info *RelayInfo) MarkUpstreamStart() {
+	info.UpstreamStartTime = time.Now()
+	info.UpstreamFirstResponseTime = time.Time{}
+	info.UpstreamEndTime = time.Time{}
+}
+
+// MarkUpstreamEnd records when the current upstream stream stops producing
+// data. It is idempotent because stream shutdown can have multiple triggers.
+func (info *RelayInfo) MarkUpstreamEnd() {
+	if info.UpstreamStartTime.IsZero() || !info.UpstreamEndTime.IsZero() {
+		return
+	}
+	now := time.Now()
+	if now.Before(info.UpstreamStartTime) {
+		return
+	}
+	info.UpstreamEndTime = now
 }
 
 func (info *RelayInfo) HasSendResponse() bool {

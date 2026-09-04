@@ -211,6 +211,21 @@ func TestStreamScannerHandler_DataWithExtraSpaces(t *testing.T) {
 	assert.Equal(t, "{\"trimmed\":true}", got)
 }
 
+func TestStreamScannerHandler_RecordsAttemptScopedUpstreamTiming(t *testing.T) {
+	t.Parallel()
+
+	c, resp, info := setupStreamTest(t, strings.NewReader("data: {\"ok\":true}\ndata: [DONE]\n"))
+	info.StartTime = time.Now().Add(-time.Second)
+	info.MarkUpstreamStart()
+
+	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+
+	require.False(t, info.UpstreamFirstResponseTime.IsZero())
+	require.False(t, info.UpstreamEndTime.IsZero())
+	assert.False(t, info.UpstreamFirstResponseTime.Before(info.UpstreamStartTime))
+	assert.False(t, info.UpstreamEndTime.Before(info.UpstreamFirstResponseTime))
+}
+
 // TestStreamScannerHandler_ClientCancelAbortsUpstreamAndReturns pins the
 // disconnect contract: when the client goes away, the handler must return
 // promptly (all goroutines joined, so the gin.Context can never leak into a
