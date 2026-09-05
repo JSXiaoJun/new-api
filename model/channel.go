@@ -375,6 +375,16 @@ func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool, sortOpti
 	return channels, err
 }
 
+// GetSyncableChannels returns only the channel fields needed by upstream
+// price synchronization. In particular, avoid loading API keys and other
+// large configuration fields into the response path.
+func GetSyncableChannels() ([]*Channel, error) {
+	var channels []*Channel
+	query := resolveChannelSortOptions(false, nil).Apply(DB.Model(&Channel{}))
+	err := query.Select("id, type, name, status, base_url").Find(&channels).Error
+	return channels, err
+}
+
 func GetChannelsByTag(tag string, idSort bool, selectAll bool, sortOptions ...ChannelSortOptions) ([]*Channel, error) {
 	var channels []*Channel
 	order := resolveChannelSortOptions(idSort, sortOptions)
