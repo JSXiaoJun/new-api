@@ -112,6 +112,7 @@ type ColumnWithSizing<TData> = ColumnDef<TData, unknown> & {
 }
 
 const COLUMN_SIZING_PERSIST_DELAY_MS = 250
+const EMPTY_COLUMN_FILTERS: ColumnFiltersState = []
 
 function resolveUpdater<TValue>(
   updater: Updater<TValue>,
@@ -390,7 +391,7 @@ export function useDataTable<TData>(options: UseDataTableOptions<TData>) {
       expanded,
       // TanStack Table does not provide a fallback once a controlled state
       // field is explicitly present. Toolbars always expect an array here.
-      columnFilters: options.columnFilters ?? [],
+      columnFilters: options.columnFilters ?? EMPTY_COLUMN_FILTERS,
       globalFilter: options.globalFilter,
       pagination,
     },
