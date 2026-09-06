@@ -38,7 +38,7 @@ export const MAX_FIRST_TOKEN_DISPLAY_RULES = 50
 export const MAX_FIRST_TOKEN_DISPLAY_VALUE = 86400
 
 export const DEFAULT_FIRST_TOKEN_DISPLAY_CONFIG: FirstTokenDisplayConfig = {
-  enabled: true,
+  enabled: false,
   rules: [
     {
       id: 'over-9-half',

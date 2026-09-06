@@ -10,7 +10,7 @@ import (
 
 const (
 	FirstTokenDisplayRulesOptionKey   = "FirstTokenDisplayRules"
-	DefaultFirstTokenDisplayRulesJSON = `{"enabled":true,"rules":[{"id":"over-9-half","comparison":"gt","threshold":9,"operation":"multiply","value":0.5},{"id":"from-5-subtract-4","comparison":"gte","threshold":5,"operation":"subtract","value":4},{"id":"from-3-subtract-2","comparison":"gte","threshold":3,"operation":"subtract","value":2}]}`
+	DefaultFirstTokenDisplayRulesJSON = `{"enabled":false,"rules":[{"id":"over-9-half","comparison":"gt","threshold":9,"operation":"multiply","value":0.5},{"id":"from-5-subtract-4","comparison":"gte","threshold":5,"operation":"subtract","value":4},{"id":"from-3-subtract-2","comparison":"gte","threshold":3,"operation":"subtract","value":2}]}`
 	maxFirstTokenDisplayRules         = 50
 	maxFirstTokenDisplaySeconds       = 86400
 )

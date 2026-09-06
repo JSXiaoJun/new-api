@@ -20,6 +20,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   adjustFirstTokenDisplaySeconds,
+  DEFAULT_FIRST_TOKEN_DISPLAY_CONFIG,
   parseFirstTokenDisplayConfig,
 } from '../first-token-display'
 import { resolveLogTiming } from '../format'
@@ -27,12 +28,12 @@ import { resolveLogTiming } from '../format'
 describe('usage log timing display', () => {
   test.each([
     [2.9, 2.9],
-    [3, 1],
-    [4.9, 2.9],
-    [5, 1],
-    [9, 5],
-    [9.1, 4.55],
-    [20, 10],
+    [3, 3],
+    [4.9, 4.9],
+    [5, 5],
+    [9, 9],
+    [9.1, 9.1],
+    [20, 20],
     [0, null],
     [-1, null],
   ])(
@@ -46,6 +47,18 @@ describe('usage log timing display', () => {
       }
     }
   )
+
+  test('applies the default rules when the global switch is enabled', () => {
+    const config = {
+      ...DEFAULT_FIRST_TOKEN_DISPLAY_CONFIG,
+      enabled: true,
+    }
+
+    expect(adjustFirstTokenDisplaySeconds(3, config)).toBe(1)
+    expect(adjustFirstTokenDisplaySeconds(5, config)).toBe(1)
+    expect(adjustFirstTokenDisplaySeconds(9, config)).toBe(5)
+    expect(adjustFirstTokenDisplaySeconds(10, config)).toBe(5)
+  })
 
   test('applies the first matching configured rule in display order', () => {
     const config = parseFirstTokenDisplayConfig({
@@ -98,7 +111,7 @@ describe('usage log timing display', () => {
   test('falls back to default rules for malformed configuration', () => {
     const config = parseFirstTokenDisplayConfig('{invalid')
 
-    expect(adjustFirstTokenDisplaySeconds(10, config)).toBe(5)
+    expect(adjustFirstTokenDisplaySeconds(10, config)).toBe(10)
   })
 
   test('prefers attempt-scoped upstream timing for new logs', () => {
