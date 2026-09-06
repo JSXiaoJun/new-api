@@ -340,6 +340,7 @@ export type BillingSettings = {
 }
 
 export type OperationsSettings = {
+  FirstTokenDisplayRules: string
   DefaultCollapseSidebar: boolean
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean

@@ -178,6 +178,7 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
+	common.OptionMap[setting.FirstTokenDisplayRulesOptionKey] = setting.DefaultFirstTokenDisplayRulesJSON
 
 	// 自动添加所有注册的模型配置
 	modelConfigs := config.GlobalConfig.ExportAllConfigs()
@@ -225,6 +226,9 @@ func validateOptionValue(key string, value string) error {
 	}
 	if key == "discount_setting.schedule" {
 		return discount_setting.ValidateScheduleJSON(value)
+	}
+	if key == setting.FirstTokenDisplayRulesOptionKey {
+		return setting.ValidateFirstTokenDisplayRulesJSON(value)
 	}
 	return nil
 }

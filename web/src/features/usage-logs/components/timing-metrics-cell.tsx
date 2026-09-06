@@ -30,9 +30,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useStatus } from '@/hooks/use-status'
 import { formatUseTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+import {
+  adjustFirstTokenDisplaySeconds,
+  parseFirstTokenDisplayConfig,
+} from '../lib/first-token-display'
 import { getFirstResponseTimeColor, getResponseTimeColor } from '../lib/format'
 import type { LogOtherData } from '../types'
 
@@ -67,10 +72,19 @@ interface TimingMetricsCellProps {
 
 export function TimingMetricsCell(props: TimingMetricsCellProps) {
   const { t } = useTranslation()
+  const { status } = useStatus()
+  const firstTokenDisplayConfig = parseFirstTokenDisplayConfig(
+    status?.first_token_display_rules
+  )
   const indicator = props.indicator ?? 'bar'
   const showFirstToken = props.isStream
   const firstTokenSeconds =
-    props.frtMs != null && props.frtMs > 0 ? props.frtMs / 1000 : null
+    props.frtMs != null
+      ? adjustFirstTokenDisplaySeconds(
+          props.frtMs / 1000,
+          firstTokenDisplayConfig
+        )
+      : null
   const firstTokenVariant: StatusVariant =
     firstTokenSeconds == null
       ? 'neutral'

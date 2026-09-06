@@ -136,6 +136,7 @@ export interface SystemStatus {
     password_register_enabled?: boolean
     mainland_web_block_enabled?: boolean
     custom_oauth_providers?: CustomOAuthProviderInfo[]
+    first_token_display_rules?: string
     [key: string]: unknown
   }
   // Allow direct access to common properties
@@ -182,6 +183,7 @@ export interface SystemStatus {
   password_register_enabled?: boolean
   mainland_web_block_enabled?: boolean
   custom_oauth_providers?: CustomOAuthProviderInfo[]
+  first_token_display_rules?: string
   [key: string]: unknown
 }
 

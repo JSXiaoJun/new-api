@@ -28,8 +28,18 @@ import { TrafficControlSection } from '../maintenance/traffic-control-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { FirstTokenDisplaySection } from './first-token-display-section'
 
 const OPERATIONS_SECTIONS = [
+  {
+    id: 'first-token-display',
+    titleKey: 'First Token Display',
+    build: (settings: OperationsSettings) => (
+      <FirstTokenDisplaySection
+        defaultValue={settings.FirstTokenDisplayRules}
+      />
+    ),
+  },
   {
     id: 'behavior',
     titleKey: 'System Behavior',

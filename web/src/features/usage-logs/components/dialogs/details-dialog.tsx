@@ -61,6 +61,7 @@ import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useStatus } from '@/hooks/use-status'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
 import { api } from '@/lib/http-client'
@@ -69,6 +70,10 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import type { UsageLog } from '../../data/schema'
+import {
+  adjustFirstTokenDisplaySeconds,
+  parseFirstTokenDisplayConfig,
+} from '../../lib/first-token-display'
 import {
   parseLogOther,
   getParamOverrideActionLabel,
@@ -524,6 +529,7 @@ interface LogResponseBody {
 
 export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
+  const { status } = useStatus()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const isSuperAdmin = useAuthStore(
     (state) => state.auth.user?.role === ROLE.SUPER_ADMIN
@@ -543,6 +549,16 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
   const timing = resolveLogTiming(props.log.use_time, other)
+  const firstTokenDisplayConfig = parseFirstTokenDisplayConfig(
+    status?.first_token_display_rules
+  )
+  const firstTokenDisplaySeconds =
+    timing.frtMs != null
+      ? adjustFirstTokenDisplaySeconds(
+          timing.frtMs / 1000,
+          firstTokenDisplayConfig
+        )
+      : null
   const typeConfig = getLogTypeConfig(props.log.type)
 
   const isViolation = isViolationFeeLog(other)
@@ -778,21 +794,19 @@ export function DetailsDialog(props: DetailsDialogProps) {
                   )}
                 >
                   {formatUseTime(timing.durationSec)}
-                  {props.log.is_stream &&
-                    timing.frtMs != null &&
-                    timing.frtMs > 0 && (
-                      <span
-                        className={cn(
-                          'font-normal',
-                          timingTextColorClass(
-                            getFirstResponseTimeColor(timing.frtMs / 1000)
-                          )
-                        )}
-                      >
-                        {' '}
-                        (FRT: {formatUseTime(timing.frtMs / 1000)})
-                      </span>
-                    )}
+                  {props.log.is_stream && firstTokenDisplaySeconds != null && (
+                    <span
+                      className={cn(
+                        'font-normal',
+                        timingTextColorClass(
+                          getFirstResponseTimeColor(firstTokenDisplaySeconds)
+                        )
+                      )}
+                    >
+                      {' '}
+                      (FRT: {formatUseTime(firstTokenDisplaySeconds)})
+                    </span>
+                  )}
                 </span>
               }
             />

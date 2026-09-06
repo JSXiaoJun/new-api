@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useStatus } from '@/hooks/use-status'
 
+import { DEFAULT_FIRST_TOKEN_DISPLAY_CONFIG } from '../../usage-logs/lib/first-token-display'
 import { SettingsPage } from '../components/settings-page'
 import { trafficControlWarningDefaults } from '../maintenance/traffic-control-defaults'
 import { DEFAULT_TRAFFIC_CONTROL_SCHEDULE_JSON } from '../maintenance/traffic-control-schedule'
@@ -29,6 +30,7 @@ import {
 } from './section-registry.tsx'
 
 const defaultOperationsSettings: OperationsSettings = {
+  FirstTokenDisplayRules: JSON.stringify(DEFAULT_FIRST_TOKEN_DISPLAY_CONFIG),
   DefaultCollapseSidebar: false,
   DemoSiteEnabled: false,
   SelfUseModeEnabled: false,
