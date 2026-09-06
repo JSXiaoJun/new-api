@@ -4335,6 +4335,8 @@
     "Shared configuration for all payment gateways": "Общая конфигурация для всех платежных шлюзов",
     "Shorten": "Сократить",
     "Show": "Показать",
+    "Show actual first-token time": "Показать фактическое время первого токена",
+    "Show adjusted first-token time": "Показать скорректированное время первого токена",
     "Show All": "Показать все",
     "Show all providers including unbound": "Показать всех провайдеров (включая непривязанные)",
     "Show only bound providers": "Показать только привязанных провайдеров",

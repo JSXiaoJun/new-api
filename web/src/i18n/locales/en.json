@@ -4335,6 +4335,8 @@
     "Shared configuration for all payment gateways": "Shared configuration for all payment gateways",
     "Shorten": "Shorten",
     "Show": "Show",
+    "Show actual first-token time": "Show actual first-token time",
+    "Show adjusted first-token time": "Show adjusted first-token time",
     "Show All": "Show All",
     "Show all providers including unbound": "Show all providers including unbound",
     "Show only bound providers": "Show only bound providers",

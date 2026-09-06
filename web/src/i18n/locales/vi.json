@@ -4335,6 +4335,8 @@
     "Shared configuration for all payment gateways": "Cấu hình chung cho tất cả các cổng thanh toán",
     "Shorten": "Rút gọn",
     "Show": "Hiển thị",
+    "Show actual first-token time": "Hiển thị thời gian token đầu tiên thực tế",
+    "Show adjusted first-token time": "Hiển thị thời gian token đầu tiên đã điều chỉnh",
     "Show All": "Hiển thị tất cả",
     "Show all providers including unbound": "Hiển thị tất cả nhà cung cấp (bao gồm chưa liên kết)",
     "Show only bound providers": "Chỉ hiển thị nhà cung cấp đã liên kết",

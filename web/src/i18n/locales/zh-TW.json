@@ -4335,6 +4335,8 @@
     "Shared configuration for all payment gateways": "所有支付閘道的共享設定",
     "Shorten": "縮詞",
     "Show": "顯示",
+    "Show actual first-token time": "顯示真實首字耗時",
+    "Show adjusted first-token time": "顯示調整後首字耗時",
     "Show All": "顯示全部",
     "Show all providers including unbound": "顯示所有供應商（包括未連結）",
     "Show only bound providers": "僅顯示已連結的供應商",

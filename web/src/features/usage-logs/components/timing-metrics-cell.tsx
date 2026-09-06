@@ -40,6 +40,7 @@ import {
 } from '../lib/first-token-display'
 import { getFirstResponseTimeColor, getResponseTimeColor } from '../lib/format'
 import type { LogOtherData } from '../types'
+import { useUsageLogsContext } from './usage-logs-provider'
 
 /**
  * Softened fills for the full-height timing bar. The bar sits directly beside
@@ -73,18 +74,23 @@ interface TimingMetricsCellProps {
 export function TimingMetricsCell(props: TimingMetricsCellProps) {
   const { t } = useTranslation()
   const { status } = useStatus()
+  const { showRawTiming } = useUsageLogsContext()
   const firstTokenDisplayConfig = parseFirstTokenDisplayConfig(
     status?.first_token_display_rules
   )
   const indicator = props.indicator ?? 'bar'
   const showFirstToken = props.isStream
-  const firstTokenSeconds =
-    props.frtMs != null
-      ? adjustFirstTokenDisplaySeconds(
-          props.frtMs / 1000,
-          firstTokenDisplayConfig
-        )
-      : null
+  let firstTokenSeconds: number | null = null
+  if (props.frtMs != null && Number.isFinite(props.frtMs)) {
+    if (showRawTiming) {
+      firstTokenSeconds = props.frtMs > 0 ? props.frtMs / 1000 : null
+    } else {
+      firstTokenSeconds = adjustFirstTokenDisplaySeconds(
+        props.frtMs / 1000,
+        firstTokenDisplayConfig
+      )
+    }
+  }
   const firstTokenVariant: StatusVariant =
     firstTokenSeconds == null
       ? 'neutral'

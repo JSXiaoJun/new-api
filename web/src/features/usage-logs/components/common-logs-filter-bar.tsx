@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useNavigate, getRouteApi } from '@tanstack/react-router'
 import type { Table } from '@tanstack/react-table'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Timer, TimerReset } from 'lucide-react'
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -117,7 +117,12 @@ export function CommonLogsFilterBar<TData>(
   const queryClient = useQueryClient()
   const searchParams = route.useSearch()
   const { isAdminView: isAdmin } = useLogsViewScope()
-  const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
+  const {
+    sensitiveVisible,
+    setSensitiveVisible,
+    showRawTiming,
+    setShowRawTiming,
+  } = useUsageLogsContext()
   const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
 
   const searchState = useMemo<CommonLogDraft>(() => {
@@ -288,6 +293,32 @@ export function CommonLogsFilterBar<TData>(
       </TooltipContent>
     </Tooltip>
   )
+  const timingToggle = (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant='ghost'
+            size='icon'
+            onClick={() => setShowRawTiming(!showRawTiming)}
+            aria-label={
+              showRawTiming
+                ? t('Show adjusted first-token time')
+                : t('Show actual first-token time')
+            }
+            className='text-muted-foreground hover:text-foreground size-7'
+          />
+        }
+      >
+        {showRawTiming ? <TimerReset /> : <Timer />}
+      </TooltipTrigger>
+      <TooltipContent>
+        {showRawTiming
+          ? t('Show adjusted first-token time')
+          : t('Show actual first-token time')}
+      </TooltipContent>
+    </Tooltip>
+  )
 
   const dateRangeFilter = (
     <LogsFilterField wide>
@@ -413,7 +444,12 @@ export function CommonLogsFilterBar<TData>(
     <LogsFilterToolbar
       table={props.table}
       stats={statsBar}
-      actionStart={sensitiveToggle}
+      actionStart={
+        <div className='flex items-center gap-1'>
+          {timingToggle}
+          {sensitiveToggle}
+        </div>
+      }
       primaryFilters={
         <>
           {dateRangeFilter}

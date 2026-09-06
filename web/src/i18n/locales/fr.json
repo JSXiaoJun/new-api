@@ -4335,6 +4335,8 @@
     "Shared configuration for all payment gateways": "Configuration partagée pour toutes les passerelles de paiement",
     "Shorten": "Raccourcir",
     "Show": "Afficher",
+    "Show actual first-token time": "Afficher le temps réel du premier token",
+    "Show adjusted first-token time": "Afficher le temps ajusté du premier token",
     "Show All": "Tout afficher",
     "Show all providers including unbound": "Afficher tous les fournisseurs (y compris non liés)",
     "Show only bound providers": "Afficher uniquement les fournisseurs liés",

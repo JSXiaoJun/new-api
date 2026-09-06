@@ -96,6 +96,7 @@ import {
   isTimingLogType,
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
+import { useUsageLogsContext } from '../usage-logs-provider'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -530,6 +531,7 @@ interface LogResponseBody {
 export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
   const { status } = useStatus()
+  const { showRawTiming } = useUsageLogsContext()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const isSuperAdmin = useAuthStore(
     (state) => state.auth.user?.role === ROLE.SUPER_ADMIN
@@ -552,13 +554,17 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const firstTokenDisplayConfig = parseFirstTokenDisplayConfig(
     status?.first_token_display_rules
   )
-  const firstTokenDisplaySeconds =
-    timing.frtMs != null
-      ? adjustFirstTokenDisplaySeconds(
-          timing.frtMs / 1000,
-          firstTokenDisplayConfig
-        )
-      : null
+  let firstTokenDisplaySeconds: number | null = null
+  if (timing.frtMs != null && Number.isFinite(timing.frtMs)) {
+    if (showRawTiming) {
+      firstTokenDisplaySeconds = timing.frtMs > 0 ? timing.frtMs / 1000 : null
+    } else {
+      firstTokenDisplaySeconds = adjustFirstTokenDisplaySeconds(
+        timing.frtMs / 1000,
+        firstTokenDisplayConfig
+      )
+    }
+  }
   const typeConfig = getLogTypeConfig(props.log.type)
 
   const isViolation = isViolationFeeLog(other)

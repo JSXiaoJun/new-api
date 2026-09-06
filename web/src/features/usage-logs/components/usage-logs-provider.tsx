@@ -36,6 +36,8 @@ interface UsageLogsContextValue {
   setAffinityDialogOpen: (open: boolean) => void
   sensitiveVisible: boolean
   setSensitiveVisible: (visible: boolean) => void
+  showRawTiming: boolean
+  setShowRawTiming: (visible: boolean) => void
   viewScope: LogsViewScope
   setViewScope: (scope: LogsViewScope) => void
 }
@@ -51,6 +53,7 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
     useState<ChannelAffinityInfo | null>(null)
   const [affinityDialogOpen, setAffinityDialogOpen] = useState(false)
   const [sensitiveVisible, setSensitiveVisible] = useState(true)
+  const [showRawTiming, setShowRawTiming] = useState(false)
   const [viewScope, setViewScope] = useState<LogsViewScope>('all')
 
   return (
@@ -66,6 +69,8 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
         setAffinityDialogOpen,
         sensitiveVisible,
         setSensitiveVisible,
+        showRawTiming,
+        setShowRawTiming,
         viewScope,
         setViewScope,
       }}

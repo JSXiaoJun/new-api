@@ -4335,6 +4335,8 @@
     "Shared configuration for all payment gateways": "すべての決済ゲートウェイの共有設定",
     "Shorten": "短縮",
     "Show": "表示",
+    "Show actual first-token time": "実際の初回トークン時間を表示",
+    "Show adjusted first-token time": "調整後の初回トークン時間を表示",
     "Show All": "すべて表示",
     "Show all providers including unbound": "未バインドを含むすべてのプロバイダーを表示",
     "Show only bound providers": "バインド済みのプロバイダーのみ表示",
