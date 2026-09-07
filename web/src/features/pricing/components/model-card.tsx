@@ -98,7 +98,13 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   }
 
   let priceSummary: ReactNode
-  if (dynamicSummary) {
+  if (props.model.peak_pricing) {
+    priceSummary = (
+      <span>
+        {t('Peak pricing')} · {props.model.peak_pricing.timezone}
+      </span>
+    )
+  } else if (dynamicSummary) {
     if (dynamicSummary.isSpecialExpression) {
       priceSummary = (
         <span className='min-w-0'>

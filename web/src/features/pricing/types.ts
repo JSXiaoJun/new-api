@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 // ----------------------------------------------------------------------------
 // Pricing Types
 // ----------------------------------------------------------------------------
+import type { PeakPricing } from '@/features/system-settings/models/peak-pricing'
 
 export type PricingVendor = {
   id: number
@@ -28,6 +29,7 @@ export type PricingVendor = {
 }
 
 export type PricingModel = {
+  peak_pricing?: PeakPricing
   id: number
   model_name: string
   description?: string

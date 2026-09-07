@@ -48,6 +48,7 @@ import {
 } from './model-ratio-visual-editor'
 
 type ModelFormValues = {
+  PeakPricing: string
   ModelPrice: string
   ModelRatio: string
   CacheRatio: string
@@ -72,6 +73,7 @@ type ModelRatioFormProps = {
 }
 
 type ModelJsonFieldName =
+  | 'PeakPricing'
   | 'ModelPrice'
   | 'ModelRatio'
   | 'CacheRatio'
@@ -86,6 +88,11 @@ const modelJsonFields: Array<{
   labelKey: string
   descriptionKey: string
 }> = [
+  {
+    name: 'PeakPricing',
+    labelKey: 'Peak pricing',
+    descriptionKey: 'Peak pricing',
+  },
   {
     name: 'ModelPrice',
     labelKey: 'Model fixed pricing',
@@ -275,6 +282,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               savedAudioCompletionRatio={savedValues.AudioCompletionRatio}
               savedBillingMode={savedValues.BillingMode}
               savedBillingExpr={savedValues.BillingExpr}
+              savedPeakPricing={savedValues.PeakPricing}
+              peakPricing={form.watch('PeakPricing')}
               modelPrice={form.watch('ModelPrice')}
               modelRatio={form.watch('ModelRatio')}
               cacheRatio={form.watch('CacheRatio')}
@@ -296,6 +305,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               isSaving={isSaving}
               onChange={(field, value) => {
                 const fieldMap: Record<string, keyof ModelFormValues> = {
+                  'billing_setting.peak_pricing': 'PeakPricing',
                   'billing_setting.billing_mode': 'BillingMode',
                   'billing_setting.billing_expr': 'BillingExpr',
                 }

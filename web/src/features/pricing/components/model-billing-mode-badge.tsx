@@ -37,7 +37,10 @@ export function ModelBillingModeBadge(props: ModelBillingModeBadgeProps) {
   let label = t('Per Request')
   let variant: StatusVariant = 'purple'
 
-  if (isDynamicPricingModel(props.model)) {
+  if (props.model.peak_pricing) {
+    label = t('Peak pricing')
+    variant = 'warning'
+  } else if (isDynamicPricingModel(props.model)) {
     label = t('Dynamic Pricing')
     variant = 'warning'
   } else if (isPerSecondPricingModel(props.model)) {

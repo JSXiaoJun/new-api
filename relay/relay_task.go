@@ -249,7 +249,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
 	finalQuota := info.PriceData.Quota
-	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 {
+	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 && !(info.PeakPricing != nil && service.IsTaskPerCallBilling(info)) {
 		if adjustedQuota, ok := recalcQuotaFromRatios(info, adjustedRatios); ok {
 			// 基于调整后的 ratios 重新计算 quota
 			finalQuota = adjustedQuota

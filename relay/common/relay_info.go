@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
 
@@ -160,7 +161,9 @@ type RelayInfo struct {
 	UseRuntimeHeadersOverride             bool
 	ParamOverrideAudit                    []string
 
-	PriceData hosttypes.PriceData
+	PriceData           hosttypes.PriceData
+	PeakPricing         *billing_setting.PeakSnapshot
+	PeakPricingResolved bool
 	// BillingBaseGroupRatio captures the selected route ratio before discount.
 	// BillingDiscountRatio is resolved once from request start time and user
 	// group, then reused across retries and settlement for consistency.

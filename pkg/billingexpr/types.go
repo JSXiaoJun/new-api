@@ -3,11 +3,13 @@ package billingexpr
 import (
 	"crypto/sha256"
 	"fmt"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 )
 
 type RequestInput struct {
+	Time    time.Time
 	Headers map[string]string
 	Body    []byte
 }

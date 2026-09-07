@@ -185,6 +185,8 @@ When a request arrives and the model uses `tiered_expr` billing:
 4. Converts output to quota: `rawCost / 1,000,000 * QuotaPerUnit`
 5. Creates `BillingSnapshot` and stores it on `RelayInfo`. Expression and request state stay frozen for settlement. An auto-group retry refreshes group-dependent fields from the selected group before the next upstream attempt. If a free initial group skipped pre-consume and the retry selects a paid group, the billing session is created before that attempt. If an existing session moves to a more expensive group, its reservation is raised to that group's estimate before sending; cheaper groups are refunded only after actual usage is settled.
 
+Peak pricing (`billing_setting.peak_pricing`) selects a self-contained tariff at request start in its configured IANA timezone. Periods repeat daily, include the start and exclude the end, support crossing midnight, and cannot overlap. Unmatched requests use the explicit default tariff. For expression tariffs, `RequestInput.Time` freezes time probes to request start; a zero timestamp preserves the existing wall-clock behavior for ordinary expression billing. The selected tariff overrides legacy price tables and remains frozen across retries and settlement. Per-second tariffs require a task adaptor supplying a validated duration; expression tariffs require a synchronous API with usage settlement.
+
 ### 4. Settlement (Actual Billing)
 
 **Files**: `service/tiered_settle.go`, `pkg/billingexpr/settle.go`

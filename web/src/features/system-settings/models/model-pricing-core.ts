@@ -20,6 +20,7 @@ import * as z from 'zod'
 
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 
+import type { PeakPricing } from './peak-pricing'
 import { formatPricingNumber } from './pricing-format'
 
 export const createModelPricingSchema = (t: (key: string) => string) =>
@@ -40,6 +41,7 @@ export type ModelPricingFormValues = z.infer<
 >
 
 export type PricingMode =
+  | 'peak'
   | 'per-token'
   | 'per-request'
   | 'per-second'
@@ -54,6 +56,7 @@ export type LaneKey =
   | 'audioOutput'
 
 export type ModelRatioData = {
+  peakPricing?: PeakPricing
   name: string
   price?: string
   ratio?: string
@@ -221,6 +224,9 @@ export function buildPreviewRows(
   laneEnabled: Record<LaneKey, boolean>,
   t: (key: string) => string
 ): PreviewRow[] {
+  if (mode === 'peak') {
+    return [{ key: 'mode', label: t('Billing mode'), value: t('Peak pricing') }]
+  }
   if (mode === 'tiered_expr') {
     const effectiveExpr = combineBillingExpr(billingExpr, requestRuleExpr)
     return [

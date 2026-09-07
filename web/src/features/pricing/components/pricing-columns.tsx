@@ -117,6 +117,13 @@ export function usePricingColumns(
       ),
       cell: ({ row }) => {
         const model = row.original
+        if (model.peak_pricing) {
+          return (
+            <span>
+              {t('Peak pricing')} · {model.peak_pricing.timezone}
+            </span>
+          )
+        }
         const fixedPriceUnit = isPerSecondPricingModel(model)
           ? t('second')
           : t('request')
@@ -249,6 +256,7 @@ export function usePricingColumns(
       header: t('Cached'),
       cell: ({ row }) => {
         const model = row.original
+        if (model.peak_pricing) return <span>{t('Peak pricing')}</span>
         const dynamicSummary = getDynamicPricingSummary(model, {
           tokenUnit,
           showRechargePrice,

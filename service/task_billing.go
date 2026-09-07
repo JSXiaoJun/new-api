@@ -24,6 +24,9 @@ func IsTaskPerCallBilling(info *relaycommon.RelayInfo) bool {
 	if info == nil {
 		return false
 	}
+	if info.PeakPricing != nil {
+		return info.EffectiveBillingMode() == billing_setting.BillingModePerRequest
+	}
 	if IsTaskPerSecondBilling(info) {
 		return false
 	}
@@ -42,7 +45,7 @@ func IsTaskPerCallBilling(info *relaycommon.RelayInfo) bool {
 // "seconds" billing multiplier.
 func IsTaskPerSecondBilling(info *relaycommon.RelayInfo) bool {
 	return info != nil &&
-		billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModePerSecond
+		info.EffectiveBillingMode() == billing_setting.BillingModePerSecond
 }
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
@@ -70,6 +73,9 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	other["is_task"] = true
 	other["request_path"] = c.Request.URL.Path
 	other["model_price"] = info.PriceData.ModelPrice
+	if info.PeakPricing != nil {
+		other["peak_pricing"] = info.PeakPricing
+	}
 	if IsTaskPerSecondBilling(info) {
 		other["billing_mode"] = billing_setting.BillingModePerSecond
 	}
@@ -161,6 +167,9 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
 	if bc := task.PrivateData.BillingContext; bc != nil {
+		if bc.PeakPricing != nil {
+			other["peak_pricing"] = bc.PeakPricing
+		}
 		other["model_price"] = bc.ModelPrice
 		if bc.BillingMode != "" && bc.BillingMode != billing_setting.BillingModeRatio {
 			other["billing_mode"] = bc.BillingMode

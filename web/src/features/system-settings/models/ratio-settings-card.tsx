@@ -117,6 +117,7 @@ const createModelSchema = (t: Translate) =>
     ExposeRatioEnabled: z.boolean(),
     BillingMode: createJsonStringField(t),
     BillingExpr: createJsonStringField(t),
+    PeakPricing: createJsonStringField(t),
   })
 
 const createGroupSchema = (t: Translate) =>
@@ -195,6 +196,7 @@ export function RatioSettingsCard({
     ExposeRatioEnabled: modelDefaults.ExposeRatioEnabled,
     BillingMode: normalizeJsonString(modelDefaults.BillingMode),
     BillingExpr: normalizeJsonString(modelDefaults.BillingExpr),
+    PeakPricing: normalizeJsonString(modelDefaults.PeakPricing),
   })
   const [savedModelValues, setSavedModelValues] = useState(
     modelNormalizedDefaults.current
@@ -232,6 +234,7 @@ export function RatioSettingsCard({
       ),
       BillingMode: formatJsonForTextarea(modelDefaults.BillingMode),
       BillingExpr: formatJsonForTextarea(modelDefaults.BillingExpr),
+      PeakPricing: formatJsonForTextarea(modelDefaults.PeakPricing),
     },
   })
 
@@ -266,6 +269,7 @@ export function RatioSettingsCard({
       ExposeRatioEnabled: modelDefaults.ExposeRatioEnabled,
       BillingMode: normalizeJsonString(modelDefaults.BillingMode),
       BillingExpr: normalizeJsonString(modelDefaults.BillingExpr),
+      PeakPricing: normalizeJsonString(modelDefaults.PeakPricing),
     }
     setSavedModelValues(modelNormalizedDefaults.current)
 
@@ -283,6 +287,7 @@ export function RatioSettingsCard({
       ),
       BillingMode: formatJsonForTextarea(modelDefaults.BillingMode),
       BillingExpr: formatJsonForTextarea(modelDefaults.BillingExpr),
+      PeakPricing: formatJsonForTextarea(modelDefaults.PeakPricing),
     })
   }, [modelDefaults, modelForm])
 
@@ -327,11 +332,13 @@ export function RatioSettingsCard({
         ExposeRatioEnabled: values.ExposeRatioEnabled,
         BillingMode: normalizeJsonString(values.BillingMode),
         BillingExpr: normalizeJsonString(values.BillingExpr),
+        PeakPricing: normalizeJsonString(values.PeakPricing),
       }
 
       const apiKeyMap: Record<string, string> = {
         BillingMode: 'billing_setting.billing_mode',
         BillingExpr: 'billing_setting.billing_expr',
+        PeakPricing: 'billing_setting.peak_pricing',
       }
 
       const updates = (
@@ -347,7 +354,11 @@ export function RatioSettingsCard({
 
       for (const key of updates) {
         const apiKey = apiKeyMap[key as string] || (key as string)
-        await updateOption.mutateAsync({ key: apiKey, value: normalized[key] })
+        const response = await updateOption.mutateAsync({
+          key: apiKey,
+          value: normalized[key],
+        })
+        if (!response.success) return
       }
 
       modelNormalizedDefaults.current = normalized

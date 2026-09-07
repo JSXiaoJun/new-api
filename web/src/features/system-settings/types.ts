@@ -251,6 +251,7 @@ export type ModelSettings = {
 }
 
 export type BillingSettings = {
+  'billing_setting.peak_pricing': string
   QuotaForNewUser: number
   PreConsumedQuota: number
   QuotaForInviter: number

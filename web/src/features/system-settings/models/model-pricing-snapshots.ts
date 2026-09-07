@@ -19,9 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { splitBillingExprAndRequestRules } from '@/features/pricing/lib/billing-expr'
 
 import { safeJsonParse } from '../utils/json-parser'
+import type { PeakPricing } from './peak-pricing'
 import { formatPricingNumber } from './pricing-format'
 
 export type ModelPricingSnapshotInput = {
+  peakPricing?: string
   modelPrice: string
   modelRatio: string
   cacheRatio: string
@@ -35,6 +37,7 @@ export type ModelPricingSnapshotInput = {
 }
 
 export type ModelPricingSnapshot = {
+  peakPricing?: PeakPricing
   name: string
   price?: string
   ratio?: string
@@ -64,6 +67,7 @@ export const hasPricingValue = (value?: string) =>
 export const isBasePricingUnset = (snapshot?: ModelPricingSnapshot) =>
   !snapshot ||
   (snapshot.billingMode !== 'tiered_expr' &&
+    snapshot.billingMode !== 'peak' &&
     !hasPricingValue(snapshot.price) &&
     !hasPricingValue(snapshot.ratio))
 
@@ -81,6 +85,7 @@ const ratioToPrice = (ratio?: string, denominator?: string) => {
 }
 
 export const getModeLabel = (mode?: string) => {
+  if (mode === 'peak') return 'Peak pricing'
   if (mode === 'per-request') return 'Per-request'
   if (mode === 'per-second') return 'Per-second'
   if (mode === 'tiered_expr') return 'Expression'
@@ -93,6 +98,7 @@ export const getModeVariant = (
   if (mode === 'per-request') return 'warning'
   if (mode === 'per-second') return 'warning'
   if (mode === 'tiered_expr') return 'info'
+  if (mode === 'peak') return 'info'
   return 'success'
 }
 
@@ -111,6 +117,7 @@ export const getPriceSummary = (
   row: ModelPricingSnapshot,
   t: (key: string) => string
 ) => {
+  if (row.billingMode === 'peak') return t('Peak pricing')
   if (row.billingMode === 'tiered_expr') {
     return getExpressionSummary(row, t)
   }
@@ -142,6 +149,7 @@ export const getPriceDetail = (
   row: ModelPricingSnapshot,
   t: (key: string) => string
 ) => {
+  if (row.billingMode === 'peak') return row.peakPricing?.timezone ?? ''
   if (row.billingMode === 'tiered_expr') {
     return row.requestRuleExpr
       ? t('Includes request rules')
@@ -172,6 +180,7 @@ export const getPriceDetail = (
 }
 
 export const buildModelSnapshots = ({
+  peakPricing = '{}',
   modelPrice,
   modelRatio,
   cacheRatio,
@@ -183,6 +192,10 @@ export const buildModelSnapshots = ({
   billingMode,
   billingExpr,
 }: ModelPricingSnapshotInput): ModelPricingSnapshot[] => {
+  const peakMap = safeJsonParse<Record<string, PeakPricing>>(peakPricing, {
+    fallback: {},
+    context: 'peak pricing',
+  })
   const priceMap = safeJsonParse<Record<string, number>>(modelPrice, {
     fallback: {},
     context: 'model prices',
@@ -225,6 +238,7 @@ export const buildModelSnapshots = ({
   })
 
   const modelNames = new Set([
+    ...Object.keys(peakMap),
     ...Object.keys(priceMap),
     ...Object.keys(ratioMap),
     ...Object.keys(cacheMap),
@@ -238,6 +252,14 @@ export const buildModelSnapshots = ({
   ])
 
   return [...modelNames].map((name) => {
+    if (peakMap[name]) {
+      return {
+        name,
+        billingMode: 'peak',
+        peakPricing: peakMap[name],
+        hasConflict: false,
+      }
+    }
     const price = priceMap[name]?.toString() || ''
     const ratio = ratioMap[name]?.toString() || ''
     const cache = cacheMap[name]?.toString() || ''
@@ -319,6 +341,7 @@ export const buildModelSnapshots = ({
 export const getSnapshotSignature = (snapshot?: ModelPricingSnapshot) => {
   if (!snapshot) return ''
   return JSON.stringify({
+    peakPricing: snapshot.peakPricing,
     price: snapshot.price || '',
     ratio: snapshot.ratio || '',
     cacheRatio: snapshot.cacheRatio || '',

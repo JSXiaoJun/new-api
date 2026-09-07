@@ -110,6 +110,9 @@ func appendRequestPath(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other
 	if other == nil {
 		return
 	}
+	if relayInfo != nil && relayInfo.PeakPricing != nil {
+		other["peak_pricing"] = relayInfo.PeakPricing
+	}
 	if ctx != nil && ctx.Request != nil && ctx.Request.URL != nil {
 		if path := ctx.Request.URL.Path; path != "" {
 			other["request_path"] = path

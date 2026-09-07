@@ -65,8 +65,11 @@ import {
   type ModelRow,
 } from './model-pricing-snapshots'
 import { buildModelRatioColumns } from './model-ratio-table-columns'
+import type { PeakPricing } from './peak-pricing'
 
 type ModelRatioVisualEditorProps = {
+  savedPeakPricing: string
+  peakPricing: string
   savedModelPrice: string
   savedModelRatio: string
   savedCacheRatio: string
@@ -106,6 +109,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
   ModelRatioVisualEditorProps
 >(function ModelRatioVisualEditor(
   {
+    savedPeakPricing,
+    peakPricing,
     savedModelPrice,
     savedModelRatio,
     savedCacheRatio,
@@ -190,6 +195,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
   const models = useMemo(() => {
     const savedRows = buildModelSnapshots({
+      peakPricing: savedPeakPricing,
       modelPrice: savedModelPrice,
       modelRatio: savedModelRatio,
       cacheRatio: savedCacheRatio,
@@ -202,6 +208,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingExpr: savedBillingExpr,
     })
     const draftRows = buildModelSnapshots({
+      peakPricing,
       modelPrice,
       modelRatio,
       cacheRatio,
@@ -245,6 +252,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
   }, [
     candidateModelNames,
     filterMode,
+    savedPeakPricing,
+    peakPricing,
     savedModelPrice,
     savedModelRatio,
     savedCacheRatio,
@@ -272,6 +281,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       models.reduce(
         (acc, model) => {
           const mode =
+            model.billingMode === 'peak' ||
             model.billingMode === 'per-request' ||
             model.billingMode === 'per-second' ||
             model.billingMode === 'tiered_expr'
@@ -281,6 +291,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
           return acc
         },
         {
+          peak: 0,
           'per-token': 0,
           'per-request': 0,
           'per-second': 0,
@@ -294,7 +305,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
     (model: ModelRow) => {
       const editableModel = model.draft ?? model.saved ?? model
       let editBillingMode: PricingMode = 'per-token'
-      if (editableModel.billingMode === 'tiered_expr') {
+      if (editableModel.billingMode === 'peak') {
+        editBillingMode = 'peak'
+      } else if (editableModel.billingMode === 'tiered_expr') {
         editBillingMode = 'tiered_expr'
       } else if (editableModel.billingMode === 'per-second') {
         editBillingMode = 'per-second'
@@ -302,6 +315,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         editBillingMode = 'per-request'
       }
       setEditData({
+        peakPricing: editableModel.peakPricing,
         name: editableModel.name,
         price: editableModel.price,
         ratio: editableModel.ratio,
@@ -344,6 +358,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
   const handleDelete = useCallback(
     (name: string) => {
+      const peakMap = safeJsonParse<Record<string, PeakPricing>>(peakPricing, {
+        fallback: {},
+      })
+      delete peakMap[name]
+      onChange('billing_setting.peak_pricing', JSON.stringify(peakMap))
       const priceMap = safeJsonParse<Record<string, number>>(modelPrice, {
         fallback: {},
         silent: true,
@@ -435,6 +454,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingExpr,
       onChange,
       editData,
+      peakPricing,
     ]
   )
 
@@ -484,6 +504,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
   const persistPricingData = useCallback(
     (data: ModelRatioData, targetNames: string[] = [data.name]) => {
+      const peakMap = safeJsonParse<Record<string, PeakPricing>>(peakPricing, {
+        fallback: {},
+      })
       const priceMap = safeJsonParse<Record<string, number>>(modelPrice, {
         fallback: {},
         silent: true,
@@ -536,6 +559,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
       }
 
       targetNames.forEach((name) => {
+        if (data.billingMode === 'peak' && data.peakPricing) {
+          peakMap[name] = data.peakPricing
+          return
+        }
+        delete peakMap[name]
         delete priceMap[name]
         delete ratioMap[name]
         delete cacheMap[name]
@@ -584,6 +612,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         }
       })
 
+      onChange('billing_setting.peak_pricing', JSON.stringify(peakMap))
       onChange('ModelPrice', JSON.stringify(priceMap, null, 2))
       onChange('ModelRatio', JSON.stringify(ratioMap, null, 2))
       onChange('CacheRatio', JSON.stringify(cacheMap, null, 2))
@@ -616,6 +645,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingMode,
       billingExpr,
       onChange,
+      peakPricing,
     ]
   )
 
@@ -695,6 +725,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
                 columnId: 'billingMode',
                 title: t('Mode'),
                 options: [
+                  {
+                    label: 'Peak pricing',
+                    value: 'peak',
+                    count: modeCounts.peak,
+                  },
                   {
                     label: 'Per-token',
                     value: 'per-token',
@@ -843,6 +878,8 @@ export const ModelRatioVisualEditor = memo(
   // Custom equality check - only re-render if JSON props actually changed
   (prevProps, nextProps) => {
     return (
+      prevProps.peakPricing === nextProps.peakPricing &&
+      prevProps.savedPeakPricing === nextProps.savedPeakPricing &&
       prevProps.savedModelPrice === nextProps.savedModelPrice &&
       prevProps.savedModelRatio === nextProps.savedModelRatio &&
       prevProps.savedCacheRatio === nextProps.savedCacheRatio &&

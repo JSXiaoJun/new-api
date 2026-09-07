@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/discount_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -32,6 +33,7 @@ func AllOption() ([]*Option, error) {
 func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
+	common.OptionMap[billing_setting.PeakPricingOptionKey] = "{}"
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -209,6 +211,10 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == billing_setting.PeakPricingOptionKey {
+		_, err := billing_setting.ParsePeakPricing(value)
+		return err
+	}
 	if key == operation_setting.ToolPriceOptionKey {
 		return operation_setting.ValidateToolPricesJSON(value)
 	}
@@ -242,12 +248,16 @@ func UpdateOption(key string, value string) error {
 		Key: key,
 	}
 	// https://gorm.io/docs/update.html#Save-All-Fields
-	DB.FirstOrCreate(&option, Option{Key: key})
+	if err := DB.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+		return err
+	}
 	option.Value = value
 	// Save is a combination function.
 	// If save value does not contain primary key, it will execute Create,
 	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
+	if err := DB.Save(&option).Error; err != nil {
+		return err
+	}
 	// Update OptionMap
 	return updateOptionMap(key, value)
 }
@@ -291,6 +301,13 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
+	if key == billing_setting.PeakPricingOptionKey {
+		if err := billing_setting.LoadPeakPricing(value); err != nil {
+			return err
+		}
+		InvalidatePricingCache()
+		ratio_setting.InvalidateExposedDataCache()
+	}
 	if key == retiredThemeOptionKey {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, key)
@@ -623,6 +640,9 @@ func updateOptionMap(key string, value string) (err error) {
 
 // handleConfigUpdate 处理分层配置更新，返回是否已处理
 func handleConfigUpdate(key, value string) bool {
+	if key == billing_setting.PeakPricingOptionKey {
+		return true
+	}
 	if key == operation_setting.ToolPriceOptionKey {
 		operation_setting.LoadToolPricesFromJSONString(value)
 		return true

@@ -77,11 +77,18 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 }
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (hosttypes.PriceData, error) {
+	if err := info.ResolvePeakPricing(); err != nil {
+		return hosttypes.PriceData{}, err
+	}
 	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
+	if info.PeakPricing != nil {
+		peakPrice := info.PeakPricing.Tariff.PriceData()
+		modelPrice, usePrice = peakPrice.ModelPrice, peakPrice.UsePrice
+	}
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
-	billingMode := billing_setting.GetBillingMode(info.OriginModelName)
+	billingMode := info.EffectiveBillingMode()
 	if billingMode == billing_setting.BillingModeTieredExpr {
 		return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo)
 	}
@@ -108,6 +115,10 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		var success bool
 		var matchName string
 		modelRatio, success, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
+		if info.PeakPricing != nil {
+			modelRatio = info.PeakPricing.Tariff.PriceData().ModelRatio
+			success = true
+		}
 		if !success {
 			acceptUnsetRatio := false
 			if info.UserSetting.AcceptUnsetRatioModel {
@@ -126,6 +137,12 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		imageRatio, _ = ratio_setting.GetImageRatio(info.OriginModelName)
 		audioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
 		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
+		if info.PeakPricing != nil {
+			peak := info.PeakPricing.Tariff.PriceData()
+			completionRatio, cacheRatio = peak.CompletionRatio, peak.CacheRatio
+			cacheCreationRatio, cacheCreationRatio5m, cacheCreationRatio1h = peak.CacheCreationRatio, peak.CacheCreation5mRatio, peak.CacheCreation1hRatio
+			imageRatio, audioRatio, audioCompletionRatio = peak.ImageRatio, peak.AudioRatio, peak.AudioCompletionRatio
+		}
 		ratio := modelRatio * groupRatioInfo.GroupRatio
 		quotaToPreConsume := float64(preConsumedTokens) * ratio
 		quota, err := common.QuotaFromPositiveFloatStrict(quotaToPreConsume)
@@ -195,11 +212,22 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hosttypes.PriceData, error) {
+	if err := info.ResolvePeakPricing(); err != nil {
+		return hosttypes.PriceData{}, err
+	}
+	if info.PeakPricing != nil && info.EffectiveBillingMode() == billing_setting.BillingModeTieredExpr {
+		return hosttypes.PriceData{}, fmt.Errorf("expression billing requires an API with token usage settlement")
+	}
 	groupRatioInfo := HandleGroupRatio(c, info)
 
 	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
 	usePrice := success
 	var modelRatio float64
+	if info.PeakPricing != nil {
+		peak := info.PeakPricing.Tariff.PriceData()
+		modelPrice, usePrice, modelRatio = peak.ModelPrice, peak.UsePrice, peak.ModelRatio
+		success = true
+	}
 
 	if !success {
 		if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModePerSecond {
@@ -272,6 +300,9 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 }
 
 func HasModelBillingConfig(modelName string) bool {
+	if _, ok := billing_setting.GetPeakPricing(modelName); ok {
+		return true
+	}
 	if _, ok := ratio_setting.GetModelPrice(modelName, false); ok {
 		return true
 	}
@@ -287,6 +318,9 @@ func HasModelBillingConfig(modelName string) bool {
 
 func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo hosttypes.GroupRatioInfo) (hosttypes.PriceData, error) {
 	exprStr, ok := billing_setting.GetBillingExpr(info.OriginModelName)
+	if info.PeakPricing != nil {
+		exprStr, ok = info.PeakPricing.Tariff.Expression, true
+	}
 	if !ok {
 		return hosttypes.PriceData{}, fmt.Errorf("model %s is configured as tiered_expr but has no billing expression", info.OriginModelName)
 	}
@@ -299,6 +333,9 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 	requestInput, err := ResolveIncomingBillingExprRequestInput(c, info)
 	if err != nil {
 		return hosttypes.PriceData{}, err
+	}
+	if info.PeakPricing != nil {
+		requestInput.Time = info.StartTime
 	}
 
 	rawCost, trace, err := billingexpr.RunExprWithRequest(exprStr, billingexpr.TokenParams{

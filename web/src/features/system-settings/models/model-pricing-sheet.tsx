@@ -80,6 +80,8 @@ import {
   type PricingMode,
 } from './model-pricing-core'
 import { PriceInput, PriceLane } from './model-pricing-inputs'
+import { createPeakPricing, peakPricingSchema } from './peak-pricing'
+import { PeakPricingEditor } from './peak-pricing-editor'
 import { formatPricingNumber } from './pricing-format'
 import { TieredPricingEditor } from './tiered-pricing-editor'
 
@@ -146,6 +148,8 @@ export const ModelPricingEditorPanel = forwardRef<
 ) {
   const { t } = useTranslation()
   const [pricingMode, setPricingMode] = useState<PricingMode>('per-token')
+  const [peakPricing, setPeakPricing] = useState(createPeakPricing)
+  const [peakError, setPeakError] = useState('')
   const [promptPrice, setPromptPrice] = useState('')
   const [lanePrices, setLanePrices] = useState<Record<LaneKey, string>>({
     ...EMPTY_LANE_PRICES,
@@ -174,6 +178,8 @@ export const ModelPricingEditorPanel = forwardRef<
   })
 
   useEffect(() => {
+    setPeakPricing(editData?.peakPricing ?? createPeakPricing())
+    setPeakError('')
     const nextLaneState = createInitialLaneState(editData)
 
     if (editData) {
@@ -188,7 +194,9 @@ export const ModelPricingEditorPanel = forwardRef<
         audioRatio: editData.audioRatio || '',
         audioCompletionRatio: editData.audioCompletionRatio || '',
       })
-      if (editData.billingMode === 'tiered_expr') {
+      if (editData.billingMode === 'peak') {
+        setPricingMode('peak')
+      } else if (editData.billingMode === 'tiered_expr') {
         setPricingMode('tiered_expr')
       } else if (editData.billingMode === 'per-second') {
         setPricingMode('per-second')
@@ -413,6 +421,20 @@ export const ModelPricingEditorPanel = forwardRef<
   }, [editData, laneEnabled, lanePrices, pricingMode, promptPrice, t])
 
   const validatePricingValues = useCallback(() => {
+    if (pricingMode === 'peak') {
+      const result = peakPricingSchema.safeParse(peakPricing)
+      const issue = result.success ? undefined : result.error.issues[0]
+      setPeakError(
+        result.success
+          ? ''
+          : t(
+              issue?.code === 'custom'
+                ? issue.message
+                : 'Invalid peak pricing configuration.'
+            )
+      )
+      return result.success
+    }
     if (
       pricingMode === 'per-second' &&
       toNumberOrNull(form.getValues('price')) === null
@@ -448,7 +470,7 @@ export const ModelPricingEditorPanel = forwardRef<
     }
 
     return true
-  }, [form, laneEnabled, lanePrices, pricingMode, promptPrice, t])
+  }, [form, laneEnabled, lanePrices, pricingMode, promptPrice, t, peakPricing])
 
   const buildSubmitData = useCallback(
     (values: ModelPricingFormValues) => {
@@ -469,10 +491,11 @@ export const ModelPricingEditorPanel = forwardRef<
         data.billingExpr = billingExpr
         data.requestRuleExpr = requestRuleExpr
       }
+      if (pricingMode === 'peak') data.peakPricing = peakPricing
 
       return data
     },
-    [billingExpr, pricingMode, requestRuleExpr]
+    [billingExpr, pricingMode, requestRuleExpr, peakPricing]
   )
 
   useImperativeHandle(
@@ -556,7 +579,7 @@ export const ModelPricingEditorPanel = forwardRef<
                   onValueChange={handleModeChange}
                   className='gap-4'
                 >
-                  <TabsList className='grid w-full grid-cols-4'>
+                  <TabsList className='grid h-auto w-full grid-cols-2 gap-1 group-data-horizontal/tabs:h-auto sm:grid-cols-3 xl:grid-cols-5 [&>button]:min-h-8 [&>button]:min-w-0 [&>button]:whitespace-normal'>
                     <TabsTrigger value='per-token'>
                       {t('Per-token')}
                     </TabsTrigger>
@@ -569,8 +592,25 @@ export const ModelPricingEditorPanel = forwardRef<
                     <TabsTrigger value='tiered_expr'>
                       {t('Expression')}
                     </TabsTrigger>
+                    <TabsTrigger value='peak'>{t('Peak pricing')}</TabsTrigger>
                   </TabsList>
 
+                  <TabsContent value='peak' className='min-w-0 pt-0'>
+                    <PeakPricingEditor
+                      key={editorReloadToken}
+                      value={peakPricing}
+                      onChange={(value) => {
+                        setPeakPricing(value)
+                        setPeakError('')
+                      }}
+                      modelName={watchedValues.name}
+                    />
+                    {peakError && (
+                      <p role='alert' className='text-destructive mt-3 text-sm'>
+                        {peakError}
+                      </p>
+                    )}
+                  </TabsContent>
                   <TabsContent value='per-token' className='pt-0'>
                     <FieldGroup className='gap-5'>
                       <Field>

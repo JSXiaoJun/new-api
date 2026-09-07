@@ -72,6 +72,7 @@ import {
   isPerSecondPricingModel,
   isTokenBasedModel,
 } from '../lib/model-helpers'
+import { modelForPeakTariff } from '../lib/peak-tariff'
 import { formatFixedPrice, formatGroupPrice } from '../lib/price'
 import type {
   ModelCapability,
@@ -1177,26 +1178,73 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
 
           <section className='bg-card/60 space-y-5 rounded-xl border p-4 shadow-sm'>
             <SectionTitle>{t('Pricing')}</SectionTitle>
-            <PriceSection
-              model={props.model}
-              priceRate={props.priceRate}
-              usdExchangeRate={props.usdExchangeRate}
-              tokenUnit={props.tokenUnit}
-              showRechargePrice={showRechargePrice}
-            />
-            {isDynamic && (
-              <DynamicPricingBreakdown billingExpr={props.model.billing_expr} />
+            {props.model.peak_pricing ? (
+              <div className='space-y-5'>
+                <p className='text-sm'>
+                  {t('Timezone')}: {props.model.peak_pricing.timezone}
+                </p>
+                {[
+                  {
+                    label: t('Default pricing'),
+                    tariff: props.model.peak_pricing.default,
+                  },
+                  ...props.model.peak_pricing.periods.map((period) => ({
+                    label: `${period.start} - ${period.end}`,
+                    tariff: period.tariff,
+                  })),
+                ].map((period) => {
+                  const model = modelForPeakTariff(props.model, period.tariff)
+                  return (
+                    <div key={period.label} className='space-y-3 border-t pt-4'>
+                      <h4 className='text-sm font-medium'>{period.label}</h4>
+                      <ModelBillingModeBadge model={model} />
+                      <PriceSection
+                        model={model}
+                        priceRate={props.priceRate}
+                        usdExchangeRate={props.usdExchangeRate}
+                        tokenUnit={props.tokenUnit}
+                        showRechargePrice={showRechargePrice}
+                      />
+                      <GroupPricingSection
+                        model={model}
+                        groupRatio={props.groupRatio}
+                        usableGroup={props.usableGroup}
+                        autoGroups={props.autoGroups}
+                        priceRate={props.priceRate}
+                        usdExchangeRate={props.usdExchangeRate}
+                        tokenUnit={props.tokenUnit}
+                        showRechargePrice={showRechargePrice}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <>
+                <PriceSection
+                  model={props.model}
+                  priceRate={props.priceRate}
+                  usdExchangeRate={props.usdExchangeRate}
+                  tokenUnit={props.tokenUnit}
+                  showRechargePrice={showRechargePrice}
+                />
+                {isDynamic && (
+                  <DynamicPricingBreakdown
+                    billingExpr={props.model.billing_expr}
+                  />
+                )}
+                <GroupPricingSection
+                  model={props.model}
+                  groupRatio={props.groupRatio}
+                  usableGroup={props.usableGroup}
+                  autoGroups={props.autoGroups}
+                  priceRate={props.priceRate}
+                  usdExchangeRate={props.usdExchangeRate}
+                  tokenUnit={props.tokenUnit}
+                  showRechargePrice={showRechargePrice}
+                />
+              </>
             )}
-            <GroupPricingSection
-              model={props.model}
-              groupRatio={props.groupRatio}
-              usableGroup={props.usableGroup}
-              autoGroups={props.autoGroups}
-              priceRate={props.priceRate}
-              usdExchangeRate={props.usdExchangeRate}
-              tokenUnit={props.tokenUnit}
-              showRechargePrice={showRechargePrice}
-            />
           </section>
 
           <ModelBackendDetailsSection model={props.model} />

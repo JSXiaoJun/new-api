@@ -30,6 +30,7 @@ type TokenDetails struct {
 }
 
 type QuotaInfo struct {
+	PeakPriceData *types.PriceData
 	InputDetails  TokenDetails
 	OutputDetails TokenDetails
 	ModelName     string
@@ -50,6 +51,9 @@ func hasCustomModelRatio(modelName string, currentRatio float64) bool {
 func calculateAudioBaseQuota(info QuotaInfo) decimal.Decimal {
 	if info.UsePrice {
 		modelPrice := decimal.NewFromFloat(info.ModelPrice)
+		if info.PeakPriceData != nil {
+			modelPrice = decimal.NewFromFloat(info.PeakPriceData.ModelPrice)
+		}
 		quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		return modelPrice.Mul(quotaPerUnit)
 	}
@@ -57,6 +61,11 @@ func calculateAudioBaseQuota(info QuotaInfo) decimal.Decimal {
 	completionRatio := decimal.NewFromFloat(ratio_setting.GetCompletionRatio(info.ModelName))
 	audioRatio := decimal.NewFromFloat(ratio_setting.GetAudioRatio(info.ModelName))
 	audioCompletionRatio := decimal.NewFromFloat(ratio_setting.GetAudioCompletionRatio(info.ModelName))
+	if info.PeakPriceData != nil {
+		completionRatio = decimal.NewFromFloat(info.PeakPriceData.CompletionRatio)
+		audioRatio = decimal.NewFromFloat(info.PeakPriceData.AudioRatio)
+		audioCompletionRatio = decimal.NewFromFloat(info.PeakPriceData.AudioCompletionRatio)
+	}
 
 	modelRatio := decimal.NewFromFloat(info.ModelRatio)
 
@@ -115,6 +124,9 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	audioOutTokens := usage.OutputTokenDetails.AudioTokens
 	groupRatio := relayInfo.PriceData.GroupRatioInfo.GroupRatio
 	modelRatio, _, _ := ratio_setting.GetModelRatio(modelName)
+	if relayInfo.PeakPricing != nil {
+		modelRatio = relayInfo.PriceData.ModelRatio
+	}
 
 	autoGroup, exists := common.GetContextKey(ctx, constant.ContextKeyAutoGroup)
 	if exists {
@@ -137,6 +149,9 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		GroupRatio: groupRatio,
 	}
 
+	if relayInfo.PeakPricing != nil {
+		quotaInfo.PeakPriceData = &relayInfo.PriceData
+	}
 	quota, clamp := calculateAudioQuota(quotaInfo)
 	noteQuotaClamp(relayInfo, clamp)
 	quota = ApplyBillingDiscount(relayInfo, quota)
@@ -203,6 +218,11 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	completionRatio := decimal.NewFromFloat(ratio_setting.GetCompletionRatio(modelName))
 	audioRatio := decimal.NewFromFloat(ratio_setting.GetAudioRatio(relayInfo.OriginModelName))
 	audioCompletionRatio := decimal.NewFromFloat(ratio_setting.GetAudioCompletionRatio(modelName))
+	if relayInfo.PeakPricing != nil {
+		completionRatio = decimal.NewFromFloat(relayInfo.PriceData.CompletionRatio)
+		audioRatio = decimal.NewFromFloat(relayInfo.PriceData.AudioRatio)
+		audioCompletionRatio = decimal.NewFromFloat(relayInfo.PriceData.AudioCompletionRatio)
+	}
 
 	modelRatio := relayInfo.PriceData.ModelRatio
 	groupRatio := relayInfo.PriceData.GroupRatioInfo.GroupRatio
@@ -224,6 +244,9 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		GroupRatio: groupRatio,
 	}
 
+	if relayInfo.PeakPricing != nil {
+		quotaInfo.PeakPriceData = &relayInfo.PriceData
+	}
 	quota, clamp := calculateAudioQuota(quotaInfo)
 	noteQuotaClamp(relayInfo, clamp)
 	if tieredOk {
@@ -348,6 +371,11 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	completionRatio := decimal.NewFromFloat(ratio_setting.GetCompletionRatio(relayInfo.OriginModelName))
 	audioRatio := decimal.NewFromFloat(ratio_setting.GetAudioRatio(relayInfo.OriginModelName))
 	audioCompletionRatio := decimal.NewFromFloat(ratio_setting.GetAudioCompletionRatio(relayInfo.OriginModelName))
+	if relayInfo.PeakPricing != nil {
+		completionRatio = decimal.NewFromFloat(relayInfo.PriceData.CompletionRatio)
+		audioRatio = decimal.NewFromFloat(relayInfo.PriceData.AudioRatio)
+		audioCompletionRatio = decimal.NewFromFloat(relayInfo.PriceData.AudioCompletionRatio)
+	}
 
 	modelRatio := relayInfo.PriceData.ModelRatio
 	groupRatio := relayInfo.PriceData.GroupRatioInfo.GroupRatio
@@ -369,6 +397,9 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		GroupRatio: groupRatio,
 	}
 
+	if relayInfo.PeakPricing != nil {
+		quotaInfo.PeakPriceData = &relayInfo.PriceData
+	}
 	quota, clamp := calculateAudioQuota(quotaInfo)
 	noteQuotaClamp(relayInfo, clamp)
 	if tieredOk {
