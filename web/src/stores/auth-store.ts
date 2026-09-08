@@ -51,6 +51,7 @@ export interface AuthUser {
   language?: string
   setting?: Record<string, unknown> | string
   stripe_customer?: string
+  has_paid?: boolean
   sidebar_modules?: string
   permissions?: UserPermissions
 }

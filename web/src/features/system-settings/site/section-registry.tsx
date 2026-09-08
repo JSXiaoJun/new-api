@@ -40,6 +40,7 @@ const SITE_SECTIONS = [
           Logo: settings.Logo,
           Footer: settings.Footer,
           About: settings.About,
+          AfterSales: settings.AfterSales,
           HomePageContent: settings.HomePageContent,
           ServerAddress: settings.ServerAddress,
           legal: {

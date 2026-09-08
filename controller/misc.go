@@ -109,8 +109,8 @@ func GetStatus(c *gin.Context) {
 		"faq_enabled":           cs.FAQEnabled,
 
 		// 模块管理配置
-		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
-		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
+		"HeaderNavModules":          common.OptionMap["HeaderNavModules"],
+		"SidebarModulesAdmin":       common.OptionMap["SidebarModulesAdmin"],
 		"first_token_display_rules": common.OptionMap[setting.FirstTokenDisplayRulesOptionKey],
 
 		"oidc_enabled":                system_setting.GetOIDCSettings().Enabled,
@@ -197,6 +197,29 @@ func GetAbout(c *gin.Context) {
 		"data":    common.OptionMap["About"],
 	})
 	return
+}
+
+func GetAfterSales(c *gin.Context) {
+	hasPaid, err := model.HasSuccessfulTopUp(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !hasPaid {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "after-sales access requires a successful top-up",
+		})
+		return
+	}
+
+	common.OptionMapRWMutex.RLock()
+	defer common.OptionMapRWMutex.RUnlock()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    common.OptionMap["AfterSales"],
+	})
 }
 
 func GetUserAgreement(c *gin.Context) {

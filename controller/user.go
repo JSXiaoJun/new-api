@@ -509,6 +509,10 @@ func buildSelfUserData(user *model.User) map[string]interface{} {
 	userSetting := user.GetSetting()
 	permissions := calculateUserPermissions(user.Role)
 	permissions["admin_permissions"] = authz.Capabilities(user.Id, user.Role)
+	hasPaid, err := model.HasSuccessfulTopUp(user.Id)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to load after-sales entitlement for user %d: %v", user.Id, err))
+	}
 	return map[string]interface{}{
 		"id":                user.Id,
 		"username":          user.Username,
@@ -533,6 +537,7 @@ func buildSelfUserData(user *model.User) map[string]interface{} {
 		"linux_do_id":       user.LinuxDOId,
 		"setting":           user.Setting,
 		"stripe_customer":   user.StripeCustomer,
+		"has_paid":          hasPaid,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,
 	}

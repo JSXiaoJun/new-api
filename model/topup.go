@@ -62,6 +62,23 @@ func (topUp *TopUp) Insert() error {
 	return err
 }
 
+// HasSuccessfulTopUp reports whether the user has ever completed a recharge.
+// It intentionally has no time-window limit because after-sales access is a
+// permanent entitlement once a payment has succeeded.
+func HasSuccessfulTopUp(userId int) (bool, error) {
+	if userId <= 0 {
+		return false, nil
+	}
+	var topUp TopUp
+	err := DB.Select("id").
+		Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).
+		Take(&topUp).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func topUpQuotaMaxCurrent(creditedQuota int) (int, error) {
 	if creditedQuota <= 0 || creditedQuota >= common.MaxQuota {
 		return 0, ErrInvalidTopUpQuota

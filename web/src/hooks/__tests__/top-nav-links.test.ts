@@ -32,6 +32,7 @@ describe('top navigation links', () => {
       infiniteCanvasLink: 'https://canvas.example.com',
       isAuthed: false,
       isAdmin: false,
+      hasPaid: false,
     })
 
     const galleryIndex = links.findIndex((link) => link.title === 'Gallery')
@@ -51,11 +52,44 @@ describe('top navigation links', () => {
       infiniteCanvasLink: '',
       isAuthed: false,
       isAdmin: false,
+      hasPaid: false,
     })
 
     assert.equal(
       links.some((link) => link.title === 'Infinite Canvas'),
       false
     )
+  })
+
+  test('shows the gold after-sales link after About only to paid users', () => {
+    const unpaidLinks = buildTopNavLinks({
+      t: (key) => key,
+      modules: parseHeaderNavModules(undefined),
+      galleryLink: '',
+      infiniteCanvasLink: '',
+      isAuthed: true,
+      isAdmin: false,
+      hasPaid: false,
+    })
+    assert.equal(
+      unpaidLinks.some((link) => link.href === '/after-sales'),
+      false
+    )
+
+    const paidLinks = buildTopNavLinks({
+      t: (key) => key,
+      modules: parseHeaderNavModules(undefined),
+      galleryLink: '',
+      infiniteCanvasLink: '',
+      isAuthed: true,
+      isAdmin: false,
+      hasPaid: true,
+    })
+    const aboutIndex = paidLinks.findIndex((link) => link.href === '/about')
+    assert.deepEqual(paidLinks[aboutIndex + 1], {
+      title: 'After-sales',
+      href: '/after-sales',
+      accent: 'gold',
+    })
   })
 })

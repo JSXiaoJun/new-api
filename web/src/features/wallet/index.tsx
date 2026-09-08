@@ -23,6 +23,7 @@ import { SectionPageLayout } from '@/components/layout'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
@@ -115,7 +116,12 @@ export function Wallet(props: WalletProps) {
       setUserLoading(true)
       const response = await getSelf()
       if (response.success && response.data) {
-        setUser(response.data as UserWalletData)
+        const userData = response.data as UserWalletData
+        setUser(userData)
+        const auth = useAuthStore.getState().auth
+        if (auth.user) {
+          auth.setUser({ ...auth.user, has_paid: userData.has_paid })
+        }
       }
     } catch (error) {
       // eslint-disable-next-line no-console

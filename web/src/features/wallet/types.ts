@@ -242,6 +242,8 @@ export interface UserWalletData {
   aff_count: number
   /** User group */
   group: string
+  /** Whether the user has completed at least one top-up */
+  has_paid: boolean
 }
 
 /**

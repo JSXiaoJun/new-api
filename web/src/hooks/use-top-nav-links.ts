@@ -33,6 +33,7 @@ export type TopNavLink = {
   disabled?: boolean
   requiresAuth?: boolean
   external?: boolean
+  accent?: 'gold'
 }
 
 type BuildTopNavLinksOptions = {
@@ -43,6 +44,7 @@ type BuildTopNavLinksOptions = {
   infiniteCanvasLink: string
   isAuthed: boolean
   isAdmin: boolean
+  hasPaid: boolean
 }
 
 export function buildTopNavLinks(
@@ -115,6 +117,14 @@ export function buildTopNavLinks(
     links.push({ title: options.t('About'), href: '/about' })
   }
 
+  if (options.hasPaid) {
+    links.push({
+      title: options.t('After-sales'),
+      href: '/after-sales',
+      accent: 'gold',
+    })
+  }
+
   return links
 }
 
@@ -158,5 +168,6 @@ export function useTopNavLinks(): TopNavLink[] {
     infiniteCanvasLink,
     isAuthed,
     isAdmin,
+    hasPaid: auth?.user?.has_paid === true,
   })
 }
