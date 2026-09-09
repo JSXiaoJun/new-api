@@ -64,7 +64,7 @@ func OverrideUserQuota(id, quota int, meta QuotaCreditMeta) (int, error) {
 		return 0, errors.New("invalid quota")
 	}
 	var previous int
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := withWalletTransaction(id, func(tx *gorm.DB) error {
 		var user User
 		if err := lockForUpdate(tx).Select("id", "quota").First(&user, id).Error; err != nil {
 			return err
@@ -80,9 +80,6 @@ func OverrideUserQuota(id, quota int, meta QuotaCreditMeta) (int, error) {
 	})
 	if err != nil {
 		return 0, err
-	}
-	if err := cacheIncrUserQuota(id, int64(quota)-int64(previous)); err != nil {
-		common.SysLog("failed to sync quota override to user cache: " + err.Error())
 	}
 	return previous, nil
 }

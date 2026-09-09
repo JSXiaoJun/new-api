@@ -93,6 +93,8 @@ type User struct {
 	VerificationCode string                     `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
 	AccessToken      *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
 	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
+	WalletEpoch      string                     `json:"-" gorm:"type:varchar(64)"`
+	WalletSequence   int64                      `json:"-" gorm:"default:0"`
 	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
 	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
@@ -552,44 +554,37 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(common.QuotaFromFloat(common.QuotaPerUnit)))
 	}
 
-	// 开始数据库事务
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer tx.Rollback() // 确保在函数退出时事务能回滚
+	err := withWalletTransaction(user.Id, func(tx *gorm.DB) error {
+		err := lockForUpdate(tx).First(user, user.Id).Error
+		if err != nil {
+			return err
+		}
 
-	// 加锁查询用户以确保数据一致性
-	err := lockForUpdate(tx).First(user, user.Id).Error
+		// 再次检查用户的AffQuota是否足够
+		if user.AffQuota < quota {
+			return errors.New("邀请额度不足！")
+		}
+		if quota <= 0 || quota > common.MaxQuota || user.Quota > common.MaxQuota-quota {
+			return errors.New("quota limit exceeded")
+		}
+
+		// 更新用户额度
+		user.AffQuota -= quota
+		user.Quota += quota
+
+		// 保存用户状态
+		if err := tx.Save(user).Error; err != nil {
+			return err
+		}
+		if err := RecordQuotaCredit(tx, QuotaCredit{UserId: user.Id, Delta: int64(quota), Source: "invitation_transfer"}); err != nil {
+			return err
+		}
+
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-
-	// 再次检查用户的AffQuota是否足够
-	if user.AffQuota < quota {
-		return errors.New("邀请额度不足！")
-	}
-	if quota <= 0 || quota > common.MaxQuota || user.Quota > common.MaxQuota-quota {
-		return errors.New("quota limit exceeded")
-	}
-
-	// 更新用户额度
-	user.AffQuota -= quota
-	user.Quota += quota
-
-	// 保存用户状态
-	if err := tx.Save(user).Error; err != nil {
-		return err
-	}
-	if err := RecordQuotaCredit(tx, QuotaCredit{UserId: user.Id, Delta: int64(quota), Source: "invitation_transfer"}); err != nil {
-		return err
-	}
-
-	// 提交事务
-	if err := tx.Commit().Error; err != nil {
-		return err
-	}
-	syncCreditUserQuotaCache(user.Id, quota, "invitation transfer")
 	RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("邀请奖励转入钱包，获得额度 %s", logger.LogQuota(quota)))
 	return nil
 }
@@ -820,6 +815,8 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	if err = tx.Model(&current).Omit(
 		"access_token",
 		"quota",
+		"wallet_epoch",
+		"wallet_sequence",
 		"used_quota",
 		"request_count",
 		"aff_count",
@@ -1203,10 +1200,11 @@ func ValidateAccessToken(token string) (*User, error) {
 	return user, nil
 }
 
-// GetUserQuota gets quota from Redis first, falls back to DB if needed
+// GetUserQuota reads the wallet journal; fromDB explicitly requests the last
+// committed SQL snapshot and must not be used to authorize new spending.
 func GetUserQuota(id int, fromDB bool) (quota int, err error) {
-	if !fromDB && common.RedisEnabled {
-		return getUserQuotaCache(id)
+	if !fromDB {
+		return getWalletQuota(id)
 	}
 	err = DB.Model(&User{}).Where("id = ?", id).Select("quota").Find(&quota).Error
 	if err != nil {
@@ -1292,9 +1290,8 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
-// The former db flag is retained for call-site compatibility. Wallet mutations
-// are always durable; only token and usage accounting can still be batched.
-func IncreaseUserQuota(id int, quota int, _ bool, details ...QuotaCreditMeta) (err error) {
+// db bypasses batching for administrator credits and other immediate mutations.
+func IncreaseUserQuota(id int, quota int, db bool, details ...QuotaCreditMeta) (err error) {
 	if quota < 0 || quota > common.MaxQuota {
 		return errors.New("invalid quota")
 	}
@@ -1305,9 +1302,11 @@ func IncreaseUserQuota(id int, quota int, _ bool, details ...QuotaCreditMeta) (e
 	if len(details) > 0 {
 		meta = details[0]
 	}
-	// Credits must not disappear into an in-memory net debit. Persist each
-	// increase and its evidence atomically, including when batching is enabled.
-	err = DB.Transaction(func(tx *gorm.DB) error {
+	if !db && common.RedisEnabled {
+		_, err := journalWalletDelta(id, quota, false, meta)
+		return err
+	}
+	err = withWalletTransaction(id, func(tx *gorm.DB) error {
 		result := tx.Model(&User{}).Where("id = ? AND quota <= ?", id, common.MaxQuota-quota).
 			Update("quota", gorm.Expr("quota + ?", quota))
 		if result.Error != nil {
@@ -1324,29 +1323,31 @@ func IncreaseUserQuota(id int, quota int, _ bool, details ...QuotaCreditMeta) (e
 	if err != nil {
 		return err
 	}
-	syncCreditUserQuotaCache(id, quota, "wallet")
 	return nil
 }
 
-func DecreaseUserQuota(id int, quota int, _ bool) (err error) {
+func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 || quota > common.MaxQuota {
 		return errors.New("invalid quota")
 	}
 	if quota == 0 {
 		return nil
 	}
-	result := DB.Model(&User{}).Where("id = ? AND quota >= ?", id, common.MinQuota+quota).
-		Update("quota", gorm.Expr("quota - ?", quota))
-	if result.Error != nil {
-		return result.Error
+	if !db && common.RedisEnabled {
+		_, err := journalWalletDelta(id, -quota, false, QuotaCreditMeta{})
+		return err
 	}
-	if result.RowsAffected != 1 {
-		return errors.New("user not found or quota limit exceeded")
-	}
-	if err := cacheDecrUserQuota(id, int64(quota)); err != nil {
-		common.SysLog("failed to decrease user quota cache: " + err.Error())
-	}
-	return nil
+	return withWalletTransaction(id, func(tx *gorm.DB) error {
+		result := tx.Model(&User{}).Where("id = ? AND quota >= ?", id, common.MinQuota+quota).
+			Update("quota", gorm.Expr("quota - ?", quota))
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return errors.New("user not found or quota limit exceeded")
+		}
+		return nil
+	})
 }
 
 func DeltaUpdateUserQuota(id int, delta int) (err error) {
@@ -1414,21 +1415,26 @@ func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
 	//}
 }
 
-func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int) {
-	if quota == 0 && usedQuota == 0 && requestCount == 0 {
-		return
+func updateUserUsage(id int, usedQuota int, requestCount int) error {
+	if usedQuota == 0 && requestCount == 0 {
+		return nil
 	}
-
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
-		map[string]interface{}{
-			"quota":         gorm.Expr("quota + ?", quota),
-			"used_quota":    gorm.Expr("used_quota + ?", usedQuota),
-			"request_count": gorm.Expr("request_count + ?", requestCount),
-		},
-	).Error
-	if err != nil {
-		common.SysLog("failed to batch update user quota, used quota and request count: " + err.Error())
-	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&User{}).Where("id = ?", id).
+			Updates(map[string]interface{}{
+				"used_quota":    gorm.Expr("used_quota + ?", usedQuota),
+				"request_count": gorm.Expr("request_count + ?", requestCount),
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			if err := tx.Select("id").First(&User{}, id).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // GetUsernameById gets username from Redis first, falls back to DB if needed

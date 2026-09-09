@@ -156,8 +156,9 @@ func main() {
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true
 		common.SysLog("batch update enabled with interval " + strconv.Itoa(common.BatchUpdateInterval) + "s")
-		model.InitBatchUpdater()
 	}
+	// Redis journals also need recovery when normal batching is disabled.
+	model.InitBatchUpdater()
 
 	if os.Getenv("ENABLE_PPROF") == "true" {
 		gopool.Go(func() {

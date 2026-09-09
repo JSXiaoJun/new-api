@@ -232,14 +232,14 @@ func TestRechargeEpayKeepsRedisAndDatabaseCreditInSync(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	assert.Equal(t, 17, getUserQuotaForPaymentGuardTest(t, user.Id))
-	cached, err := cacheGetUserBase(user.Id)
+	cached, err := GetUserCache(user.Id)
 	require.NoError(t, err)
 	assert.Equal(t, 17, cached.Quota)
 
 	alreadyDone, err = RechargeEpay(order.TradeNo, "alipay", "127.0.0.1")
 	require.NoError(t, err)
 	assert.True(t, alreadyDone)
-	cached, err = cacheGetUserBase(user.Id)
+	cached, err = GetUserCache(user.Id)
 	require.NoError(t, err)
 	assert.Equal(t, 17, cached.Quota)
 }

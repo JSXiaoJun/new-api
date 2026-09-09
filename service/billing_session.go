@@ -45,6 +45,9 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	if actualQuota < 0 {
 		return fmt.Errorf("actual quota cannot be negative: %d", actualQuota)
 	}
+	if s.refunded {
+		return errors.New("billing session already refunded")
+	}
 	if s.settled {
 		return nil
 	}
@@ -53,10 +56,10 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		s.settled = true
 		return nil
 	}
-	// A zero estimate has not reserved any token quota. For a later positive
-	// settlement, reserve the actual token quota before touching the funding
-	// source so an exhausted token cannot leave the user's subscription charged.
-	if s.preConsumedQuota == 0 && delta > 0 && !s.relayInfo.IsPlayground {
+	// Preserve the subscription zero-estimate contract. Wallet settlement below
+	// always charges completed usage, even if the token was exhausted/deleted
+	// after admission (including trusted requests with no reservation).
+	if s.funding.Source() == BillingSourceSubscription && s.preConsumedQuota == 0 && delta > 0 && !s.relayInfo.IsPlayground {
 		if !s.relayInfo.TokenUnlimited {
 			token, err := model.GetTokenById(s.relayInfo.TokenId)
 			if err != nil {

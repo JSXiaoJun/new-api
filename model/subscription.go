@@ -502,7 +502,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 			return nil, errors.New("已达到该套餐购买上限")
 		}
 	}
-	nowUnix := GetDBTimestamp()
+	nowUnix := getDBTimestampTx(tx)
 	now := time.Unix(nowUnix, 0)
 	endUnix, err := calcPlanEndTime(now, plan)
 	if err != nil {
@@ -762,7 +762,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 	var logMoney float64
 	var chargedQuota int
 	var upgradeGroup string
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := withWalletTransaction(userId, func(tx *gorm.DB) error {
 		plan, err := getSubscriptionPlanByIdTx(tx, planId)
 		if err != nil {
 			return err
@@ -831,11 +831,6 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		return err
 	}
 
-	if chargedQuota > 0 {
-		if err := cacheDecrUserQuota(userId, int64(chargedQuota)); err != nil {
-			common.SysLog("failed to decrease user quota cache after subscription balance purchase: " + err.Error())
-		}
-	}
 	if upgradeGroup != "" {
 		refreshSubscriptionUserGroupCache(userId, "subscription balance purchase")
 	}

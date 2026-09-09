@@ -102,7 +102,7 @@ func TestTryReserveQuotaWithoutRedis(t *testing.T) {
 	assert.Equal(t, 55, getTokenFromDB(t, token.Id).RemainQuota)
 }
 
-func TestRedisBatchReservePersistsWalletButQueuesTokenAccounting(t *testing.T) {
+func TestRedisBatchReserveQueuesWalletAndTokenAccounting(t *testing.T) {
 	truncateTables(t)
 	resetBatchUpdateTestState(t)
 	useUserCacheMiniRedis(t)
@@ -112,7 +112,7 @@ func TestRedisBatchReservePersistsWalletButQueuesTokenAccounting(t *testing.T) {
 	reserved, err := TryReserveUserQuota(user.Id, 8)
 	require.NoError(t, err)
 	assert.True(t, reserved)
-	assert.Equal(t, 2, getUserQuotaFromDB(t, user.Id), "wallet debit must persist before a refund can commit")
+	assert.Equal(t, 10, getUserQuotaFromDB(t, user.Id), "wallet debit stays queued until the batch flush")
 
 	reserved, err = TryReserveUserQuota(user.Id, 3)
 	require.NoError(t, err)
@@ -137,7 +137,7 @@ func TestRedisBatchReservePersistsWalletButQueuesTokenAccounting(t *testing.T) {
 	assert.Equal(t, 7, reloadedToken.UsedQuota)
 }
 
-func TestReserveFallsBackToDatabaseWhenRedisIsUnavailable(t *testing.T) {
+func TestReserveFailsClosedWhenRedisIsUnavailable(t *testing.T) {
 	truncateTables(t)
 	resetBatchUpdateTestState(t)
 	server := useUserCacheMiniRedis(t)
@@ -146,16 +146,16 @@ func TestReserveFallsBackToDatabaseWhenRedisIsUnavailable(t *testing.T) {
 	require.NoError(t, populateUserCache(user))
 	server.Close()
 
-	// Redis 故障时降级为数据库条件更新：服务保持可用且不会超扣。
+	// A stale SQL balance cannot authorize spending during a Redis outage.
 	reserved, err := TryReserveUserQuota(user.Id, 5)
-	require.NoError(t, err)
-	assert.True(t, reserved)
-	assert.Equal(t, 15, getUserQuotaFromDB(t, user.Id))
+	require.Error(t, err)
+	assert.False(t, reserved)
+	assert.Equal(t, 20, getUserQuotaFromDB(t, user.Id))
 
 	reserved, err = TryReserveUserQuota(user.Id, 16)
-	require.NoError(t, err)
+	require.Error(t, err)
 	assert.False(t, reserved)
-	assert.Equal(t, 15, getUserQuotaFromDB(t, user.Id))
+	assert.Equal(t, 20, getUserQuotaFromDB(t, user.Id))
 }
 
 func TestSynchronousReserveCompensatesCacheWhenPersistenceFails(t *testing.T) {
