@@ -175,7 +175,18 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if result.RowsAffected == 0 {
 			return errors.New("该兑换码已被使用")
 		}
-		return tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
+		if redemption.Quota == 0 {
+			// Preserve zero-value codes without relying on changed-row counts.
+			return tx.Select("id").First(&User{}, userId).Error
+		}
+		result = tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota))
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return RecordQuotaCredit(tx, QuotaCredit{UserId: userId, Delta: int64(redemption.Quota), Source: "redemption", Reference: strconv.Itoa(redemption.Id)})
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())

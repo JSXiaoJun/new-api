@@ -29,6 +29,9 @@ import type {
   ManageUserAction,
   ManageUserQuotaPayload,
   ApiResponse,
+  UserQuotaLogsPage,
+  UserQuotaCreditsPage,
+  UserQuotaHistoryView,
 } from './types'
 
 // ============================================================================
@@ -87,6 +90,32 @@ export async function searchUsers(
  */
 export async function getUser(id: number): Promise<ApiResponse<User>> {
   const res = await api.get(`/api/user/${id}`)
+  return res.data
+}
+
+export function getUserQuotaLogs(
+  userId: number,
+  params: { p: number; page_size: number; view?: 'credits' },
+  signal?: AbortSignal
+): Promise<ApiResponse<UserQuotaCreditsPage>>
+export function getUserQuotaLogs(
+  userId: number,
+  params: { p: number; page_size: number; view: 'legacy' },
+  signal?: AbortSignal
+): Promise<ApiResponse<UserQuotaLogsPage>>
+export async function getUserQuotaLogs(
+  userId: number,
+  params: { p: number; page_size: number; view?: UserQuotaHistoryView },
+  signal?: AbortSignal
+): Promise<ApiResponse<UserQuotaCreditsPage | UserQuotaLogsPage>> {
+  const res = await api.get(`/api/user/${userId}/quota/log`, {
+    params: { ...params, view: params.view ?? 'credits' },
+    signal,
+    // React Query owns cancellation and deduplication for this request.
+    disableDuplicate: true,
+    skipErrorHandler: true,
+    skipBusinessError: true,
+  })
   return res.data
 }
 

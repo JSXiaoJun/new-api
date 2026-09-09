@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
@@ -25,6 +26,12 @@ import { UsersMutateDrawer } from './components/users-mutate-drawer'
 import { UsersPrimaryButtons } from './components/users-primary-buttons'
 import { UsersProvider, useUsers } from './components/users-provider'
 import { UsersTable } from './components/users-table'
+
+const UserQuotaHistoryDialog = lazy(() =>
+  import('./components/dialogs/user-quota-history-dialog').then((module) => ({
+    default: module.UserQuotaHistoryDialog,
+  }))
+)
 
 function UsersContent() {
   const { t } = useTranslation()
@@ -48,6 +55,16 @@ function UsersContent() {
         currentRow={open === 'update' ? currentRow || undefined : undefined}
       />
       <UsersDeleteDialog />
+      {open === 'quota-history' && currentRow && (
+        <Suspense fallback={null}>
+          <UserQuotaHistoryDialog
+            key={currentRow.id}
+            user={currentRow}
+            open
+            onOpenChange={(isOpen) => !isOpen && setOpen(null)}
+          />
+        </Suspense>
+      )}
     </>
   )
 }

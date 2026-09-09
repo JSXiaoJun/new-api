@@ -42,6 +42,7 @@ func TestMain(m *testing.M) {
 	if err := db.AutoMigrate(
 		&model.Task{},
 		&model.User{},
+		&model.QuotaCredit{},
 		&model.Token{},
 		&model.Log{},
 		&model.Channel{},
@@ -68,6 +69,7 @@ func truncate(t *testing.T) {
 	t.Cleanup(func() {
 		model.DB.Exec("DELETE FROM tasks")
 		model.DB.Exec("DELETE FROM users")
+		require.NoError(t, model.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.QuotaCredit{}).Error)
 		model.DB.Exec("DELETE FROM tokens")
 		model.DB.Exec("DELETE FROM logs")
 		model.DB.Exec("DELETE FROM channels")
@@ -497,6 +499,12 @@ func TestMidjourneyRefundRestoresEveryAccountingElementOnBillingChannel(t *testi
 
 	assert.True(t, RefundMidjourneyQuota(ctx, task, "duplicate poll"))
 	assert.Equal(t, int64(1), countLogs(t))
+	var credits []model.QuotaCredit
+	require.NoError(t, model.DB.Where("user_id = ?", userID).Find(&credits).Error)
+	require.Len(t, credits, 1)
+	assert.EqualValues(t, chargedQuota, credits[0].Delta)
+	assert.Equal(t, "midjourney_refund", credits[0].Source)
+	assert.Equal(t, task.MjId, credits[0].Reference)
 }
 
 func TestSettleMidjourneyTaskBillingFundingFailureClearsMarkers(t *testing.T) {
@@ -704,6 +712,12 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	assert.Equal(t, "test-model", log.ModelName)
 	assert.Zero(t, task.Quota)
 	assert.Zero(t, getTaskQuota(t, task.ID))
+	var credits []model.QuotaCredit
+	require.NoError(t, model.DB.Where("user_id = ?", userID).Find(&credits).Error)
+	require.Len(t, credits, 1)
+	assert.EqualValues(t, preConsumed, credits[0].Delta)
+	assert.Equal(t, "task_refund", credits[0].Source)
+	assert.Equal(t, task.TaskID, credits[0].Reference)
 }
 
 func TestRefundTaskQuota_Subscription(t *testing.T) {
@@ -741,6 +755,12 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 	assert.Zero(t, getTaskQuota(t, task.ID))
+	var credits int64
+	require.NoError(t, model.DB.Model(&model.QuotaCredit{}).Where("user_id = ?", userID).Count(&credits).Error)
+	assert.Zero(t, credits)
+	var other map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.Equal(t, BillingSourceSubscription, other["billing_source"])
 }
 
 func TestRefundTaskQuota_ZeroQuota(t *testing.T) {
@@ -812,6 +832,9 @@ func TestRefundTaskQuota_FundingFailureKeepsAccountingAndPendingMarker(t *testin
 	assert.Equal(t, 1, requestCount)
 	assert.Equal(t, int64(preConsumed), getChannelUsedQuota(t, channelID))
 	assert.Equal(t, int64(0), countLogs(t))
+	var credits int64
+	require.NoError(t, model.DB.Model(&model.QuotaCredit{}).Where("user_id = ?", userID).Count(&credits).Error)
+	assert.Zero(t, credits)
 }
 
 // ===========================================================================
@@ -894,6 +917,12 @@ func TestRecalculate_NegativeDelta(t *testing.T) {
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 	assert.Equal(t, preConsumed-actualQuota, log.Quota)
+	var credits []model.QuotaCredit
+	require.NoError(t, model.DB.Where("user_id = ?", userID).Find(&credits).Error)
+	require.Len(t, credits, 1)
+	assert.EqualValues(t, preConsumed-actualQuota, credits[0].Delta)
+	assert.Equal(t, "task_settlement_refund", credits[0].Source)
+	assert.Equal(t, task.TaskID, credits[0].Reference)
 }
 
 func TestRecalculate_ZeroDelta(t *testing.T) {

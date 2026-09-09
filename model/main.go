@@ -72,7 +72,12 @@ func createRootAccountIfNeed() error {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		DB.Create(&rootUser)
+		return DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(&rootUser).Error; err != nil {
+				return err
+			}
+			return RecordQuotaCredit(tx, QuotaCredit{UserId: rootUser.Id, Delta: int64(rootUser.Quota), Source: "initial_quota"})
+		})
 	}
 	return nil
 }
@@ -262,6 +267,7 @@ func migrateDB() error {
 		&Channel{},
 		&Token{},
 		&User{},
+		&QuotaCredit{},
 		&UserSession{},
 		&AuthFlow{},
 		&ExternalIdentityClaim{},
@@ -326,6 +332,7 @@ func migrateDBFast() error {
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
+		{&QuotaCredit{}, "QuotaCredit"},
 		{&UserSession{}, "UserSession"},
 		{&AuthFlow{}, "AuthFlow"},
 		{&ExternalIdentityClaim{}, "ExternalIdentityClaim"},

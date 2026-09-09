@@ -525,7 +525,9 @@ func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 		if quota > 0 {
 			err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
 		} else {
-			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
+			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false, model.QuotaCreditMeta{
+				Source: "wallet_settlement_refund", RequestId: relayInfo.RequestId,
+			})
 		}
 		if err != nil {
 			return result, err

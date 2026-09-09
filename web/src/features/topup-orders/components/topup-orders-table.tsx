@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { DataTablePage, useDataTable } from '@/components/data-table'
+import { Input } from '@/components/ui/input'
 import { useMediaQuery } from '@/hooks'
 
 import { getTopUpOrders } from '../api'
@@ -34,6 +35,13 @@ export function TopUpOrdersTable() {
   const columns = useTopUpOrdersColumns()
   const isMobile = useMediaQuery('(max-width: 640px)')
   const [globalFilter, setGlobalFilter] = useState('')
+  const [userIdFilter, setUserIdFilter] = useState('')
+  const userId = userIdFilter.trim()
+  const isUserIdValid =
+    userId === '' ||
+    (/^\d+$/.test(userId) &&
+      Number.isSafeInteger(Number(userId)) &&
+      Number(userId) > 0)
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: isMobile ? 10 : 20,
@@ -52,12 +60,15 @@ export function TopUpOrdersTable() {
       pagination.pageIndex + 1,
       pagination.pageSize,
       globalFilter,
+      userId,
     ],
+    enabled: isUserIdValid,
     queryFn: async () => {
       const result = await getTopUpOrders({
         p: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
         keyword: globalFilter,
+        user_id: userId === '' ? undefined : Number(userId),
       })
       if (!result.success) {
         toast.error(result.message || t('Failed to load recharge orders'))
@@ -68,7 +79,8 @@ export function TopUpOrdersTable() {
         total: result.data?.total ?? 0,
       }
     },
-    placeholderData: (previousData) => previousData,
+    placeholderData: (previousData) =>
+      isUserIdValid ? previousData : undefined,
   })
 
   const { table } = useDataTable<TopUpOrder>({
@@ -96,6 +108,39 @@ export function TopUpOrdersTable() {
       toolbarProps={{
         searchPlaceholder: t('Search by order number...'),
         searchDebounceMs: 500,
+        additionalSearch: (
+          <div className='w-full sm:w-[180px]'>
+            <Input
+              aria-label={t('User ID')}
+              aria-invalid={!isUserIdValid}
+              aria-describedby={
+                isUserIdValid ? undefined : 'topup-user-id-error'
+              }
+              inputMode='numeric'
+              placeholder={t('Search by user ID...')}
+              value={userIdFilter}
+              onChange={(event) => {
+                setUserIdFilter(event.target.value)
+                setPagination((current) => ({ ...current, pageIndex: 0 }))
+              }}
+              className='w-full'
+            />
+            {!isUserIdValid && (
+              <p
+                id='topup-user-id-error'
+                role='alert'
+                className='text-destructive mt-1 text-xs'
+              >
+                {t('Enter a valid user ID')}
+              </p>
+            )}
+          </div>
+        ),
+        hasAdditionalFilters: userIdFilter !== '',
+        onReset: () => {
+          setUserIdFilter('')
+          setPagination((current) => ({ ...current, pageIndex: 0 }))
+        },
       }}
     />
   )

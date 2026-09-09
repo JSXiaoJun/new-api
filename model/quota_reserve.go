@@ -103,13 +103,9 @@ func cacheApplyTokenQuotaDelta(id int, key string, delta int64) (cacheQuotaResul
 	return quotaResultFromLua(result, err)
 }
 
-// persistUserQuotaDelta 把已在缓存侧预扣成功的增量落库；批量模式下入队，
-// 直写模式下要求行存在（用户已删除时报错，交由调用方补偿缓存）。
+// Persist wallet debits before accepting a request: their refunds are committed
+// with audit records, so leaving the debit in memory could mint quota on restart.
 func persistUserQuotaDelta(id int, delta int) error {
-	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, delta)
-		return nil
-	}
 	result := DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota + ?", delta))
 	if result.Error != nil {
 		return result.Error
@@ -160,7 +156,7 @@ func reserveTokenQuotaDB(id int, quota int) (bool, error) {
 }
 
 // TryReserveUserQuota atomically checks and deducts a user's wallet quota.
-// 缓存命中时以缓存余额为准（避免批量模式下过期的数据库余额放大并发超扣）；
+// 缓存命中时以缓存余额为准；钱包变更实时落库，令牌和用量统计仍可批量更新。
 // Redis 异常或水合失败时降级为数据库条件更新，保证服务可用。
 func TryReserveUserQuota(id int, quota int) (bool, error) {
 	if quota < 0 {

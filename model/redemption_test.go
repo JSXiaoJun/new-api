@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strconv"
 	"sync"
 	"testing"
 
@@ -102,6 +103,7 @@ func TestSearchRedemptionsFiltersAndPaginates(t *testing.T) {
 
 func setupRedeemFixture(t *testing.T, quota int) (userId int, key string) {
 	t.Helper()
+	truncateTables(t)
 	require.NoError(t, DB.AutoMigrate(&Redemption{}))
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
 	t.Cleanup(func() {
@@ -146,6 +148,12 @@ func TestRedeemCreditsQuotaExactlyOnce(t *testing.T) {
 	require.Error(t, err)
 	require.NoError(t, DB.First(&user, "id = ?", userId).Error)
 	assert.Equal(t, 500, user.Quota)
+	var credits []QuotaCredit
+	require.NoError(t, DB.Where("user_id = ?", userId).Find(&credits).Error)
+	require.Len(t, credits, 1)
+	assert.Equal(t, int64(500), credits[0].Delta)
+	assert.Equal(t, "redemption", credits[0].Source)
+	assert.Equal(t, strconv.Itoa(redemption.Id), credits[0].Reference)
 }
 
 // Exactly one of several concurrent redeems of the same code may win, and

@@ -102,7 +102,7 @@ func TestTryReserveQuotaWithoutRedis(t *testing.T) {
 	assert.Equal(t, 55, getTokenFromDB(t, token.Id).RemainQuota)
 }
 
-func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
+func TestRedisBatchReservePersistsWalletButQueuesTokenAccounting(t *testing.T) {
 	truncateTables(t)
 	resetBatchUpdateTestState(t)
 	useUserCacheMiniRedis(t)
@@ -112,7 +112,7 @@ func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
 	reserved, err := TryReserveUserQuota(user.Id, 8)
 	require.NoError(t, err)
 	assert.True(t, reserved)
-	assert.Equal(t, 10, getUserQuotaFromDB(t, user.Id), "batch delta is not flushed yet")
+	assert.Equal(t, 2, getUserQuotaFromDB(t, user.Id), "wallet debit must persist before a refund can commit")
 
 	reserved, err = TryReserveUserQuota(user.Id, 3)
 	require.NoError(t, err)

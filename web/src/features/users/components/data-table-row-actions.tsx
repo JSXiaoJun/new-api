@@ -28,6 +28,7 @@ import {
   ShieldAlert,
   Link2,
   CreditCard,
+  History,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -219,6 +220,18 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           {t('Manage Subscriptions')}
           <DropdownMenuShortcut>
             <CreditCard size={16} />
+          </DropdownMenuShortcut>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
+          onClick={() => {
+            setCurrentRow(user)
+            setOpen('quota-history')
+          }}
+        >
+          {t('Quota History')}
+          <DropdownMenuShortcut>
+            <History size={16} />
           </DropdownMenuShortcut>
         </DropdownMenuItem>
 

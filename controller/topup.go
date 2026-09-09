@@ -537,14 +537,27 @@ func GetUserTopUps(c *gin.Context) {
 func GetAllTopUps(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
+	userId := 0
+	if userIdQuery, exists := c.Request.URL.Query()["user_id"]; exists {
+		if len(userIdQuery) != 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
+			return
+		}
+		parsedUserId, err := strconv.Atoi(userIdQuery[0])
+		if err != nil || parsedUserId <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
+			return
+		}
+		userId = parsedUserId
+	}
 
 	var (
 		topups []*model.AdminTopUp
 		total  int64
 		err    error
 	)
-	if keyword != "" {
-		topups, total, err = model.SearchAllTopUps(keyword, pageInfo)
+	if keyword != "" || userId > 0 {
+		topups, total, err = model.SearchAllTopUps(keyword, pageInfo, userId)
 	} else {
 		topups, total, err = model.GetAllTopUps(pageInfo)
 	}
@@ -574,7 +587,9 @@ func AdminCompleteTopUp(c *gin.Context) {
 	LockOrder(req.TradeNo)
 	defer UnlockOrder(req.TradeNo)
 
-	if err := model.ManualCompleteTopUp(req.TradeNo, c.ClientIP()); err != nil {
+	if err := model.ManualCompleteTopUp(req.TradeNo, c.ClientIP(), model.QuotaCreditMeta{
+		OperatorId: c.GetInt("id"), Ip: c.ClientIP(), RequestId: c.GetString(common.RequestIdKey),
+	}); err != nil {
 		common.ApiError(c, err)
 		return
 	}

@@ -1172,7 +1172,9 @@ func ManageUser(c *gin.Context) {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
-			if err := model.IncreaseUserQuota(user.Id, req.Value, true); err != nil {
+			if err := model.IncreaseUserQuota(user.Id, req.Value, true, model.QuotaCreditMeta{
+				Source: "admin_add", OperatorId: c.GetInt("id"), Ip: c.ClientIP(), RequestId: c.GetString(common.RequestIdKey),
+			}); err != nil {
 				common.ApiError(c, err)
 				return
 			}
@@ -1192,8 +1194,10 @@ func ManageUser(c *gin.Context) {
 				"quota": logger.LogQuota(req.Value),
 			})
 		case "override":
-			oldQuota := user.Quota
-			if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
+			oldQuota, err := model.OverrideUserQuota(user.Id, req.Value, model.QuotaCreditMeta{
+				OperatorId: c.GetInt("id"), Ip: c.ClientIP(), RequestId: c.GetString(common.RequestIdKey),
+			})
+			if err != nil {
 				common.ApiError(c, err)
 				return
 			}

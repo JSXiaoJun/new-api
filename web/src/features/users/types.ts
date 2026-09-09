@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import type { UsageLog } from '@/features/usage-logs/data/schema'
 import type { AdminPermissionMatrix } from '@/lib/admin-permissions'
 
 // ============================================================================
@@ -106,6 +107,45 @@ export interface GetUsersResponse {
   }
 }
 
+export type UserQuotaLog = Pick<
+  UsageLog,
+  | 'id'
+  | 'user_id'
+  | 'created_at'
+  | 'type'
+  | 'content'
+  | 'username'
+  | 'quota'
+  | 'other'
+>
+
+export interface UserQuotaLogsPage {
+  items: UserQuotaLog[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface UserQuotaCredit {
+  id: number
+  user_id: number
+  created_at: number
+  delta: number
+  source: string
+  reference: string
+  request_id: string
+  operator_id: number
+}
+
+export interface UserQuotaCreditsPage {
+  items: UserQuotaCredit[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type UserQuotaHistoryView = 'credits' | 'legacy'
+
 export interface SearchUsersParams {
   keyword?: string
   group?: string
@@ -149,4 +189,4 @@ export interface ManageUserQuotaPayload {
 // Dialog Types
 // ============================================================================
 
-export type UsersDialogType = 'create' | 'update' | 'delete'
+export type UsersDialogType = 'create' | 'update' | 'delete' | 'quota-history'

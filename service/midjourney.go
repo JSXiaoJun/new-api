@@ -100,7 +100,9 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 		return true
 	}
 
-	if err := model.IncreaseUserQuota(task.UserId, quota, false); err != nil {
+	if err := model.IncreaseUserQuota(task.UserId, quota, false, model.QuotaCreditMeta{
+		Source: "midjourney_refund", Reference: task.MjId,
+	}); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("退还 Midjourney 用户额度失败 task %s: %s", task.MjId, err.Error()))
 		return false
 	}
@@ -126,8 +128,9 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 		Quota:     quota,
 		TokenId:   task.TokenId,
 		Other: map[string]interface{}{
-			"task_id": task.MjId,
-			"reason":  reason,
+			"task_id":        task.MjId,
+			"reason":         reason,
+			"billing_source": BillingSourceWallet,
 		},
 	})
 

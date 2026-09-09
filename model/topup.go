@@ -108,7 +108,7 @@ func ValidateTopUpQuotaCapacity(userId int, creditedQuota int) error {
 // creditTopUpQuota atomically enforces the int32 wallet ceiling while adding
 // quota. Keeping the predicate and increment in one UPDATE prevents two
 // concurrent callbacks from both passing a separate read/check.
-func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[string]interface{}) error {
+func creditTopUpQuota(tx *gorm.DB, topUp *TopUp, creditedQuota int, updates map[string]interface{}, details ...QuotaCreditMeta) error {
 	maxCurrentQuota, err := topUpQuotaMaxCurrent(creditedQuota)
 	if err != nil {
 		return err
@@ -121,17 +121,26 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 	updateFields["quota"] = gorm.Expr("quota + ?", creditedQuota)
 
 	result := tx.Model(&User{}).
-		Where("id = ? AND quota <= ?", userId, maxCurrentQuota).
+		Where("id = ? AND quota <= ?", topUp.UserId, maxCurrentQuota).
 		Updates(updateFields)
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 1 {
-		return nil
+		meta := QuotaCreditMeta{}
+		if len(details) > 0 {
+			meta = details[0]
+		}
+		meta.Source = "topup"
+		meta.Reference = topUp.TradeNo
+		return RecordQuotaCredit(tx, QuotaCredit{
+			UserId: topUp.UserId, Delta: int64(creditedQuota), Source: meta.Source, Reference: meta.Reference,
+			RequestId: meta.RequestId, OperatorId: meta.OperatorId, Ip: meta.Ip,
+		})
 	}
 
 	var count int64
-	if err := tx.Model(&User{}).Where("id = ?", userId).Count(&count).Error; err != nil {
+	if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Count(&count).Error; err != nil {
 		return err
 	}
 	if count == 0 {
@@ -238,7 +247,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditTopUpQuota(tx, topUp, quotaToAdd, nil, QuotaCreditMeta{Ip: callerIp})
 	})
 	if err != nil {
 		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
@@ -296,9 +305,9 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		if err != nil || quota <= 0 {
 			return ErrInvalidTopUpQuota
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quota, map[string]interface{}{
+		return creditTopUpQuota(tx, topUp, quota, map[string]interface{}{
 			"stripe_customer": customerId,
-		})
+		}, QuotaCreditMeta{Ip: callerIp})
 	})
 
 	if err != nil {
@@ -435,8 +444,9 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 	return topups, total, nil
 }
 
-// SearchAllTopUps 按订单号搜索全平台充值记录（管理员使用，不限制时间窗口）
-func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*AdminTopUp, total int64, err error) {
+// SearchAllTopUps 按订单号和用户 ID 搜索全平台充值记录（管理员使用，不限制时间窗口）。
+// userId 为 0 时不限制用户。
+func SearchAllTopUps(keyword string, pageInfo *common.PageInfo, userId int) (topups []*AdminTopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -448,6 +458,9 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*Admin
 	}()
 
 	query := tx.Model(&TopUp{})
+	if userId != 0 {
+		query = query.Where("user_id = ?", userId)
+	}
 	if keyword != "" {
 		pattern, perr := sanitizeLikePattern(keyword)
 		if perr != nil {
@@ -513,7 +526,7 @@ func attachAdminTopUpUsers(tx *gorm.DB, topups []*TopUp) ([]*AdminTopUp, error) 
 }
 
 // ManualCompleteTopUp 管理员手动完成订单并给用户充值
-func ManualCompleteTopUp(tradeNo string, callerIp string) error {
+func ManualCompleteTopUp(tradeNo string, callerIp string, details ...QuotaCreditMeta) error {
 	if tradeNo == "" {
 		return errors.New("未提供订单号")
 	}
@@ -569,7 +582,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		}
 
 		// 增加用户额度（立即写库，保持一致性）
-		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
+		if err := creditTopUpQuota(tx, topUp, quotaToAdd, nil, details...); err != nil {
 			return err
 		}
 
@@ -581,6 +594,9 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 
 	if err != nil {
 		return err
+	}
+	if quotaToAdd == 0 {
+		return nil
 	}
 
 	// 事务外记录日志，避免阻塞
@@ -646,7 +662,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			}
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quota, updateFields)
+		return creditTopUpQuota(tx, topUp, quota, updateFields, QuotaCreditMeta{Ip: callerIp})
 	})
 
 	if err != nil {
@@ -704,7 +720,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditTopUpQuota(tx, topUp, quotaToAdd, nil, QuotaCreditMeta{Ip: callerIp})
 	})
 
 	if err != nil {
@@ -764,7 +780,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditTopUpQuota(tx, topUp, quotaToAdd, nil)
 	})
 
 	if err != nil {

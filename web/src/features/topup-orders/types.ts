@@ -39,6 +39,7 @@ export type GetTopUpOrdersParams = {
   p?: number
   page_size?: number
   keyword?: string
+  user_id?: number
 }
 
 export type GetTopUpOrdersResponse = {

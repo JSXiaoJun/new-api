@@ -28,6 +28,7 @@ export async function getTopUpOrders(
       p: params.p ?? 1,
       page_size: params.page_size ?? 20,
       keyword: params.keyword?.trim() || undefined,
+      user_id: params.user_id,
     },
   })
   return response.data
