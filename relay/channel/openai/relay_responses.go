@@ -132,6 +132,24 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				imageCommitted = true
 			}
 		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+			// Responses providers can include authoritative usage on any terminal
+			// event, not only response.completed/response.done. Preserve it so an
+			// interrupted or cancelled stream is still billed when usage is present.
+			if streamResponse.Response != nil && streamResponse.Response.Usage != nil {
+				if streamResponse.Response.Usage.InputTokens != 0 {
+					usage.PromptTokens = streamResponse.Response.Usage.InputTokens
+				}
+				if streamResponse.Response.Usage.OutputTokens != 0 {
+					usage.CompletionTokens = streamResponse.Response.Usage.OutputTokens
+				}
+				if streamResponse.Response.Usage.TotalTokens != 0 {
+					usage.TotalTokens = streamResponse.Response.Usage.TotalTokens
+				}
+				if streamResponse.Response.Usage.InputTokensDetails != nil {
+					usage.PromptTokensDetails.CachedTokens = streamResponse.Response.Usage.InputTokensDetails.CachedTokens
+					usage.PromptTokensDetails.CacheWriteTokens = streamResponse.Response.Usage.InputTokensDetails.CacheWriteTokens
+				}
+			}
 			if !imageCommitted {
 				imageCounter.Reset()
 				imageCounter.Commit(info)

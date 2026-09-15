@@ -256,6 +256,46 @@ func TestOaiResponsesStreamHandlerDiscardsImageOutputOnIncomplete(t *testing.T) 
 	assert.Equal(t, 0, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
 }
 
+func TestOaiResponsesStreamHandlerUsesUsageOnIncomplete(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() {
+		constant.StreamingTimeout = oldTimeout
+	})
+
+	body := strings.Join([]string{
+		`data: {"type":"response.incomplete","response":{"status":"incomplete","usage":{"input_tokens":320988,"output_tokens":321,"total_tokens":321309,"input_tokens_details":{"cached_tokens":209664,"cache_write_tokens":0}}}}`,
+		"data: [DONE]",
+		"",
+	}, "\n\n")
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set(common.RequestIdKey, "responses-incomplete-usage-test")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.6-sol",
+		DisablePing:     true,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "gpt-5.6-sol",
+		},
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+	}
+
+	usage, apiErr := OaiResponsesStreamHandler(c, info, resp)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	assert.Equal(t, 320988, usage.PromptTokens)
+	assert.Equal(t, 321, usage.CompletionTokens)
+	assert.Equal(t, 321309, usage.TotalTokens)
+	assert.Equal(t, 209664, usage.PromptTokensDetails.CachedTokens)
+}
+
 func TestOaiResponsesStreamHandlerDoesNotCountPartialImageEvent(t *testing.T) {
 	info := runResponsesImageBillingStream(
 		t,
