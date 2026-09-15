@@ -447,12 +447,12 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	// 构建搜索条件
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
 	likeArgs := []interface{}{"%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%"}
-	if keyword != "" {
-		// API keys live in the tokens table, so include users that own a matching
-		// (non-deleted) token without exposing the key in the user response.
+	if tokenKey, ok := strings.CutPrefix(strings.TrimSpace(keyword), "sk-"); ok && tokenKey != "" {
+		// Copied API keys include sk-, while tokens.key stores only the generated
+		// value. Match the full stored key so partial input cannot select another user.
 		tokenUserIDs := tx.Model(&Token{}).
 			Select("user_id").
-			Where(commonKeyCol+" LIKE ?", "%"+keyword+"%")
+			Where(commonKeyCol+" = ?", tokenKey)
 		likeCondition += " OR id IN (?)"
 		likeArgs = append(likeArgs, tokenUserIDs)
 	}
