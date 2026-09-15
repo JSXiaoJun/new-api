@@ -447,6 +447,15 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	// 构建搜索条件
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
 	likeArgs := []interface{}{"%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%"}
+	if keyword != "" {
+		// API keys live in the tokens table, so include users that own a matching
+		// (non-deleted) token without exposing the key in the user response.
+		tokenUserIDs := tx.Model(&Token{}).
+			Select("user_id").
+			Where(commonKeyCol+" LIKE ?", "%"+keyword+"%")
+		likeCondition += " OR id IN (?)"
+		likeArgs = append(likeArgs, tokenUserIDs)
+	}
 
 	// 尝试将关键字转换为整数ID
 	keywordInt, err := strconv.Atoi(keyword)

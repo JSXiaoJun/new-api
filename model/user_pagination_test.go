@@ -64,3 +64,23 @@ func TestSearchUsersSortsBeforePagination(t *testing.T) {
 	assert.Equal(t, int64(42), total)
 	assert.Equal(t, []int{21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}, collectUserIDs(users))
 }
+
+func TestSearchUsersMatchesApiKey(t *testing.T) {
+	truncateTables(t)
+	insertUsersForPaginationTest(t, 2)
+
+	require.NoError(t, DB.Create(&Token{
+		UserId:      2,
+		Key:         "sk-user02-searchable",
+		Name:        "search token",
+		Status:      common.TokenStatusEnabled,
+		CreatedTime: 1,
+		AccessedTime: 1,
+		ExpiredTime: -1,
+	}).Error)
+
+	users, total, err := SearchUsers("user02-searchable", "", nil, nil, 0, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	assert.Equal(t, []int{2}, collectUserIDs(users))
+}
