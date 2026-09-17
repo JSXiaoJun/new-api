@@ -22,8 +22,8 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   getAllLogs,
   getUserLogs,
-  getAllMidjourneyLogs,
-  getUserMidjourneyLogs,
+  getAllDrawingLogs,
+  getUserDrawingLogs,
   getAllTaskLogs,
   getUserTaskLogs,
 } from '../api'
@@ -36,7 +36,7 @@ import type {
   GetLogsParams,
   GetLogsResponse,
   FetchLogsConfig,
-  GetMidjourneyLogsParams,
+  GetDrawingLogsParams,
   GetTaskLogsParams,
 } from '../types'
 
@@ -284,7 +284,7 @@ export async function fetchLogsByCategory(
   const paramsWithFilter = {
     ...baseParams,
     ...(logCategory === 'drawing'
-      ? { mj_id: searchParams.filter as string | undefined }
+      ? { filter: searchParams.filter as string | undefined }
       : {}),
     ...(logCategory === 'task'
       ? { task_id: searchParams.filter as string | undefined }
@@ -293,8 +293,8 @@ export async function fetchLogsByCategory(
 
   if (logCategory === 'drawing') {
     return isAdmin
-      ? await getAllMidjourneyLogs(paramsWithFilter as GetMidjourneyLogsParams)
-      : await getUserMidjourneyLogs(paramsWithFilter as GetMidjourneyLogsParams)
+      ? await getAllDrawingLogs(paramsWithFilter as GetDrawingLogsParams)
+      : await getUserDrawingLogs(paramsWithFilter as GetDrawingLogsParams)
   }
 
   // task logs

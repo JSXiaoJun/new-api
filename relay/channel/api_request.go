@@ -49,6 +49,11 @@ func ApplyUpstreamBodyMetadata(req *http.Request, body io.Reader) {
 }
 
 func SetupApiRequestHeader(info *common.RelayInfo, c *gin.Context, req *http.Header) {
+	// Opt an image middleware upstream into reporting the desensitized public
+	// link for every image it stores. Non-image requests and providers that do
+	// not implement the contract simply receive an extra ignored header.
+	applyImageAssetLinksRequestHeader(info, req)
+
 	if info.RelayMode == constant.RelayModeAudioTranscription || info.RelayMode == constant.RelayModeAudioTranslation {
 		// multipart/form-data
 	} else if info.RelayMode == constant.RelayModeRealtime {
@@ -575,6 +580,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {
 		c.Set(common2.UpstreamRequestIdKey, upID)
 	}
+	captureImageAssetLinksFromHeader(c, resp)
 
 	_ = req.Body.Close()
 	_ = c.Request.Body.Close()

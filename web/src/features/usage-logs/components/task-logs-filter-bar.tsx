@@ -48,7 +48,7 @@ function getFilterValue(
   logCategory: TaskLikeLogCategory
 ): string {
   if (logCategory === 'drawing') {
-    return (filters as DrawingLogFilters).mjId || ''
+    return (filters as DrawingLogFilters).taskOrModel || ''
   }
   return (filters as TaskLogFilters).taskId || ''
 }
@@ -59,7 +59,7 @@ function setFilterValue(
   value: string
 ): TaskLogsFilters {
   if (logCategory === 'drawing') {
-    return { ...filters, mjId: value }
+    return { ...filters, taskOrModel: value }
   }
   return { ...filters, taskId: value }
 }
@@ -92,7 +92,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       props.logCategory === 'drawing'
         ? {
             ...baseFilters,
-            ...(searchParams.filter ? { mjId: searchParams.filter } : {}),
+            ...(searchParams.filter ? { taskOrModel: searchParams.filter } : {}),
           }
         : {
             ...baseFilters,
@@ -160,9 +160,11 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   )
 
   const filterValue = getFilterValue(filters, props.logCategory)
+  // The drawing log merges MjProxy tasks with AI image generations, so its
+  // filter accepts either a Midjourney task ID or, for AI rows, a model name.
   const placeholder =
     props.logCategory === 'drawing'
-      ? t('Filter by MjProxy task ID')
+      ? t('Filter by task ID or model')
       : t('Filter by task ID')
   const hasAdditionalFilters = !!filterValue || !!filters.channel
   const dateRangeFilter = (

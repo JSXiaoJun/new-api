@@ -327,6 +327,11 @@ func SetApiRouter(router *gin.Engine) {
 		mjRoute.GET("/self", middleware.UserAuth(), controller.GetUserMidjourney)
 		mjRoute.GET("/", middleware.AdminAuth(), controller.GetAllMidjourney)
 
+		// Merged drawing log: AI image generations plus Midjourney tasks.
+		drawingLogRoute := apiRouter.Group("/drawing")
+		drawingLogRoute.GET("/self", middleware.UserAuth(), controller.GetUserDrawingLogs)
+		drawingLogRoute.GET("/", middleware.AdminAuth(), controller.GetDrawingLogs)
+
 		taskRoute := apiRouter.Group("/task")
 		{
 			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)

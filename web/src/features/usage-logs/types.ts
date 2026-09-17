@@ -57,10 +57,12 @@ export interface CommonLogFilters extends CommonFilters {
 }
 
 /**
- * Drawing logs specific filters
+ * Drawing logs specific filters. The drawing log merges Midjourney tasks with AI
+ * image generations, so one field matches either a Midjourney task ID or an AI
+ * row's model name / request ID.
  */
 export interface DrawingLogFilters extends CommonFilters {
-  mjId?: string
+  taskOrModel?: string
 }
 
 /**
@@ -273,9 +275,13 @@ export interface LogStatistics {
 // Drawing Logs (MjProxy) Types
 // ============================================================================
 
+export type DrawingLogSource = 'midjourney' | 'image'
+
 export interface MidjourneyLog {
   id: number
+  source?: DrawingLogSource
   user_id: number
+  username?: string
   channel_id: number
   code: number
   mj_id: string
@@ -291,10 +297,28 @@ export interface MidjourneyLog {
   buttons?: string
   properties?: string
   image_url?: string
+  // image_urls carries every generated image. Midjourney rows expose a single
+  // entry, AI image rows one per stored image; the desensitized links expire on
+  // their own after the middleware retention window.
+  image_urls?: string[]
+  model_name?: string
+  quota?: number
+  use_time?: number
+  is_stream?: boolean
+  request_id?: string
   status: string // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, MODAL
   other?: string
   created_at?: number
   updated_at?: number
+}
+
+export interface GetDrawingLogsParams {
+  p?: number
+  page_size?: number
+  channel_id?: string
+  filter?: string
+  start_timestamp?: number
+  end_timestamp?: number
 }
 
 // ============================================================================
@@ -373,15 +397,6 @@ export interface GetLogStatsResponse {
 // ============================================================================
 // Drawing Log Types
 // ============================================================================
-
-export interface GetMidjourneyLogsParams {
-  p?: number
-  page_size?: number
-  channel_id?: string
-  mj_id?: string
-  start_timestamp?: number
-  end_timestamp?: number
-}
 
 // ============================================================================
 // Task Log Types

@@ -20,11 +20,11 @@ import { api } from '@/lib/api'
 
 import { buildQueryParams } from './lib/utils'
 import type {
+  GetDrawingLogsParams,
   GetLogsParams,
   GetLogsResponse,
   GetLogStatsParams,
   GetLogStatsResponse,
-  GetMidjourneyLogsParams,
   GetTaskLogsParams,
   UserInfo,
 } from './types'
@@ -92,14 +92,17 @@ export async function getUserInfo(
 }
 
 // ============================================================================
-// MjProxy (Drawing) Logs API
+// Drawing Logs API
+//
+// One endpoint merges AI image generations (any OpenAI-compatible or Gemini
+// image model routed through this gateway) with legacy MjProxy drawing tasks.
 // ============================================================================
 
-export const getAllMidjourneyLogs = (params: GetMidjourneyLogsParams) =>
-  fetchLogs('/api/mj', params, true)
+export const getAllDrawingLogs = (params: GetDrawingLogsParams) =>
+  fetchLogs('/api/drawing', params, true)
 
-export const getUserMidjourneyLogs = (params: GetMidjourneyLogsParams) =>
-  fetchLogs('/api/mj', params, false)
+export const getUserDrawingLogs = (params: GetDrawingLogsParams) =>
+  fetchLogs('/api/drawing', params, false)
 
 // ============================================================================
 // Task Logs API

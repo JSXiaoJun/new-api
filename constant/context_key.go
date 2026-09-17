@@ -64,6 +64,12 @@ const (
 	// It is not returned to end users, but can be persisted into consume/error logs for debugging.
 	ContextKeyAdminRejectReason ContextKey = "admin_reject_reason"
 
+	// ContextKeyImageAssetLinks stores the desensitized public links reported by
+	// an image middleware for the images of one relay request. The billing path
+	// persists them on the consume log so the drawing log can preview the result
+	// after the request has finished.
+	ContextKeyImageAssetLinks ContextKey = "image_asset_links"
+
 	// ContextKeyLanguage stores the user's language preference for i18n
 	ContextKeyLanguage ContextKey = "language"
 	ContextKeyIsStream ContextKey = "is_stream"

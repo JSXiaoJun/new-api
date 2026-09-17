@@ -22,6 +22,54 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	service.RegisterSystemTaskHandler(imageLogCleanupHandler{})
+}
+
+// imageLogCleanupHandler expires drawing log rows whose image links have
+// already expired upstream. It runs unattended on every master node through the
+// system task scheduler so the table cannot grow without bound.
+type imageLogCleanupHandler struct{}
+
+func (imageLogCleanupHandler) Type() string { return model.SystemTaskTypeImageLogCleanup }
+
+func (imageLogCleanupHandler) Enabled() bool {
+	setting := operation_setting.GetImageLogSetting()
+	return setting.RetentionCutoff() > 0 && setting.CleanupInterval() > 0
+}
+
+func (imageLogCleanupHandler) Interval() time.Duration {
+	return operation_setting.GetImageLogSetting().CleanupInterval()
+}
+
+func (imageLogCleanupHandler) NewPayload() any { return nil }
+
+func (imageLogCleanupHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	setting := operation_setting.GetImageLogSetting()
+	cutoff := setting.RetentionCutoff()
+	if cutoff <= 0 {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded,
+			service.ImageLogCleanupResult{Expired: 0}, nil)
+		return
+	}
+
+	var deleted int64
+	for {
+		if err := ctx.Err(); err != nil {
+			finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+			return
+		}
+		rows, err := model.DeleteExpiredImageLogs(ctx, cutoff, setting.BatchSize())
+		if err != nil {
+			finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+			return
+		}
+		deleted += rows
+		if rows == 0 {
+			break
+		}
+	}
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded,
+		service.ImageLogCleanupResult{Expired: deleted}, nil)
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and

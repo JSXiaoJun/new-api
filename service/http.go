@@ -13,6 +13,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// imageAssetLinksHeaderName mirrors channel.ImageAssetLinksResponseHeader. The
+// constant is duplicated because relay/channel imports this package, so this
+// package cannot import it back.
+const imageAssetLinksHeaderName = "x-image-asset-links"
+
 func CloseResponseBodyGracefully(httpResponse *http.Response) {
 	if httpResponse == nil || httpResponse.Body == nil {
 		return
@@ -30,6 +35,13 @@ func CloseResponseBodyGracefully(httpResponse *http.Response) {
 // into the Gin context for later logging.
 func ShouldCopyUpstreamHeader(c *gin.Context, k string, v []string) bool {
 	if strings.EqualFold(k, "Content-Length") {
+		return false
+	}
+	// Internal relay bookkeeping: the upstream describes the public link of the
+	// images it stored for our logs only, so it must not reach API clients.
+	// Channel asset link headers are stripped to the point of being internal,
+	// so the name is repeated here to keep this package free of relay imports.
+	if strings.EqualFold(k, imageAssetLinksHeaderName) {
 		return false
 	}
 	if strings.EqualFold(k, common.RequestIdKey) {

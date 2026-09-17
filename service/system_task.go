@@ -103,6 +103,12 @@ type LogCleanupResult struct {
 	DeletedCount int64 `json:"deleted_count"`
 }
 
+// ImageLogCleanupResult reports how many drawing log rows one expiry sweep
+// removed.
+type ImageLogCleanupResult struct {
+	Expired int64 `json:"expired"`
+}
+
 var (
 	systemTaskRunnerOnce sync.Once
 	// systemTaskWakeup signals the runner to check for runnable tasks

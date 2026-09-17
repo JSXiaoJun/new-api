@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -104,6 +105,67 @@ func attachQuotaSaturation(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, o
 	attachQuotaSaturationToOther(other, clamp)
 	logger.LogWarn(ctx, fmt.Sprintf("quota saturation on consume log: op=%s kind=%s original=%g clamped=%d user=%d model=%s",
 		clamp.Op, clamp.Kind, clamp.Original, clamp.Clamped, relayInfo.UserId, relayInfo.OriginModelName))
+}
+
+// imageAssetLinksForRequest returns the public image links reported by an image
+// middleware for this request, or nil when this request produced no stored image.
+func imageAssetLinksForRequest(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) []string {
+	if ctx == nil || !relaycommon.IsImageGenerationRequest(relayInfo) {
+		return nil
+	}
+	return common.GetContextKeyStringSlice(ctx, constant.ContextKeyImageAssetLinks)
+}
+
+// recordImageLogForRequest writes the drawing log row for an AI image
+// generation. It is a no-op for non-image requests and for requests whose
+// upstream never reported a stored image.
+func recordImageLogForRequest(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, modelName string, quota int, useTimeSeconds int) {
+	if relayInfo == nil {
+		return
+	}
+	links := imageAssetLinksForRequest(ctx, relayInfo)
+	if len(links) == 0 {
+		return
+	}
+	model.RecordImageLog(model.RecordImageLogParams{
+		UserId:    relayInfo.UserId,
+		Username:  ctx.GetString("username"),
+		ChannelId: relayInfo.ChannelId,
+		ModelName: modelName,
+		Prompt:    imageLogPrompt(relayInfo),
+		ImageURLs: links,
+		Quota:     quota,
+		UseTime:   useTimeSeconds,
+		IsStream:  relayInfo.IsStream,
+		RequestId: ctx.GetString(common.RequestIdKey),
+	})
+}
+
+// imageLogPrompt extracts the generation prompt for the drawing log. Both
+// relay shapes that can produce images are handled: the OpenAI images request
+// carries a plain prompt, while native Gemini carries prompt parts. Anything
+// else (or a missing request) yields an empty prompt rather than failing the
+// request, since the prompt is display-only.
+func imageLogPrompt(relayInfo *relaycommon.RelayInfo) string {
+	if relayInfo == nil || relayInfo.Request == nil {
+		return ""
+	}
+	switch request := relayInfo.Request.(type) {
+	case *dto.ImageRequest:
+		return strings.TrimSpace(request.Prompt)
+	case *dto.GeminiChatRequest:
+		var parts []string
+		for _, content := range request.Contents {
+			for _, part := range content.Parts {
+				if text := strings.TrimSpace(part.Text); text != "" {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, "\n")
+	default:
+		return ""
+	}
 }
 
 func appendRequestPath(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {

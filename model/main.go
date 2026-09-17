@@ -281,6 +281,7 @@ func migrateDB() error {
 		&QuotaData{},
 		&Task{},
 		&ImageAsset{},
+		&ImageLog{},
 		&Model{},
 		&Vendor{},
 		&PrefillGroup{},

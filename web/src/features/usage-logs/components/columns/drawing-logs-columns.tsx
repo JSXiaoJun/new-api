@@ -48,8 +48,9 @@ import {
   mjSubmitResultMapper,
 } from '../../lib/mappers'
 import type { MidjourneyLog } from '../../types'
-import { ImageDialog } from '../dialogs/image-dialog'
+import { ModelBadge } from '../model-badge'
 import { PromptDialog } from '../dialogs/prompt-dialog'
+import { DrawingLogImageCell } from './drawing-log-image-cell'
 import {
   createDurationColumn,
   createChannelColumn,
@@ -79,6 +80,20 @@ const drawingTypeIconMap: Record<string, LucideIcon> = {
 
 function getDrawingTypeIcon(action: string): LucideIcon {
   return drawingTypeIconMap[action] ?? HelpCircle
+}
+
+// AI image rows (OpenAI-compatible and Gemini image models) reuse the drawing
+// log table, so the type column shows the model that produced the image instead
+// of an MjProxy action.
+function isImageGenerationRow(log: MidjourneyLog): boolean {
+  return log.source === 'image'
+}
+
+function drawingLogImageUrls(log: MidjourneyLog): string[] {
+  if (log.image_urls && log.image_urls.length > 0) {
+    return log.image_urls
+  }
+  return log.image_url ? [log.image_url] : []
 }
 
 export function useDrawingLogsColumns(
@@ -121,7 +136,15 @@ export function useDrawingLogsColumns(
     accessorKey: 'action',
     header: t('Type'),
     cell: ({ row }) => {
+      const log = row.original
       const action = row.getValue('action') as string
+
+      if (isImageGenerationRow(log)) {
+        return (
+          <ModelBadge modelName={log.model_name ?? action} />
+        )
+      }
+
       return (
         <StatusBadge
           label={t(mjTaskTypeMapper.getLabel(action))}
@@ -139,17 +162,20 @@ export function useDrawingLogsColumns(
     accessorKey: 'mj_id',
     header: t('Task ID'),
     cell: ({ row }) => {
-      const mjId = row.getValue('mj_id') as string
+      const log = row.original
+      // AI image rows have no Midjourney id, so their request id stands in as
+      // the task id the shared filter and copy button work against.
+      const taskId = (row.getValue('mj_id') as string) || log.request_id || ''
 
-      if (!mjId) {
+      if (!taskId) {
         return <span className='text-muted-foreground/60 text-xs'>-</span>
       }
 
       return (
         <div className='flex max-w-[160px] flex-col gap-0.5'>
           <StatusBadge
-            label={mjId}
-            copyText={mjId}
+            label={taskId}
+            copyText={taskId}
             variant='neutral'
             size='sm'
             className='border-border/60 bg-muted/30 !text-foreground max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono'
@@ -173,6 +199,12 @@ export function useDrawingLogsColumns(
       accessorKey: 'code',
       header: t('Submit Result'),
       cell: ({ row }) => {
+        // The submit result describes an MjProxy submission; AI image rows are
+        // recorded after the image was produced and have none.
+        if (isImageGenerationRow(row.original)) {
+          return <span className='text-muted-foreground/60 text-xs'>-</span>
+        }
+
         const code = row.getValue('code') as number
 
         return (
@@ -195,32 +227,12 @@ export function useDrawingLogsColumns(
       header: t('Image'),
       cell: function ImageCell({ row }) {
         const log = row.original
-        const imageUrl = row.getValue('image_url') as string
-        const [dialogOpen, setDialogOpen] = useState(false)
-
-        if (!imageUrl) {
-          return <span className='text-muted-foreground/60 text-xs'>-</span>
-        }
 
         return (
-          <>
-            <button
-              type='button'
-              className='group text-left text-xs'
-              onClick={() => setDialogOpen(true)}
-              title={t('Click to view image')}
-            >
-              <span className='text-foreground truncate leading-snug group-hover:underline'>
-                {t('View')}
-              </span>
-            </button>
-            <ImageDialog
-              imageUrl={imageUrl}
-              taskId={log.mj_id}
-              open={dialogOpen}
-              onOpenChange={setDialogOpen}
-            />
-          </>
+          <DrawingLogImageCell
+            imageUrls={drawingLogImageUrls(log)}
+            label={t('View')}
+          />
         )
       },
     },
