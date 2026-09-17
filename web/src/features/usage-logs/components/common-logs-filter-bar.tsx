@@ -116,7 +116,7 @@ export function CommonLogsFilterBar<TData>(
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const searchParams = route.useSearch()
-  const { isAdminView: isAdmin } = useLogsViewScope()
+  const { isAdminView: isAdmin, canManageScope } = useLogsViewScope()
   const {
     sensitiveVisible,
     setSensitiveVisible,
@@ -293,7 +293,10 @@ export function CommonLogsFilterBar<TData>(
       </TooltipContent>
     </Tooltip>
   )
-  const timingToggle = (
+  // The clock swaps the adjusted first-token time for the real one, so it is
+  // kept to admins and super admins: end users only ever see the adjusted
+  // figure the display rules produce.
+  const timingToggle = canManageScope ? (
     <Tooltip>
       <TooltipTrigger
         render={
@@ -318,7 +321,7 @@ export function CommonLogsFilterBar<TData>(
           : t('Show actual first-token time')}
       </TooltipContent>
     </Tooltip>
-  )
+  ) : null
 
   const dateRangeFilter = (
     <LogsFilterField wide>
