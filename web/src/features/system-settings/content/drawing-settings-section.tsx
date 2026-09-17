@@ -27,13 +27,17 @@ import {
   FormControl,
   FormDescription,
   FormField,
+  FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 
 import {
   SettingsForm,
+  SettingsFormGrid,
+  SettingsFormGridItem,
   SettingsSwitchContent,
   SettingsSwitchItem,
 } from '../components/settings-form-layout'
@@ -48,9 +52,14 @@ const drawingSchema = z.object({
   MjForwardUrlEnabled: z.boolean(),
   MjModeClearEnabled: z.boolean(),
   MjActionCheckSuccessEnabled: z.boolean(),
+  ImageMiddlewareAddress: z.string(),
 })
 
 type DrawingFormValues = z.infer<typeof drawingSchema>
+
+// Every switch shares one boolean field type, so the switch list cannot be
+// pointed at the text field by mistake.
+type DrawingSwitchName = Exclude<keyof DrawingFormValues, 'ImageMiddlewareAddress'>
 
 type DrawingSettingsSectionProps = {
   defaultValues: DrawingFormValues
@@ -71,9 +80,14 @@ export function DrawingSettingsSection({
   }, [defaultValues, form])
 
   const onSubmit = async (values: DrawingFormValues) => {
-    const updates = Object.entries(values).filter(
-      ([key, value]) => value !== defaultValues[key as keyof DrawingFormValues]
-    )
+    const updates = Object.entries(values)
+      .map(([key, value]) => [
+        key,
+        typeof value === 'string' ? value.trim() : value,
+      ] as const)
+      .filter(
+        ([key, value]) => value !== defaultValues[key as keyof DrawingFormValues]
+      )
 
     for (const [key, value] of updates) {
       await updateOption.mutateAsync({ key, value })
@@ -81,7 +95,7 @@ export function DrawingSettingsSection({
   }
 
   const switches: Array<{
-    name: keyof DrawingFormValues
+    name: DrawingSwitchName
     label: string
     description: string
   }> = [
@@ -161,6 +175,32 @@ export function DrawingSettingsSection({
                 )}
               />
             ))}
+
+            <SettingsFormGrid className='mt-6'>
+              <SettingsFormGridItem span='full'>
+                <FormField
+                  control={form.control}
+                  name='ImageMiddlewareAddress'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Image middleware address')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder={t('https://video-admin.example.com')}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Only image links served by this address are recorded in the drawing log. Leave empty to accept any public image link.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </SettingsFormGridItem>
+            </SettingsFormGrid>
           </div>
         </SettingsForm>
       </Form>

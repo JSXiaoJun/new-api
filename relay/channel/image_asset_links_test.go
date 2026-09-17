@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -140,6 +141,27 @@ func TestRecordImageAssetLinksDeduplicates(t *testing.T) {
 			"https://video-admin.example/public/images/assets/a1",
 			"https://video-admin.example/public/images/assets/a2",
 		},
+		common.GetContextKeyStringSlice(ctx, constant.ContextKeyImageAssetLinks))
+}
+
+// TestRecordImageAssetLinksRejectsForeignHosts protects the drawing log from a
+// crafted upstream reply: with an image middleware address configured, a link
+// served by any other host is dropped instead of being shown to users as if it
+// had been desensitized by the middleware.
+func TestRecordImageAssetLinksRejectsForeignHosts(t *testing.T) {
+	previous := setting.ImageMiddlewareAddress
+	setting.ImageMiddlewareAddress = "https://video-admin.example"
+	t.Cleanup(func() { setting.ImageMiddlewareAddress = previous })
+
+	ctx := assetLinkTestContext(t)
+	RecordImageAssetLinks(ctx, []string{
+		"https://video-admin.example/public/images/assets/a1",
+		"https://evil.example/public/images/assets/a2",
+		"javascript:alert(1)",
+	})
+
+	assert.Equal(t,
+		[]string{"https://video-admin.example/public/images/assets/a1"},
 		common.GetContextKeyStringSlice(ctx, constant.ContextKeyImageAssetLinks))
 }
 

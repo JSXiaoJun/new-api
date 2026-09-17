@@ -186,6 +186,7 @@ export type ContentSettings = {
   MjForwardUrlEnabled: boolean
   MjModeClearEnabled: boolean
   MjActionCheckSuccessEnabled: boolean
+  ImageMiddlewareAddress: string
 }
 
 export type ModelSettings = {

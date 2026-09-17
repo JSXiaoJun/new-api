@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -60,11 +61,6 @@ func captureImageAssetLinksFromHeader(c *gin.Context, resp *http.Response) {
 	RecordImageAssetLinks(c, links)
 }
 
-// imageAssetLinkPath marks a public link served by an image middleware or by
-// this gateway's own public media proxy. Only these links are recorded: an
-// upstream URL that was never desensitized stays out of the log.
-const imageAssetLinkPath = "/public/images/assets/"
-
 // imageAssetLinksFromJSON collects public asset links from an OpenAI-shaped
 // images payload, either a whole response body or a single stream event.
 //
@@ -81,7 +77,7 @@ func ImageAssetLinksFromJSON(data []byte) []string {
 	links := make([]string, 0, len(items.Array()))
 	for _, item := range items.Array() {
 		link := strings.TrimSpace(item.Get("url").String())
-		if link == "" || !strings.Contains(link, imageAssetLinkPath) {
+		if !setting.IsImageMiddlewareLink(link) {
 			continue
 		}
 		links = append(links, link)
@@ -91,6 +87,10 @@ func ImageAssetLinksFromJSON(data []byte) []string {
 
 // recordImageAssetLinks merges links into the request context, deduplicating by
 // URL so the same image reported by both the body and the header is logged once.
+//
+// This is the single write path into the drawing log, so it is also where the
+// configured image middleware address is enforced: links served by any other
+// host are dropped instead of being recorded as if they were desensitized.
 func RecordImageAssetLinks(c *gin.Context, links []string) {
 	if c == nil || len(links) == 0 {
 		return
@@ -100,7 +100,7 @@ func RecordImageAssetLinks(c *gin.Context, links []string) {
 	merged := make([]string, 0, len(existing)+len(links))
 	for _, link := range append(append([]string{}, existing...), links...) {
 		link = strings.TrimSpace(link)
-		if link == "" {
+		if !setting.IsImageMiddlewareLink(link) {
 			continue
 		}
 		if _, ok := seen[link]; ok {
