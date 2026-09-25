@@ -50,6 +50,10 @@ export const STATUS_CONFIG: Record<TopupStatus, StatusConfig> = {
     variant: 'danger',
     label: 'Failed',
   },
+  cancelled: {
+    variant: 'danger',
+    label: 'Cancelled',
+  },
 }
 
 /**

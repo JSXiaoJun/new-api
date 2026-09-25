@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -19,6 +20,7 @@ type TopUp struct {
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	QRCode          string  `json:"-" gorm:"type:text"`
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status"`
@@ -38,6 +40,16 @@ const (
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodBalance      = "balance"
 )
+
+const EpayWxPayOrderLifetimeSeconds int64 = 15 * 60
+
+func EpayWxPayOrderExpiresAt(createTime int64) int64 {
+	return createTime + EpayWxPayOrderLifetimeSeconds
+}
+
+func epayWxPayOrderExpired(createTime, now int64) bool {
+	return createTime <= 0 || now >= EpayWxPayOrderExpiresAt(createTime)
+}
 
 const (
 	PaymentProviderEpay         = "epay"
@@ -188,23 +200,105 @@ func CreatePendingEpayWxPayTopUp(topUp *TopUp) error {
 	}
 
 	return withWalletTransaction(topUp.UserId, func(tx *gorm.DB) error {
-		var pending TopUp
+		var pendingOrders []TopUp
 		err := lockForUpdate(tx).
 			Where("user_id = ? AND payment_provider = ? AND payment_method = ? AND status = ?",
 				topUp.UserId, PaymentProviderEpay, "wxpay", common.TopUpStatusPending).
-			First(&pending).Error
-		if err == nil {
-			return ErrPendingEpayWxPayOrder
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			Find(&pendingOrders).Error
+		if err != nil {
 			return err
+		}
+		now := time.Now().Unix()
+		activeOrderFound := false
+		for i := range pendingOrders {
+			if epayWxPayOrderExpired(pendingOrders[i].CreateTime, now) {
+				pendingOrders[i].Status = common.TopUpStatusExpired
+				if err := tx.Save(&pendingOrders[i]).Error; err != nil {
+					return err
+				}
+				continue
+			}
+			activeOrderFound = true
+		}
+		if activeOrderFound {
+			return ErrPendingEpayWxPayOrder
 		}
 		return tx.Create(topUp).Error
 	})
 }
 
-// CancelPendingEpayWxPayTopUp expires an owned pending WeChat Epay order.
-// Repeating cancellation for an already expired/failed order is idempotent;
+// GetPendingEpayWxPayTopUp returns the user's active WeChat Epay order. Orders
+// older than the checkout lifetime are expired while holding the wallet lock,
+// so an abandoned order cannot block a later checkout.
+func GetPendingEpayWxPayTopUp(userId int) (*TopUp, error) {
+	if userId <= 0 {
+		return nil, ErrTopUpNotFound
+	}
+
+	var pending *TopUp
+	err := withWalletTransaction(userId, func(tx *gorm.DB) error {
+		var orders []TopUp
+		if err := lockForUpdate(tx).
+			Where("user_id = ? AND payment_provider = ? AND payment_method = ? AND status = ?",
+				userId, PaymentProviderEpay, "wxpay", common.TopUpStatusPending).
+			Order("create_time DESC").Find(&orders).Error; err != nil {
+			return err
+		}
+		now := time.Now().Unix()
+		for i := range orders {
+			if epayWxPayOrderExpired(orders[i].CreateTime, now) {
+				orders[i].Status = common.TopUpStatusExpired
+				if err := tx.Save(&orders[i]).Error; err != nil {
+					return err
+				}
+				continue
+			}
+			if pending == nil {
+				copy := orders[i]
+				pending = &copy
+			}
+		}
+		return nil
+	})
+	return pending, err
+}
+
+// ExpirePendingEpayWxPayTopUp marks an overdue order expired while holding
+// the user wallet lock. It leaves a completed or cancelled order untouched.
+func ExpirePendingEpayWxPayTopUp(userId int, tradeNo string) error {
+	return withWalletTransaction(userId, func(tx *gorm.DB) error {
+		var topUp TopUp
+		if err := lockForUpdate(tx).
+			Where("user_id = ? AND trade_no = ?", userId, tradeNo).
+			First(&topUp).Error; err != nil {
+			return ErrTopUpNotFound
+		}
+		if topUp.PaymentProvider != PaymentProviderEpay || topUp.PaymentMethod != "wxpay" {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.Status != common.TopUpStatusPending ||
+			!epayWxPayOrderExpired(topUp.CreateTime, time.Now().Unix()) {
+			return nil
+		}
+		topUp.Status = common.TopUpStatusExpired
+		return tx.Save(&topUp).Error
+	})
+}
+
+// UpdateEpayWxPayQRCode stores the QR payload without overwriting a payment
+// status that may have changed while the gateway request was in flight.
+func UpdateEpayWxPayQRCode(tradeNo, qrCode string) error {
+	if tradeNo == "" || qrCode == "" {
+		return errors.New("未提供二维码信息")
+	}
+	return DB.Model(&TopUp{}).
+		Where("trade_no = ? AND payment_provider = ? AND payment_method = ? AND status = ?",
+			tradeNo, PaymentProviderEpay, "wxpay", common.TopUpStatusPending).
+		Update("qrcode", qrCode).Error
+}
+
+// CancelPendingEpayWxPayTopUp cancels an owned pending WeChat Epay order.
+// Repeating cancellation for an already cancelled/expired/failed order is idempotent;
 // successful orders are never changed by this operation.
 func CancelPendingEpayWxPayTopUp(userId int, tradeNo string) error {
 	if userId <= 0 || tradeNo == "" {
@@ -228,9 +322,9 @@ func CancelPendingEpayWxPayTopUp(userId int, tradeNo string) error {
 		}
 		switch topUp.Status {
 		case common.TopUpStatusPending:
-			topUp.Status = common.TopUpStatusExpired
+			topUp.Status = common.TopUpStatusCancelled
 			return tx.Save(&topUp).Error
-		case common.TopUpStatusExpired, common.TopUpStatusFailed:
+		case common.TopUpStatusExpired, common.TopUpStatusCancelled, common.TopUpStatusFailed:
 			return nil
 		default:
 			return ErrTopUpStatusInvalid
@@ -298,15 +392,20 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if topUp.PaymentProvider != PaymentProviderEpay {
 			return ErrPaymentMethodMismatch
 		}
+		if topUp.PaymentMethod == "wxpay" && actualPaymentMethod != "wxpay" {
+			return ErrPaymentMethodMismatch
+		}
 		if topUp.Status == common.TopUpStatusSuccess {
 			alreadyDone = true
 			return nil
 		}
 		// A user can cancel the QR dialog at the same moment that WeChat
 		// completes the payment. Keep accepting a verified wxpay success for
-		// an expired local order so that this cancellation race cannot strand
-		// funds. Other expired/failed Epay orders remain terminal.
+		// a cancelled or expired local order so that a late callback cannot
+		// strand funds already collected by the gateway.
 		if topUp.Status != common.TopUpStatusPending &&
+			!(topUp.Status == common.TopUpStatusCancelled &&
+				topUp.PaymentMethod == "wxpay" && actualPaymentMethod == "wxpay") &&
 			!(topUp.Status == common.TopUpStatusExpired &&
 				topUp.PaymentMethod == "wxpay" && actualPaymentMethod == "wxpay") {
 			return ErrTopUpStatusInvalid

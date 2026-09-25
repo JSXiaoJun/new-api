@@ -4850,7 +4850,7 @@
     "Time period {{number}}": "Период {{number}}",
     "Time periods": "Периоды времени",
     "Time periods must not overlap.": "Периоды не должны пересекаться.",
-    "Time remaining": "Осталось времени",
+    "Time remaining": "Оставшееся время",
     "Time window for rate limiting": "Временное окно для ограничения скорости запросов",
     "Time-based": "Зависит от времени",
     "Time-sliced cache (Claude)": "Сегментированный кэш (Claude)",

@@ -503,8 +503,28 @@ func RequestEpay(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "二维码创建失败，请取消当前订单后重试",
-				"data":    gin.H{"trade_no": tradeNo},
+				"data": gin.H{
+					"trade_no":   tradeNo,
+					"expires_at": model.EpayWxPayOrderExpiresAt(topUp.CreateTime),
+				},
 			})
+			return
+		}
+		if err := model.UpdateEpayWxPayQRCode(tradeNo, qrCode); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 微信二维码保存失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "二维码保存失败，请取消当前订单后重试",
+				"data": gin.H{
+					"trade_no":   tradeNo,
+					"expires_at": model.EpayWxPayOrderExpiresAt(topUp.CreateTime),
+				},
+			})
+			return
+		}
+		if time.Now().Unix() >= model.EpayWxPayOrderExpiresAt(topUp.CreateTime) {
+			_ = model.ExpirePendingEpayWxPayTopUp(id, tradeNo)
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "订单已过期，请重新创建"})
 			return
 		}
 
@@ -512,8 +532,9 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "success",
 			"data": gin.H{
-				"qrcode":   qrCode,
-				"trade_no": tradeNo,
+				"qrcode":     qrCode,
+				"trade_no":   tradeNo,
+				"expires_at": model.EpayWxPayOrderExpiresAt(topUp.CreateTime),
 			},
 		})
 		return
@@ -756,6 +777,14 @@ func GetUserTopUpStatus(c *gin.Context) {
 	}
 
 	if topUp.Status == common.TopUpStatusPending && topUp.PaymentMethod == "wxpay" {
+		if model.EpayWxPayOrderExpiresAt(topUp.CreateTime) <= time.Now().Unix() {
+			if err := model.ExpirePendingEpayWxPayTopUp(topUp.UserId, tradeNo); err != nil {
+				logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付微信订单过期失败 trade_no=%s error=%q", tradeNo, err.Error()))
+			}
+			topUp = model.GetTopUpByTradeNo(tradeNo)
+		}
+	}
+	if (topUp.Status == common.TopUpStatusPending || topUp.Status == common.TopUpStatusCancelled || topUp.Status == common.TopUpStatusExpired) && topUp.PaymentMethod == "wxpay" {
 		paid, queryErr := queryEpayOrder(c.Request.Context(), tradeNo)
 		if queryErr != nil {
 			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付主动查单失败 trade_no=%s user_id=%d error=%q", tradeNo, topUp.UserId, queryErr.Error()))
@@ -771,6 +800,48 @@ func GetUserTopUpStatus(c *gin.Context) {
 		"trade_no":      topUp.TradeNo,
 		"status":        topUp.Status,
 		"complete_time": topUp.CompleteTime,
+		"expires_at":    model.EpayWxPayOrderExpiresAt(topUp.CreateTime),
+	})
+}
+
+// GetPendingWechatTopUp restores an active QR payment when the user reopens
+// the wallet page. The QR payload is persisted with the local order so a page
+// refresh does not create a second gateway order.
+func GetPendingWechatTopUp(c *gin.Context) {
+	topUp, err := model.GetPendingEpayWxPayTopUp(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if topUp == nil {
+		common.ApiSuccess(c, nil)
+		return
+	}
+	if strings.TrimSpace(topUp.QRCode) == "" {
+		callbackAddress := service.GetCallbackAddress()
+		returnURL, _ := url.Parse(paymentReturnPath("/usage-logs"))
+		notifyURL, _ := url.Parse(callbackAddress + "/api/user/epay/notify")
+		qrCode, qrErr := requestEpayQRCode(
+			c.Request.Context(),
+			topUp.PaymentMethod,
+			topUp.TradeNo,
+			"TUC",
+			strconv.FormatFloat(topUp.Money, 'f', 2, 64),
+			notifyURL.String(),
+			returnURL.String(),
+			c.ClientIP(),
+		)
+		if qrErr == nil {
+			topUp.QRCode = qrCode
+			if saveErr := model.UpdateEpayWxPayQRCode(topUp.TradeNo, qrCode); saveErr != nil {
+				logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付恢复微信二维码保存失败 trade_no=%s error=%q", topUp.TradeNo, saveErr.Error()))
+			}
+		}
+	}
+	common.ApiSuccess(c, gin.H{
+		"qrcode":     topUp.QRCode,
+		"trade_no":   topUp.TradeNo,
+		"expires_at": model.EpayWxPayOrderExpiresAt(topUp.CreateTime),
 	})
 }
 
@@ -790,7 +861,7 @@ func CancelUserTopUp(c *gin.Context) {
 
 	common.ApiSuccess(c, gin.H{
 		"trade_no": tradeNo,
-		"status":   common.TopUpStatusExpired,
+		"status":   common.TopUpStatusCancelled,
 	})
 }
 

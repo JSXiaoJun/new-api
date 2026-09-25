@@ -101,6 +101,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/aff", controller.GetAffCode)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
+				selfRoute.GET("/topup/pending-wechat", middleware.DisableCache(), controller.GetPendingWechatTopUp)
 				selfRoute.GET("/topup/status", middleware.DisableCache(), controller.GetUserTopUpStatus)
 				selfRoute.POST("/topup/cancel", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.CancelUserTopUp)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)

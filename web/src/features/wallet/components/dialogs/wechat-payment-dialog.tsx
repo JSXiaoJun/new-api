@@ -42,6 +42,14 @@ interface WeChatPaymentDialogProps {
 
 type PaymentDisplayStatus = 'pending' | 'success' | 'expired'
 
+function formatRemainingTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes.toString().padStart(2, '0')}:${seconds
+    .toString()
+    .padStart(2, '0')}`
+}
+
 export function WeChatPaymentDialog({
   open,
   onOpenChange,
@@ -57,9 +65,17 @@ export function WeChatPaymentDialog({
   }>({ tradeNo: null, status: 'pending' })
   const [checking, setChecking] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  const [nowSeconds, setNowSeconds] = useState(() =>
+    Math.floor(Date.now() / 1000)
+  )
   const completedRef = useRef(false)
   const status =
     paymentState.tradeNo === paymentTradeNo ? paymentState.status : 'pending'
+  const remainingSeconds = Math.max(0, (payment?.expires_at ?? 0) - nowSeconds)
+  const displayStatus =
+    status === 'pending' && payment?.expires_at && remainingSeconds === 0
+      ? 'expired'
+      : status
 
   const checkPaymentStatus = useCallback(async () => {
     if (!paymentTradeNo || completedRef.current || cancelling) return
@@ -79,6 +95,7 @@ export function WeChatPaymentDialog({
 
       if (
         response.data.status === 'expired' ||
+        response.data.status === 'cancelled' ||
         response.data.status === 'failed'
       ) {
         completedRef.current = true
@@ -103,6 +120,16 @@ export function WeChatPaymentDialog({
     return () => window.clearInterval(timer)
   }, [checkPaymentStatus, open, paymentTradeNo])
 
+  useEffect(() => {
+    if (!open || !paymentTradeNo) return
+
+    const timer = window.setInterval(() => {
+      setNowSeconds(Math.floor(Date.now() / 1000))
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [open, paymentTradeNo])
+
   const handleCopyLink = async () => {
     if (payment?.qrcode) {
       await copyToClipboard(payment.qrcode)
@@ -115,7 +142,7 @@ export function WeChatPaymentDialog({
 
   const handleCancel = useCallback(async () => {
     if (!paymentTradeNo || cancelling) return
-    if (status !== 'pending' || completedRef.current) {
+    if (status === 'success' || completedRef.current) {
       onOpenChange(false)
       return
     }
@@ -125,7 +152,11 @@ export function WeChatPaymentDialog({
       // Check the gateway once more before expiring the order. This closes
       // the race where the user paid but the asynchronous callback is late.
       const latest = await getTopupPaymentStatus(paymentTradeNo)
-      if (isApiSuccess(latest) && latest.data?.status === 'success') {
+      if (!isApiSuccess(latest) || !latest.data) {
+        toast.error(t('Failed to cancel payment'))
+        return
+      }
+      if (latest.data.status === 'success') {
         completedRef.current = true
         setPaymentState({ tradeNo: paymentTradeNo, status: 'success' })
         await onPaid?.()
@@ -165,18 +196,18 @@ export function WeChatPaymentDialog({
   if (!payment) return null
 
   let statusText = t('Waiting for payment...')
-  if (status === 'success') {
+  if (displayStatus === 'success') {
     statusText = t('Payment successful')
-  } else if (status === 'expired') {
+  } else if (displayStatus === 'expired') {
     statusText = t('Payment expired')
   }
 
   let statusClassName =
     'text-muted-foreground flex items-center gap-2 text-sm font-medium'
-  if (status === 'success') {
+  if (displayStatus === 'success') {
     statusClassName =
       'flex items-center gap-2 text-sm font-medium text-green-600'
-  } else if (status === 'expired') {
+  } else if (displayStatus === 'expired') {
     statusClassName = 'text-destructive text-sm font-medium'
   }
 
@@ -196,19 +227,21 @@ export function WeChatPaymentDialog({
       contentClassName='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-md'
       bodyClassName='flex flex-col items-center gap-4'
     >
-      {payment.qrcode ? (
+      {payment.qrcode && displayStatus === 'pending' ? (
         <div className='rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-black/10'>
           <QRCodeSVG value={payment.qrcode} size={240} includeMargin />
         </div>
       ) : (
         <div className='text-muted-foreground bg-muted flex min-h-60 w-60 items-center justify-center rounded-[28px] p-6 text-center text-sm'>
-          {t(
-            'Payment link is temporarily unavailable. Cancel this order and try again.'
-          )}
+          {displayStatus === 'expired'
+            ? t('Payment expired')
+            : t(
+                'Payment link is temporarily unavailable. Cancel this order and try again.'
+              )}
         </div>
       )}
 
-      {payment.qrcode && (
+      {payment.qrcode && displayStatus === 'pending' && (
         <Button
           variant='outline'
           size='sm'
@@ -227,18 +260,24 @@ export function WeChatPaymentDialog({
       </div>
 
       <div className={statusClassName}>
-        {status === 'success' && <Check className='h-4 w-4' />}
-        {status !== 'success' && checking && (
+        {displayStatus === 'success' && <Check className='h-4 w-4' />}
+        {displayStatus !== 'success' && checking && (
           <Loader2 className='h-4 w-4 animate-spin' />
         )}
         {statusText}
       </div>
 
+      {displayStatus === 'pending' && (
+        <div className='text-muted-foreground text-center text-xs'>
+          {t('Time remaining')}: {formatRemainingTime(remainingSeconds)}
+        </div>
+      )}
+
       <div className='flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-center'>
         <Button
           variant='outline'
           onClick={handleManualCheck}
-          disabled={checking || status === 'success'}
+          disabled={checking || displayStatus === 'success'}
           className='gap-2'
         >
           <RefreshCw className='h-4 w-4' />
@@ -250,8 +289,10 @@ export function WeChatPaymentDialog({
           disabled={cancelling}
           className='gap-2'
         >
-          {status === 'pending' && <Ban className='h-4 w-4' />}
-          {status === 'pending' ? t('Cancel Payment') : t('Back to Wallet')}
+          {displayStatus === 'pending' && <Ban className='h-4 w-4' />}
+          {displayStatus === 'pending'
+            ? t('Cancel Payment')
+            : t('Back to Wallet')}
         </Button>
       </div>
     </Dialog>

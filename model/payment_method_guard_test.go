@@ -171,6 +171,73 @@ func TestCreatePendingEpayWxPayTopUpRejectsDuplicatePendingOrder(t *testing.T) {
 	assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, first.TradeNo))
 }
 
+func TestCreatePendingEpayWxPayTopUpExpiresStaleOrder(t *testing.T) {
+	truncateTables(t)
+	user := insertUserForPaymentGuardTest(t, 177, 0)
+
+	stale := &TopUp{
+		UserId:          user.Id,
+		Amount:          2,
+		Money:           9.99,
+		TradeNo:         "wxpay-stale-order",
+		PaymentMethod:   "wxpay",
+		PaymentProvider: PaymentProviderEpay,
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Unix() - EpayWxPayOrderLifetimeSeconds - 1,
+	}
+	require.NoError(t, CreatePendingEpayWxPayTopUp(stale))
+
+	current := &TopUp{
+		UserId:          user.Id,
+		Amount:          3,
+		Money:           12.99,
+		TradeNo:         "wxpay-current-order",
+		PaymentMethod:   "wxpay",
+		PaymentProvider: PaymentProviderEpay,
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Unix(),
+	}
+	require.NoError(t, CreatePendingEpayWxPayTopUp(current))
+	assert.Equal(t, common.TopUpStatusExpired, getTopUpStatusForPaymentGuardTest(t, stale.TradeNo))
+	assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, current.TradeNo))
+}
+
+func TestGetPendingEpayWxPayTopUpRestoresQRCodeAndExpiresOldOrder(t *testing.T) {
+	truncateTables(t)
+	user := insertUserForPaymentGuardTest(t, 178, 0)
+
+	stale := &TopUp{
+		UserId:          user.Id,
+		Amount:          2,
+		TradeNo:         "wxpay-restore-stale",
+		PaymentMethod:   "wxpay",
+		PaymentProvider: PaymentProviderEpay,
+		QRCode:          "weixin://stale",
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Unix() - EpayWxPayOrderLifetimeSeconds - 1,
+	}
+	require.NoError(t, DB.Create(stale).Error)
+
+	current := &TopUp{
+		UserId:          user.Id,
+		Amount:          3,
+		TradeNo:         "wxpay-restore-current",
+		PaymentMethod:   "wxpay",
+		PaymentProvider: PaymentProviderEpay,
+		QRCode:          "weixin://current",
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Unix(),
+	}
+	require.NoError(t, DB.Create(current).Error)
+
+	restored, err := GetPendingEpayWxPayTopUp(user.Id)
+	require.NoError(t, err)
+	require.NotNil(t, restored)
+	assert.Equal(t, current.TradeNo, restored.TradeNo)
+	assert.Equal(t, current.QRCode, restored.QRCode)
+	assert.Equal(t, common.TopUpStatusExpired, getTopUpStatusForPaymentGuardTest(t, stale.TradeNo))
+}
+
 func TestCancelPendingEpayWxPayTopUpAllowsRecreationAndIsIdempotent(t *testing.T) {
 	truncateTables(t)
 	user := insertUserForPaymentGuardTest(t, 176, 0)
@@ -188,7 +255,7 @@ func TestCancelPendingEpayWxPayTopUpAllowsRecreationAndIsIdempotent(t *testing.T
 	require.NoError(t, CreatePendingEpayWxPayTopUp(first))
 	require.NoError(t, CancelPendingEpayWxPayTopUp(user.Id, first.TradeNo))
 	require.NoError(t, CancelPendingEpayWxPayTopUp(user.Id, first.TradeNo))
-	assert.Equal(t, common.TopUpStatusExpired, getTopUpStatusForPaymentGuardTest(t, first.TradeNo))
+	assert.Equal(t, common.TopUpStatusCancelled, getTopUpStatusForPaymentGuardTest(t, first.TradeNo))
 
 	second := &TopUp{
 		UserId:          user.Id,
@@ -364,7 +431,7 @@ func TestRechargeEpaySettlesCancelledWechatOrder(t *testing.T) {
 	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
 
 	user := insertUserForPaymentGuardTest(t, 507, 0)
-	order := createEpayTestOrder(t, user.Id, "EPAYTESTWXEXPIRED", PaymentProviderEpay, common.TopUpStatusExpired)
+	order := createEpayTestOrder(t, user.Id, "EPAYTESTWXCANCELLED", PaymentProviderEpay, common.TopUpStatusCancelled)
 	order.PaymentMethod = "wxpay"
 	require.NoError(t, DB.Save(&order).Error)
 
@@ -377,6 +444,25 @@ func TestRechargeEpaySettlesCancelledWechatOrder(t *testing.T) {
 	alreadyDone, err = RechargeEpay(order.TradeNo, "wxpay", "127.0.0.1")
 	require.NoError(t, err)
 	assert.True(t, alreadyDone)
+	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
+}
+
+func TestRechargeEpaySettlesExpiredWechatOrderAfterLateCallback(t *testing.T) {
+	truncateTables(t)
+
+	oldQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
+
+	user := insertUserForPaymentGuardTest(t, 508, 0)
+	order := createEpayTestOrder(t, user.Id, "EPAYTESTWXTIMEOUT", PaymentProviderEpay, common.TopUpStatusPending)
+	order.PaymentMethod = "wxpay"
+	order.CreateTime = time.Now().Unix() - EpayWxPayOrderLifetimeSeconds - 1
+	require.NoError(t, DB.Save(&order).Error)
+
+	_, err := RechargeEpay(order.TradeNo, "wxpay", "127.0.0.1")
+	require.NoError(t, err)
+	assert.Equal(t, common.TopUpStatusSuccess, getTopUpStatusForPaymentGuardTest(t, order.TradeNo))
 	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
 }
 

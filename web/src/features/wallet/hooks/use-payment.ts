@@ -89,6 +89,11 @@ export function usePayment() {
   const [processing, setProcessing] = useState(false)
   const [wechatPayment, setWechatPayment] =
     useState<EpayQRCodePaymentData | null>(null)
+  const clearWechatPayment = useCallback(() => setWechatPayment(null), [])
+  const restoreWechatPayment = useCallback(
+    (payment: EpayQRCodePaymentData) => setWechatPayment(payment),
+    []
+  )
 
   // Calculate payment amount
   const calculatePaymentAmount = useCallback(
@@ -134,8 +139,13 @@ export function usePayment() {
         if (!isApiSuccess(response)) {
           const errorData = response.data as Record<string, unknown> | undefined
           const tradeNo = errorData?.trade_no
-          if (typeof tradeNo === 'string') {
-            setWechatPayment({ qrcode: '', trade_no: tradeNo })
+          const expiresAt = errorData?.expires_at
+          if (typeof tradeNo === 'string' && typeof expiresAt === 'number') {
+            setWechatPayment({
+              qrcode: '',
+              trade_no: tradeNo,
+              expires_at: expiresAt,
+            })
             toast.error(response.message || i18next.t('Payment request failed'))
             return true
           }
@@ -155,8 +165,17 @@ export function usePayment() {
           const paymentData = response.data as Record<string, unknown>
           const qrcode = paymentData.qrcode
           const tradeNo = paymentData.trade_no
-          if (typeof qrcode === 'string' && typeof tradeNo === 'string') {
-            setWechatPayment({ qrcode, trade_no: tradeNo })
+          const expiresAt = paymentData.expires_at
+          if (
+            typeof qrcode === 'string' &&
+            typeof tradeNo === 'string' &&
+            typeof expiresAt === 'number'
+          ) {
+            setWechatPayment({
+              qrcode,
+              trade_no: tradeNo,
+              expires_at: expiresAt,
+            })
             toast.success(i18next.t('Payment initiated'))
             return true
           }
@@ -187,7 +206,8 @@ export function usePayment() {
     wechatPayment,
     calculatePaymentAmount,
     processPayment,
-    clearWechatPayment: () => setWechatPayment(null),
+    clearWechatPayment,
+    restoreWechatPayment,
     setAmount,
   }
 }

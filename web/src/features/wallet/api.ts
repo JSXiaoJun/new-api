@@ -40,6 +40,7 @@ import type {
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
   TopupPaymentStatus,
+  EpayQRCodePaymentData,
 } from './types'
 
 // ============================================================================
@@ -130,6 +131,18 @@ export async function getTopupPaymentStatus(
 ): Promise<ApiResponse<TopupPaymentStatus>> {
   const res = await api.get('/api/user/topup/status', {
     params: { trade_no: tradeNo },
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
+ * Restore the user's active WeChat Epay order after reopening the wallet.
+ */
+export async function getPendingWechatPayment(): Promise<
+  ApiResponse<EpayQRCodePaymentData | null>
+> {
+  const res = await api.get('/api/user/topup/pending-wechat', {
     skipBusinessError: true,
   } as Record<string, unknown>)
   return res.data

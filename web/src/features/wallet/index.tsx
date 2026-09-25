@@ -25,6 +25,7 @@ import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { getPendingWechatPayment, isApiSuccess } from './api'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
@@ -100,6 +101,7 @@ export function Wallet(props: WalletProps) {
     calculatePaymentAmount,
     processPayment,
     clearWechatPayment,
+    restoreWechatPayment,
   } = usePayment()
   const {
     affiliateLink,
@@ -138,6 +140,20 @@ export function Wallet(props: WalletProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchUser()
   }, [fetchUser])
+
+  useEffect(() => {
+    let active = true
+    void getPendingWechatPayment()
+      .then((response) => {
+        if (active && isApiSuccess(response) && response.data) {
+          restoreWechatPayment(response.data)
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [restoreWechatPayment])
 
   useEffect(() => {
     if (props.initialShowHistory) {
