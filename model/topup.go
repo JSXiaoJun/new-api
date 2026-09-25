@@ -52,6 +52,7 @@ var (
 	ErrPaymentMethodMismatch   = errors.New("payment method mismatch")
 	ErrTopUpNotFound           = errors.New("topup not found")
 	ErrTopUpStatusInvalid      = errors.New("topup status invalid")
+	ErrPendingEpayWxPayOrder   = errors.New("已有待支付微信订单，请先取消后再创建")
 	ErrInvalidTopUpQuota       = errors.New("invalid top-up quota")
 	ErrTopUpQuotaLimitExceeded = errors.New("top-up quota limit exceeded")
 )
@@ -175,6 +176,68 @@ func GetTopUpByTradeNo(tradeNo string) *TopUp {
 	return topUp
 }
 
+// CreatePendingEpayWxPayTopUp reserves one pending WeChat Epay order per user.
+// The user row lock serializes concurrent checkout requests before the pending
+// order lookup and insert, including on deployments with multiple instances.
+func CreatePendingEpayWxPayTopUp(topUp *TopUp) error {
+	if topUp == nil || topUp.UserId <= 0 {
+		return errors.New("invalid topup")
+	}
+	if topUp.PaymentProvider != PaymentProviderEpay || topUp.PaymentMethod != "wxpay" {
+		return ErrPaymentMethodMismatch
+	}
+
+	return withWalletTransaction(topUp.UserId, func(tx *gorm.DB) error {
+		var pending TopUp
+		err := lockForUpdate(tx).
+			Where("user_id = ? AND payment_provider = ? AND payment_method = ? AND status = ?",
+				topUp.UserId, PaymentProviderEpay, "wxpay", common.TopUpStatusPending).
+			First(&pending).Error
+		if err == nil {
+			return ErrPendingEpayWxPayOrder
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		return tx.Create(topUp).Error
+	})
+}
+
+// CancelPendingEpayWxPayTopUp expires an owned pending WeChat Epay order.
+// Repeating cancellation for an already expired/failed order is idempotent;
+// successful orders are never changed by this operation.
+func CancelPendingEpayWxPayTopUp(userId int, tradeNo string) error {
+	if userId <= 0 || tradeNo == "" {
+		return ErrTopUpNotFound
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+
+	return withWalletTransaction(userId, func(tx *gorm.DB) error {
+		var topUp TopUp
+		if err := lockForUpdate(tx).
+			Where("user_id = ? AND "+refCol+" = ?", userId, tradeNo).
+			First(&topUp).Error; err != nil {
+			return ErrTopUpNotFound
+		}
+		if topUp.PaymentProvider != PaymentProviderEpay || topUp.PaymentMethod != "wxpay" {
+			return ErrPaymentMethodMismatch
+		}
+		switch topUp.Status {
+		case common.TopUpStatusPending:
+			topUp.Status = common.TopUpStatusExpired
+			return tx.Save(&topUp).Error
+		case common.TopUpStatusExpired, common.TopUpStatusFailed:
+			return nil
+		default:
+			return ErrTopUpStatusInvalid
+		}
+	})
+}
+
 func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, targetStatus string) error {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
@@ -239,7 +302,13 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 			alreadyDone = true
 			return nil
 		}
-		if topUp.Status != common.TopUpStatusPending {
+		// A user can cancel the QR dialog at the same moment that WeChat
+		// completes the payment. Keep accepting a verified wxpay success for
+		// an expired local order so that this cancellation race cannot strand
+		// funds. Other expired/failed Epay orders remain terminal.
+		if topUp.Status != common.TopUpStatusPending &&
+			!(topUp.Status == common.TopUpStatusExpired &&
+				topUp.PaymentMethod == "wxpay" && actualPaymentMethod == "wxpay") {
 			return ErrTopUpStatusInvalid
 		}
 		if actualPaymentMethod != "" && topUp.PaymentMethod != actualPaymentMethod {

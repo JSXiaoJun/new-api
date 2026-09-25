@@ -39,6 +39,7 @@ import type {
   WaffoPaymentResponse,
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
+  TopupPaymentStatus,
 } from './types'
 
 // ============================================================================
@@ -119,6 +120,31 @@ export async function requestPayment(
     ...res.data,
     url: res.data.url || (res as unknown as { url?: string }).url,
   }
+}
+
+/**
+ * Poll the status of the authenticated user's Epay order.
+ */
+export async function getTopupPaymentStatus(
+  tradeNo: string
+): Promise<ApiResponse<TopupPaymentStatus>> {
+  const res = await api.get('/api/user/topup/status', {
+    params: { trade_no: tradeNo },
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
+ * Cancel the authenticated user's pending WeChat payment.
+ */
+export async function cancelTopupPayment(
+  tradeNo: string
+): Promise<ApiResponse<{ trade_no: string; status: string }>> {
+  const res = await api.post('/api/user/topup/cancel', { trade_no: tradeNo }, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
 }
 
 /**

@@ -140,6 +140,69 @@ func TestUpdatePendingTopUpStatus_RejectsMismatchedPaymentProvider(t *testing.T)
 	}
 }
 
+func TestCreatePendingEpayWxPayTopUpRejectsDuplicatePendingOrder(t *testing.T) {
+	truncateTables(t)
+	user := insertUserForPaymentGuardTest(t, 175, 0)
+
+	first := &TopUp{
+		UserId:          user.Id,
+		Amount:          2,
+		Money:           9.99,
+		TradeNo:         "wxpay-pending-first",
+		PaymentMethod:   "wxpay",
+		PaymentProvider: PaymentProviderEpay,
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Unix(),
+	}
+	require.NoError(t, CreatePendingEpayWxPayTopUp(first))
+
+	second := &TopUp{
+		UserId:          user.Id,
+		Amount:          3,
+		Money:           12.99,
+		TradeNo:         "wxpay-pending-second",
+		PaymentMethod:   "wxpay",
+		PaymentProvider: PaymentProviderEpay,
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Unix(),
+	}
+	require.ErrorIs(t, CreatePendingEpayWxPayTopUp(second), ErrPendingEpayWxPayOrder)
+	assert.Nil(t, GetTopUpByTradeNo(second.TradeNo))
+	assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, first.TradeNo))
+}
+
+func TestCancelPendingEpayWxPayTopUpAllowsRecreationAndIsIdempotent(t *testing.T) {
+	truncateTables(t)
+	user := insertUserForPaymentGuardTest(t, 176, 0)
+
+	first := &TopUp{
+		UserId:          user.Id,
+		Amount:          2,
+		Money:           9.99,
+		TradeNo:         "wxpay-cancel-first",
+		PaymentMethod:   "wxpay",
+		PaymentProvider: PaymentProviderEpay,
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Unix(),
+	}
+	require.NoError(t, CreatePendingEpayWxPayTopUp(first))
+	require.NoError(t, CancelPendingEpayWxPayTopUp(user.Id, first.TradeNo))
+	require.NoError(t, CancelPendingEpayWxPayTopUp(user.Id, first.TradeNo))
+	assert.Equal(t, common.TopUpStatusExpired, getTopUpStatusForPaymentGuardTest(t, first.TradeNo))
+
+	second := &TopUp{
+		UserId:          user.Id,
+		Amount:          3,
+		Money:           12.99,
+		TradeNo:         "wxpay-cancel-second",
+		PaymentMethod:   "wxpay",
+		PaymentProvider: PaymentProviderEpay,
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Unix(),
+	}
+	require.NoError(t, CreatePendingEpayWxPayTopUp(second))
+}
+
 func TestCompleteSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T) {
 	truncateTables(t)
 
@@ -291,6 +354,30 @@ func TestRechargeEpayRejectsForeignAndNonPendingOrders(t *testing.T) {
 		_, err := RechargeEpay("EPAYTESTMISSING", "alipay", "127.0.0.1")
 		assert.ErrorIs(t, err, ErrTopUpNotFound)
 	})
+}
+
+func TestRechargeEpaySettlesCancelledWechatOrder(t *testing.T) {
+	truncateTables(t)
+
+	oldQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
+
+	user := insertUserForPaymentGuardTest(t, 507, 0)
+	order := createEpayTestOrder(t, user.Id, "EPAYTESTWXEXPIRED", PaymentProviderEpay, common.TopUpStatusExpired)
+	order.PaymentMethod = "wxpay"
+	require.NoError(t, DB.Save(&order).Error)
+
+	alreadyDone, err := RechargeEpay(order.TradeNo, "wxpay", "127.0.0.1")
+	require.NoError(t, err)
+	assert.False(t, alreadyDone)
+	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
+	assert.Equal(t, common.TopUpStatusSuccess, getTopUpStatusForPaymentGuardTest(t, order.TradeNo))
+
+	alreadyDone, err = RechargeEpay(order.TradeNo, "wxpay", "127.0.0.1")
+	require.NoError(t, err)
+	assert.True(t, alreadyDone)
+	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
 }
 
 func TestRechargeEpayRejectsQuotaOverflowBeforeCompletingOrder(t *testing.T) {

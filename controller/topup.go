@@ -1,11 +1,15 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -129,8 +133,32 @@ type EpayRequest struct {
 	PaymentMethod string `json:"payment_method"`
 }
 
+type CancelTopUpRequest struct {
+	TradeNo string `json:"trade_no"`
+}
+
 type AmountRequest struct {
 	Amount int64 `json:"amount"`
+}
+
+type epayQRCodeResponse struct {
+	Code    int    `json:"code"`
+	Message string `json:"msg"`
+	QRCode  string `json:"qrcode"`
+}
+
+type epayQRCodeRejectedError struct {
+	message string
+}
+
+func (e *epayQRCodeRejectedError) Error() string {
+	return e.message
+}
+
+type epayOrderQueryResponse struct {
+	Code       int    `json:"code"`
+	Message    string `json:"msg"`
+	OrderState int    `json:"status"`
 }
 
 func GetEpayClient() *epay.Client {
@@ -145,6 +173,121 @@ func GetEpayClient() *epay.Client {
 		return nil
 	}
 	return withUrl
+}
+
+// requestEpayQRCode uses the gateway's API order endpoint. The SDK's Purchase
+// method only creates a browser form, while the API endpoint returns the PC QR
+// payload required for an in-page WeChat payment flow.
+func requestEpayQRCode(ctx context.Context, paymentMethod, tradeNo, name, money, notifyURL, returnURL, clientIP string) (string, error) {
+	baseURL, err := url.Parse(operation_setting.PayAddress)
+	if err != nil {
+		return "", err
+	}
+	baseURL.Path = path.Join(baseURL.Path, "/mapi.php")
+
+	params := epay.GenerateParams(map[string]string{
+		"pid":          operation_setting.EpayId,
+		"type":         paymentMethod,
+		"out_trade_no": tradeNo,
+		"notify_url":   notifyURL,
+		"return_url":   returnURL,
+		"name":         name,
+		"money":        money,
+		"clientip":     clientIP,
+		"device":       string(epay.PC),
+		"sign_type":    "MD5",
+	}, operation_setting.EpayKey)
+	form := url.Values{}
+	for key, value := range params {
+		form.Set(key, value)
+	}
+
+	requestCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, baseURL.String(), strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	response, err := (&http.Client{Timeout: 15 * time.Second}).Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return "", fmt.Errorf("epay mapi returned HTTP %d", response.StatusCode)
+	}
+
+	var payload epayQRCodeResponse
+	if err := common.Unmarshal(body, &payload); err != nil {
+		return "", fmt.Errorf("解析易支付二维码响应失败: %w", err)
+	}
+	if payload.Code != 1 {
+		if payload.Message == "" {
+			payload.Message = "未返回二维码链接"
+		}
+		return "", &epayQRCodeRejectedError{message: payload.Message}
+	}
+	if strings.TrimSpace(payload.QRCode) == "" {
+		return "", errors.New("易支付返回成功但缺少二维码链接")
+	}
+	return strings.TrimSpace(payload.QRCode), nil
+}
+
+// queryEpayOrder asks the gateway for the authoritative order state. Epay's
+// documentation recommends this as a fallback because asynchronous callbacks
+// can be delayed or blocked by the merchant's network.
+func queryEpayOrder(ctx context.Context, tradeNo string) (bool, error) {
+	baseURL, err := url.Parse(operation_setting.PayAddress)
+	if err != nil {
+		return false, err
+	}
+	baseURL.Path = path.Join(baseURL.Path, "/api.php")
+	query := baseURL.Query()
+	query.Set("act", "order")
+	query.Set("pid", operation_setting.EpayId)
+	query.Set("key", operation_setting.EpayKey)
+	query.Set("out_trade_no", tradeNo)
+	baseURL.RawQuery = query.Encode()
+
+	requestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, baseURL.String(), nil)
+	if err != nil {
+		return false, err
+	}
+
+	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+	if err != nil {
+		return false, err
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return false, err
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return false, fmt.Errorf("epay order query returned HTTP %d", response.StatusCode)
+	}
+
+	var payload epayOrderQueryResponse
+	if err := common.Unmarshal(body, &payload); err != nil {
+		return false, fmt.Errorf("解析易支付订单查询响应失败: %w", err)
+	}
+	if payload.Code != 1 {
+		if payload.Message == "" {
+			payload.Message = "易支付订单查询失败"
+		}
+		return false, errors.New(payload.Message)
+	}
+	return payload.OrderState == 1, nil
 }
 
 func getPayMoney(amount int64, group string) float64 {
@@ -300,9 +443,79 @@ func RequestEpay(c *gin.Context) {
 	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
+	orderAmount := req.Amount
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		dAmount := decimal.NewFromInt(orderAmount)
+		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		orderAmount = dAmount.Div(dQuotaPerUnit).IntPart()
+	}
 	client := GetEpayClient()
 	if client == nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "当前管理员未配置支付信息"})
+		return
+	}
+
+	if req.PaymentMethod == "wxpay" {
+		// Create the local order before contacting mapi.php so an accepted
+		// gateway order always has a pending record available to the callback.
+		topUp := &model.TopUp{
+			UserId:          id,
+			Amount:          orderAmount,
+			Money:           payMoney,
+			TradeNo:         tradeNo,
+			PaymentMethod:   req.PaymentMethod,
+			PaymentProvider: model.PaymentProviderEpay,
+			CreateTime:      time.Now().Unix(),
+			Status:          common.TopUpStatusPending,
+		}
+		if err := model.CreatePendingEpayWxPayTopUp(topUp); err != nil {
+			if errors.Is(err, model.ErrPendingEpayWxPayOrder) {
+				common.ApiErrorMsg(c, err.Error())
+				return
+			}
+			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 创建微信充值订单失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
+			return
+		}
+
+		qrCode, err := requestEpayQRCode(
+			c.Request.Context(),
+			req.PaymentMethod,
+			tradeNo,
+			fmt.Sprintf("TUC%d", req.Amount),
+			strconv.FormatFloat(payMoney, 'f', 2, 64),
+			notifyUrl.String(),
+			returnUrl.String(),
+			c.ClientIP(),
+		)
+		if err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 微信二维码创建失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
+			var rejectedErr *epayQRCodeRejectedError
+			if errors.As(err, &rejectedErr) {
+				_ = model.UpdatePendingTopUpStatus(tradeNo, model.PaymentProviderEpay, common.TopUpStatusExpired)
+				c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
+				return
+			}
+
+			// Keep the pending order so a later status poll can recover a payment
+			// accepted by the gateway. The client receives the trade number so it
+			// can cancel this order instead of becoming blocked by it.
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "二维码创建失败，请取消当前订单后重试",
+				"data":    gin.H{"trade_no": tradeNo},
+			})
+			return
+		}
+
+		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 微信扫码订单创建成功 user_id=%d trade_no=%s amount=%d money=%.2f", id, tradeNo, req.Amount, payMoney))
+		c.JSON(http.StatusOK, gin.H{
+			"message": "success",
+			"data": gin.H{
+				"qrcode":   qrCode,
+				"trade_no": tradeNo,
+			},
+		})
 		return
 	}
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
@@ -319,15 +532,9 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
-	amount := req.Amount
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		dAmount := decimal.NewFromInt(int64(amount))
-		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		amount = dAmount.Div(dQuotaPerUnit).IntPart()
-	}
 	topUp := &model.TopUp{
 		UserId:          id,
-		Amount:          amount,
+		Amount:          orderAmount,
 		Money:           payMoney,
 		TradeNo:         tradeNo,
 		PaymentMethod:   req.PaymentMethod,
@@ -531,6 +738,60 @@ func GetUserTopUps(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(topups)
 	common.ApiSuccess(c, pageInfo)
+}
+
+// GetUserTopUpStatus returns the status of one of the authenticated user's
+// orders so the in-page QR payment dialog can stop polling after the callback.
+func GetUserTopUpStatus(c *gin.Context) {
+	tradeNo := strings.TrimSpace(c.Query("trade_no"))
+	if tradeNo == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "error", "data": "未提供支付单号"})
+		return
+	}
+
+	topUp := model.GetTopUpByTradeNo(tradeNo)
+	if topUp == nil || topUp.UserId != c.GetInt("id") || topUp.PaymentProvider != model.PaymentProviderEpay {
+		c.JSON(http.StatusNotFound, gin.H{"message": "error", "data": "充值订单不存在"})
+		return
+	}
+
+	if topUp.Status == common.TopUpStatusPending && topUp.PaymentMethod == "wxpay" {
+		paid, queryErr := queryEpayOrder(c.Request.Context(), tradeNo)
+		if queryErr != nil {
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付主动查单失败 trade_no=%s user_id=%d error=%q", tradeNo, topUp.UserId, queryErr.Error()))
+		} else if paid {
+			if _, rechargeErr := model.RechargeEpay(tradeNo, "wxpay", c.ClientIP()); rechargeErr != nil {
+				logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付主动查单确认支付但入账失败 trade_no=%s user_id=%d error=%q", tradeNo, topUp.UserId, rechargeErr.Error()))
+			}
+			topUp = model.GetTopUpByTradeNo(tradeNo)
+		}
+	}
+
+	common.ApiSuccess(c, gin.H{
+		"trade_no":      topUp.TradeNo,
+		"status":        topUp.Status,
+		"complete_time": topUp.CompleteTime,
+	})
+}
+
+// CancelUserTopUp expires the authenticated user's pending WeChat Epay order.
+func CancelUserTopUp(c *gin.Context) {
+	var req CancelTopUpRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.TradeNo) == "" {
+		common.ApiErrorMsg(c, "未提供支付单号")
+		return
+	}
+
+	tradeNo := strings.TrimSpace(req.TradeNo)
+	if err := model.CancelPendingEpayWxPayTopUp(c.GetInt("id"), tradeNo); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, gin.H{
+		"trade_no": tradeNo,
+		"status":   common.TopUpStatusExpired,
+	})
 }
 
 // GetAllTopUps 管理员获取全平台充值记录

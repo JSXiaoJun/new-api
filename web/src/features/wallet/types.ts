@@ -35,8 +35,19 @@ export interface ApiResponse<T = unknown> {
 export type TopupInfoResponse = ApiResponse<TopupInfo>
 export type RedemptionResponse = ApiResponse<number>
 export type AmountResponse = ApiResponse<string>
-export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
+export interface EpayQRCodePaymentData {
+  qrcode: string
+  trade_no: string
+}
+export type PaymentResponse = ApiResponse<
+  Record<string, unknown> & Partial<EpayQRCodePaymentData>
+> & {
   url?: string
+}
+export interface TopupPaymentStatus {
+  trade_no: string
+  status: TopupStatus
+  complete_time?: number
 }
 export type StripePaymentResponse = ApiResponse<{ pay_link: string }>
 export type AffiliateCodeResponse = ApiResponse<string>
@@ -249,7 +260,7 @@ export interface UserWalletData {
 /**
  * Topup record status
  */
-export type TopupStatus = 'success' | 'pending' | 'expired'
+export type TopupStatus = 'success' | 'pending' | 'expired' | 'failed'
 
 /**
  * Topup billing record

@@ -35,7 +35,11 @@ import {
   isWaffoPancakePayment,
   submitPaymentForm,
 } from '../lib'
-import type { AmountRequest, AmountResponse } from '../types'
+import type {
+  AmountRequest,
+  AmountResponse,
+  EpayQRCodePaymentData,
+} from '../types'
 
 // ============================================================================
 // Payment Hook
@@ -83,6 +87,8 @@ export function usePayment() {
   const [amount, setAmount] = useState<number>(0)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const [wechatPayment, setWechatPayment] =
+    useState<EpayQRCodePaymentData | null>(null)
 
   // Calculate payment amount
   const calculatePaymentAmount = useCallback(
@@ -110,6 +116,7 @@ export function usePayment() {
     async (topupAmount: number, paymentType: string) => {
       try {
         setProcessing(true)
+        setWechatPayment(null)
 
         const isStripe = isStripePayment(paymentType)
         const amount = Math.floor(topupAmount)
@@ -125,6 +132,13 @@ export function usePayment() {
             })
 
         if (!isApiSuccess(response)) {
+          const errorData = response.data as Record<string, unknown> | undefined
+          const tradeNo = errorData?.trade_no
+          if (typeof tradeNo === 'string') {
+            setWechatPayment({ qrcode: '', trade_no: tradeNo })
+            toast.error(response.message || i18next.t('Payment request failed'))
+            return true
+          }
           toast.error(response.message || i18next.t('Payment request failed'))
           return false
         }
@@ -138,6 +152,15 @@ export function usePayment() {
 
         // Handle non-Stripe payment
         if (!isStripe && response.data) {
+          const paymentData = response.data as Record<string, unknown>
+          const qrcode = paymentData.qrcode
+          const tradeNo = paymentData.trade_no
+          if (typeof qrcode === 'string' && typeof tradeNo === 'string') {
+            setWechatPayment({ qrcode, trade_no: tradeNo })
+            toast.success(i18next.t('Payment initiated'))
+            return true
+          }
+
           const url = (response as unknown as { url?: string }).url
           if (url) {
             submitPaymentForm(url, response.data)
@@ -161,8 +184,10 @@ export function usePayment() {
     amount,
     calculating,
     processing,
+    wechatPayment,
     calculatePaymentAmount,
     processPayment,
+    clearWechatPayment: () => setWechatPayment(null),
     setAmount,
   }
 }
