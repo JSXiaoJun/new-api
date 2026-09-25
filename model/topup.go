@@ -20,7 +20,7 @@ type TopUp struct {
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	QRCode          string  `json:"-" gorm:"type:text"`
+	QRCode          string  `json:"-" gorm:"column:qr_code;type:text"`
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status"`
@@ -294,7 +294,7 @@ func UpdateEpayWxPayQRCode(tradeNo, qrCode string) error {
 	return DB.Model(&TopUp{}).
 		Where("trade_no = ? AND payment_provider = ? AND payment_method = ? AND status = ?",
 			tradeNo, PaymentProviderEpay, "wxpay", common.TopUpStatusPending).
-		Update("qrcode", qrCode).Error
+		Update("qr_code", qrCode).Error
 }
 
 // CancelPendingEpayWxPayTopUp cancels an owned pending WeChat Epay order.

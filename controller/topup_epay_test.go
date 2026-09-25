@@ -50,6 +50,73 @@ func TestRequestEpayQRCodeUsesPcDeviceAndReturnsGatewayQRCode(t *testing.T) {
 	require.Equal(t, "weixin://wxpay/bizpayurl?pr=WX-QR-1", qrCode)
 }
 
+func TestRequestEpayQRCodeAcceptsStringCodeAndPayURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":"1","data":{"payurl":"weixin://wxpay/bizpayurl?pr=WX-QR-2"}}`))
+	}))
+	defer server.Close()
+
+	oldAddress := operation_setting.PayAddress
+	oldID := operation_setting.EpayId
+	oldKey := operation_setting.EpayKey
+	operation_setting.PayAddress = server.URL
+	operation_setting.EpayId = "test-pid"
+	operation_setting.EpayKey = "test-key"
+	t.Cleanup(func() {
+		operation_setting.PayAddress = oldAddress
+		operation_setting.EpayId = oldID
+		operation_setting.EpayKey = oldKey
+	})
+
+	qrCode, err := requestEpayQRCode(
+		context.Background(),
+		"wxpay",
+		"WX-QR-2",
+		"TUC100",
+		"1.00",
+		"https://merchant.example/notify",
+		"https://merchant.example/return",
+		"127.0.0.1",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "weixin://wxpay/bizpayurl?pr=WX-QR-2", qrCode)
+}
+
+func TestRequestEpayQRCodeRejectsSuccessfulResponseWithoutQRCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":1,"msg":"二维码服务未配置"}`))
+	}))
+	defer server.Close()
+
+	oldAddress := operation_setting.PayAddress
+	oldID := operation_setting.EpayId
+	oldKey := operation_setting.EpayKey
+	operation_setting.PayAddress = server.URL
+	operation_setting.EpayId = "test-pid"
+	operation_setting.EpayKey = "test-key"
+	t.Cleanup(func() {
+		operation_setting.PayAddress = oldAddress
+		operation_setting.EpayId = oldID
+		operation_setting.EpayKey = oldKey
+	})
+
+	_, err := requestEpayQRCode(
+		context.Background(),
+		"wxpay",
+		"WX-QR-3",
+		"TUC100",
+		"1.00",
+		"https://merchant.example/notify",
+		"https://merchant.example/return",
+		"127.0.0.1",
+	)
+	var rejectedErr *epayQRCodeRejectedError
+	require.ErrorAs(t, err, &rejectedErr)
+	require.Equal(t, "二维码服务未配置", rejectedErr.Error())
+}
+
 func TestQueryEpayOrderUsesActiveOrderEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/api.php", r.URL.Path)

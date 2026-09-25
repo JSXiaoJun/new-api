@@ -238,6 +238,27 @@ func TestGetPendingEpayWxPayTopUpRestoresQRCodeAndExpiresOldOrder(t *testing.T) 
 	assert.Equal(t, common.TopUpStatusExpired, getTopUpStatusForPaymentGuardTest(t, stale.TradeNo))
 }
 
+func TestUpdateEpayWxPayQRCodePersistsQRCodeColumn(t *testing.T) {
+	truncateTables(t)
+	user := insertUserForPaymentGuardTest(t, 179, 0)
+	order := &TopUp{
+		UserId:          user.Id,
+		Amount:          3,
+		Money:           12.99,
+		TradeNo:         "wxpay-save-qrcode",
+		PaymentMethod:   "wxpay",
+		PaymentProvider: PaymentProviderEpay,
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Unix(),
+	}
+	require.NoError(t, DB.Create(order).Error)
+	require.NoError(t, UpdateEpayWxPayQRCode(order.TradeNo, "weixin://wxpay/saved"))
+
+	reloaded := GetTopUpByTradeNo(order.TradeNo)
+	require.NotNil(t, reloaded)
+	assert.Equal(t, "weixin://wxpay/saved", reloaded.QRCode)
+}
+
 func TestCancelPendingEpayWxPayTopUpAllowsRecreationAndIsIdempotent(t *testing.T) {
 	truncateTables(t)
 	user := insertUserForPaymentGuardTest(t, 176, 0)

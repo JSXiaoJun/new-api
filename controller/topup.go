@@ -142,9 +142,17 @@ type AmountRequest struct {
 }
 
 type epayQRCodeResponse struct {
-	Code    int    `json:"code"`
-	Message string `json:"msg"`
-	QRCode  string `json:"qrcode"`
+	Code     interface{} `json:"code"`
+	Success  interface{} `json:"success"`
+	Message  string      `json:"msg"`
+	Message2 string      `json:"message"`
+	Error    string      `json:"error"`
+	QRCode   string      `json:"qrcode"`
+	PayURL   string      `json:"payurl"`
+	PayURL2  string      `json:"pay_url"`
+	QRURL    string      `json:"qrurl"`
+	URL      string      `json:"url"`
+	Data     interface{} `json:"data"`
 }
 
 type epayQRCodeRejectedError struct {
@@ -153,6 +161,65 @@ type epayQRCodeRejectedError struct {
 
 func (e *epayQRCodeRejectedError) Error() string {
 	return e.message
+}
+
+func epayResponseValue(value interface{}) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(typed)
+	case map[string]interface{}:
+		for _, key := range []string{"qrcode", "qr_code", "payurl", "pay_url", "qrurl", "url", "code_url"} {
+			if nested := epayResponseValue(typed[key]); nested != "" {
+				return nested
+			}
+		}
+		return ""
+	default:
+		return ""
+	}
+}
+
+func epayQRCodeFromResponse(response epayQRCodeResponse) string {
+	for _, value := range []string{
+		response.QRCode,
+		response.PayURL,
+		response.PayURL2,
+		response.QRURL,
+		response.URL,
+	} {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	if data, ok := response.Data.(map[string]interface{}); ok {
+		for _, key := range []string{"qrcode", "qr_code", "payurl", "pay_url", "qrurl", "url", "code_url"} {
+			if value := epayResponseValue(data[key]); value != "" {
+				return value
+			}
+		}
+	}
+	if value := epayResponseValue(response.Data); strings.Contains(value, "://") {
+		return value
+	}
+	return ""
+}
+
+func epayQRCodeResponseSucceeded(response epayQRCodeResponse, qrCode string) bool {
+	code := strings.ToLower(epayResponseValue(response.Code))
+	if code == "0" || code == "false" || code == "fail" || code == "error" {
+		return false
+	}
+	if code == "1" || code == "true" || code == "success" || code == "ok" {
+		return qrCode != ""
+	}
+	if success := strings.ToLower(epayResponseValue(response.Success)); success != "" {
+		return (success == "1" || success == "true" || success == "success" || success == "ok") && qrCode != ""
+	}
+	return qrCode != ""
 }
 
 type epayOrderQueryResponse struct {
@@ -228,16 +295,23 @@ func requestEpayQRCode(ctx context.Context, paymentMethod, tradeNo, name, money,
 	if err := common.Unmarshal(body, &payload); err != nil {
 		return "", fmt.Errorf("解析易支付二维码响应失败: %w", err)
 	}
-	if payload.Code != 1 {
+	qrCode := epayQRCodeFromResponse(payload)
+	if !epayQRCodeResponseSucceeded(payload, qrCode) {
+		if payload.Message == "" {
+			payload.Message = payload.Message2
+		}
+		if payload.Message == "" {
+			payload.Message = payload.Error
+		}
 		if payload.Message == "" {
 			payload.Message = "未返回二维码链接"
 		}
 		return "", &epayQRCodeRejectedError{message: payload.Message}
 	}
-	if strings.TrimSpace(payload.QRCode) == "" {
+	if qrCode == "" {
 		return "", errors.New("易支付返回成功但缺少二维码链接")
 	}
-	return strings.TrimSpace(payload.QRCode), nil
+	return qrCode, nil
 }
 
 // queryEpayOrder asks the gateway for the authoritative order state. Epay's
