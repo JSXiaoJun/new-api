@@ -89,8 +89,8 @@
       "source": "oai_responses",
       "semantic": "openai",
       "openai_usage": {
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
+        "prompt_tokens": 4,
+        "completion_tokens": 2,
         "total_tokens": 6,
         "prompt_tokens_details": {
           "cached_tokens": 0,

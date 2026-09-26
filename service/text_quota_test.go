@@ -326,7 +326,129 @@ func TestCalculateTextQuotaSummaryUsesOpenAIResponsesInputTokenDetails(t *testin
 	require.Equal(t, 90, summary.Quota)
 }
 
-func TestUsageFromOpenAIBillingUsageNormalizesCacheDetailsWithoutOverwritingCanonicalValues(t *testing.T) {
+func TestNormalizeUsageForBillingPreservesTotalOnlyResponsesUsage(t *testing.T) {
+	usage := normalizeUsageForBilling(&dto.Usage{TotalTokens: 100}, 70)
+
+	require.NotNil(t, usage)
+	assert.Equal(t, 70, usage.PromptTokens)
+	assert.Equal(t, 30, usage.CompletionTokens)
+	assert.Equal(t, 100, usage.TotalTokens)
+	assert.Equal(t, 70, usage.InputTokens)
+	assert.Equal(t, 30, usage.OutputTokens)
+}
+
+func TestNormalizeUsageForBillingSupportsInputOutputAliases(t *testing.T) {
+	usage := normalizeUsageForBilling(&dto.Usage{
+		InputTokens:  120,
+		OutputTokens: 40,
+		TotalTokens:  160,
+	}, 0)
+
+	require.NotNil(t, usage)
+	assert.Equal(t, 120, usage.PromptTokens)
+	assert.Equal(t, 40, usage.CompletionTokens)
+	assert.Equal(t, 160, usage.TotalTokens)
+}
+
+func TestNormalizeUsageForBillingKeepsLargestAliasSnapshot(t *testing.T) {
+	usage := normalizeUsageForBilling(&dto.Usage{
+		PromptTokens:     10,
+		InputTokens:      20,
+		CompletionTokens: 2,
+		OutputTokens:     8,
+		TotalTokens:      28,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens: 3,
+		},
+		InputTokensDetails: &dto.InputTokenDetails{
+			CachedTokens: 7,
+		},
+	}, 0)
+
+	require.NotNil(t, usage)
+	assert.Equal(t, 20, usage.PromptTokens)
+	assert.Equal(t, 20, usage.InputTokens)
+	assert.Equal(t, 8, usage.CompletionTokens)
+	assert.Equal(t, 8, usage.OutputTokens)
+	assert.Equal(t, 7, usage.PromptTokensDetails.CachedTokens)
+}
+
+func TestValidUsageRecognizesResponsesAliases(t *testing.T) {
+	assert.True(t, ValidUsage(&dto.Usage{TotalTokens: 1}))
+	assert.True(t, ValidUsage(&dto.Usage{InputTokens: 1, OutputTokens: 1}))
+	assert.False(t, ValidUsage(&dto.Usage{}))
+}
+
+func TestEnsureUsageCompletionPreservesPromptAndEstimatesMissingOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	usage := &dto.Usage{PromptTokens: 12, TotalTokens: 12}
+
+	changed := EnsureUsageCompletion(ctx, usage, "generated response text", "gpt-4o", 20)
+
+	require.True(t, changed)
+	require.Equal(t, 12, usage.PromptTokens)
+	require.Greater(t, usage.CompletionTokens, 0)
+	require.Equal(t, usage.PromptTokens+usage.CompletionTokens, usage.TotalTokens)
+}
+
+func TestEnsureUsageCompletionUsesTotalWhenItContainsMissingOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	usage := &dto.Usage{PromptTokens: 12, TotalTokens: 20}
+
+	changed := EnsureUsageCompletion(ctx, usage, "generated response text", "gpt-4o", 20)
+
+	require.True(t, changed)
+	require.Equal(t, 8, usage.CompletionTokens)
+	require.Equal(t, 20, usage.TotalTokens)
+}
+
+func TestEnsureUsageCompletionCapsEstimatedPromptAtTotal(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	usage := &dto.Usage{TotalTokens: 5}
+
+	changed := EnsureUsageCompletion(ctx, usage, "generated response text", "gpt-4o", 20)
+
+	require.True(t, changed)
+	require.Equal(t, 5, usage.PromptTokens)
+	require.Greater(t, usage.CompletionTokens, 0)
+	require.GreaterOrEqual(t, usage.TotalTokens, usage.PromptTokens+usage.CompletionTokens)
+}
+
+func TestValidUsageRecognizesNestedBillingUsage(t *testing.T) {
+	assert.True(t, ValidUsage(&dto.Usage{
+		BillingUsage: dto.NewOpenAIResponsesBillingUsage(&dto.Usage{
+			InputTokens: 12,
+		}),
+	}))
+}
+
+func TestCalculateTextQuotaSummaryBillsTotalOnlyUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		RelayFormat:     types.RelayFormatOpenAI,
+		OriginModelName: "gpt-test",
+		PriceData: hosttypes.PriceData{
+			ModelRatio:      1,
+			CompletionRatio: 2,
+			GroupRatioInfo:  hosttypes.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+	info.SetEstimatePromptTokens(70)
+
+	summary := calculateTextQuotaSummary(ctx, info, &dto.Usage{TotalTokens: 100})
+
+	assert.Equal(t, 100, summary.TotalTokens)
+	assert.Equal(t, 130, summary.Quota)
+	assert.Equal(t, 70, summary.PromptTokens)
+	assert.Equal(t, 30, summary.CompletionTokens)
+}
+
+func TestUsageFromOpenAIBillingUsageKeepsLargestCacheDetailsAcrossAliases(t *testing.T) {
 	responsesUsage := &dto.Usage{
 		InputTokens:          100,
 		OutputTokens:         10,
@@ -348,13 +470,31 @@ func TestUsageFromOpenAIBillingUsageNormalizesCacheDetailsWithoutOverwritingCano
 	billingUsage := dto.NewOpenAIResponsesBillingUsage(responsesUsage)
 	usage := effectiveBillingUsage(&dto.Usage{BillingUsage: billingUsage})
 
-	require.Equal(t, 8, usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, 55, usage.PromptTokensDetails.CachedTokens)
 	require.Equal(t, 5, usage.PromptTokensDetails.CachedCreationTokens)
 	require.Equal(t, 6, usage.PromptTokensDetails.CacheWriteTokens)
-	require.Equal(t, 12, usage.PromptTokensDetails.TextTokens)
+	require.Equal(t, 60, usage.PromptTokensDetails.TextTokens)
 	require.Equal(t, 7, usage.PromptTokensDetails.ImageTokens)
 	require.Equal(t, 9, usage.PromptTokensDetails.AudioTokens)
 	require.Zero(t, billingUsage.OpenAIUsage.PromptTokensDetails.CachedCreationTokens)
+}
+
+func TestUsageFromOpenAIBillingUsageKeepsLargestTokenAlias(t *testing.T) {
+	usage := effectiveBillingUsage(&dto.Usage{
+		BillingUsage: dto.NewOpenAIResponsesBillingUsage(&dto.Usage{
+			PromptTokens:     10,
+			InputTokens:      20,
+			CompletionTokens: 2,
+			OutputTokens:     8,
+			TotalTokens:      28,
+		}),
+	})
+
+	require.Equal(t, 20, usage.PromptTokens)
+	require.Equal(t, 20, usage.InputTokens)
+	require.Equal(t, 8, usage.CompletionTokens)
+	require.Equal(t, 8, usage.OutputTokens)
+	require.Equal(t, 28, usage.TotalTokens)
 }
 
 func TestUsageFromOpenAIBillingUsageFallsBackToPromptCacheHitTokens(t *testing.T) {

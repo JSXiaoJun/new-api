@@ -25,6 +25,7 @@ import (
 const (
 	InitialScannerBufferSize    = 64 << 10  // 64KB (64*1024)
 	DefaultMaxScannerBufferSize = 128 << 20 // 64MB (64*1024*1024) default SSE buffer size
+	DefaultStreamingTimeout     = 5 * time.Minute
 	DefaultPingInterval         = 10 * time.Second
 	// streamWriteTimeout bounds a single blocked write to a slow client so the
 	// unconditional wg.Wait() in cleanup can always finish. Without it, a slow
@@ -86,6 +87,9 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	ctx, cancel := context.WithCancel(context.Background())
 
 	streamingTimeout := time.Duration(constant.StreamingTimeout) * time.Second
+	if streamingTimeout <= 0 {
+		streamingTimeout = DefaultStreamingTimeout
+	}
 
 	var (
 		stopChan    = make(chan bool, 3) // 增加缓冲区避免阻塞
@@ -196,7 +200,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		})
 	}
 
-	dataChan := make(chan string, 10)
+	type streamData struct {
+		data      string
+		eventType string
+	}
+	dataChan := make(chan streamData, 10)
 
 	wg.Add(1)
 	gopool.Go(func() {
@@ -209,13 +217,14 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			wg.Done()
 		}()
 		sr := newStreamResult(info.StreamStatus)
-		for data := range dataChan {
+		for item := range dataChan {
 			sr.reset()
+			sr.eventType = item.eventType
 			func() {
 				writeMutex.Lock()
 				defer writeMutex.Unlock()
 				ExtendWriteDeadline(c)
-				dataHandler(data, sr)
+				dataHandler(item.data, sr)
 			}()
 			if sr.IsStopped() {
 				return
@@ -238,6 +247,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			wg.Done()
 		}()
 
+		var eventType string
 		for scanner.Scan() {
 			// 检查是否需要停止
 			select {
@@ -252,6 +262,10 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			data := scanner.Text()
 			logger.LogDebug(c, "stream scanner data: %s", data)
 
+			if strings.HasPrefix(data, "event:") {
+				eventType = strings.TrimSpace(strings.TrimPrefix(data, "event:"))
+				continue
+			}
 			if len(data) < 6 {
 				continue
 			}
@@ -268,7 +282,8 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 				info.ReceivedResponseCount++
 
 				select {
-				case dataChan <- data:
+				case dataChan <- streamData{data: data, eventType: eventType}:
+					eventType = ""
 				case <-ctx.Done():
 					return
 				case <-stopChan:

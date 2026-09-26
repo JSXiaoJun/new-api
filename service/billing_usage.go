@@ -98,48 +98,66 @@ func usageFromBillingUsage(usage *dto.Usage) (*dto.Usage, bool) {
 
 func usageFromOpenAIBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 	usage := *billingUsage.OpenAIUsage
-	if usage.PromptTokens == 0 && usage.InputTokens > 0 {
-		usage.PromptTokens = usage.InputTokens
-	}
-	if usage.CompletionTokens == 0 && usage.OutputTokens > 0 {
-		usage.CompletionTokens = usage.OutputTokens
-	}
-	if usage.InputTokens == 0 && usage.PromptTokens > 0 {
-		usage.InputTokens = usage.PromptTokens
-	}
-	if usage.OutputTokens == 0 && usage.CompletionTokens > 0 {
-		usage.OutputTokens = usage.CompletionTokens
-	}
+	// Compatible providers sometimes populate both OpenAI spellings. Treat
+	// them as cumulative aliases and retain the largest observation so a richer
+	// input/output snapshot cannot be overwritten by a smaller prompt/completion
+	// field (or vice versa).
+	usage.PromptTokens = maxBillingUsageInt(usage.PromptTokens, usage.InputTokens)
+	usage.InputTokens = maxBillingUsageInt(usage.InputTokens, usage.PromptTokens)
+	usage.CompletionTokens = maxBillingUsageInt(usage.CompletionTokens, usage.OutputTokens)
+	usage.OutputTokens = maxBillingUsageInt(usage.OutputTokens, usage.CompletionTokens)
 	if usage.TotalTokens == 0 {
-		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+		usage.TotalTokens = addUsageInts(usage.PromptTokens, usage.CompletionTokens)
+	} else if usage.TotalTokens < addUsageInts(usage.PromptTokens, usage.CompletionTokens) {
+		usage.TotalTokens = addUsageInts(usage.PromptTokens, usage.CompletionTokens)
 	}
 	if inputDetails := usage.InputTokensDetails; inputDetails != nil {
-		if usage.PromptTokensDetails.CachedTokens == 0 && inputDetails.CachedTokens > 0 {
-			usage.PromptTokensDetails.CachedTokens = inputDetails.CachedTokens
-		}
-		if usage.PromptTokensDetails.CachedCreationTokens == 0 && inputDetails.CachedCreationTokens > 0 {
-			usage.PromptTokensDetails.CachedCreationTokens = inputDetails.CachedCreationTokens
-		}
-		if usage.PromptTokensDetails.CacheWriteTokens == 0 && inputDetails.CacheWriteTokens > 0 {
-			usage.PromptTokensDetails.CacheWriteTokens = inputDetails.CacheWriteTokens
-		}
-		if usage.PromptTokensDetails.TextTokens == 0 && inputDetails.TextTokens > 0 {
-			usage.PromptTokensDetails.TextTokens = inputDetails.TextTokens
-		}
-		if usage.PromptTokensDetails.ImageTokens == 0 && inputDetails.ImageTokens > 0 {
-			usage.PromptTokensDetails.ImageTokens = inputDetails.ImageTokens
-		}
-		if usage.PromptTokensDetails.AudioTokens == 0 && inputDetails.AudioTokens > 0 {
-			usage.PromptTokensDetails.AudioTokens = inputDetails.AudioTokens
-		}
+		mergeBillingInputTokenDetails(&usage.PromptTokensDetails, *inputDetails)
 	}
-	if usage.PromptTokensDetails.CachedTokens == 0 && usage.PromptCacheHitTokens > 0 {
-		usage.PromptTokensDetails.CachedTokens = usage.PromptCacheHitTokens
+	if outputDetails := usage.OutputTokensDetails; outputDetails != nil {
+		mergeBillingOutputTokenDetails(&usage.CompletionTokenDetails, *outputDetails)
 	}
+	usage.PromptTokensDetails.CachedTokens = maxBillingUsageInt(usage.PromptTokensDetails.CachedTokens, usage.PromptCacheHitTokens, usage.CacheReadInputTokens, usage.CacheReadTokens)
+	usage.PromptTokensDetails.CachedCreationTokens = maxBillingUsageInt(usage.PromptTokensDetails.CachedCreationTokens, usage.CacheCreationInputTokens, usage.CacheCreationTokens)
+	usage.PromptTokensDetails.CacheCreationTokens = maxBillingUsageInt(usage.PromptTokensDetails.CacheCreationTokens, usage.CacheCreationInputTokens, usage.CacheCreationTokens)
+	usage.PromptTokensDetails.CacheWriteTokens = maxBillingUsageInt(usage.PromptTokensDetails.CacheWriteTokens, usage.CacheWriteTokens)
 	usage.UsageSemantic = dto.BillingUsageSemanticOpenAI
 	usage.UsageSource = billingUsage.Source
 	usage.BillingUsage = dto.CloneBillingUsage(billingUsage)
 	return &usage
+}
+
+func mergeBillingInputTokenDetails(dst *dto.InputTokenDetails, src dto.InputTokenDetails) {
+	if dst == nil {
+		return
+	}
+	dst.CachedTokens = maxBillingUsageInt(dst.CachedTokens, src.CachedTokens)
+	dst.CachedCreationTokens = maxBillingUsageInt(dst.CachedCreationTokens, src.CachedCreationTokens)
+	dst.CacheCreationTokens = maxBillingUsageInt(dst.CacheCreationTokens, src.CacheCreationTokens)
+	dst.CacheWriteTokens = maxBillingUsageInt(dst.CacheWriteTokens, src.CacheWriteTokens)
+	dst.TextTokens = maxBillingUsageInt(dst.TextTokens, src.TextTokens)
+	dst.AudioTokens = maxBillingUsageInt(dst.AudioTokens, src.AudioTokens)
+	dst.ImageTokens = maxBillingUsageInt(dst.ImageTokens, src.ImageTokens)
+}
+
+func mergeBillingOutputTokenDetails(dst *dto.OutputTokenDetails, src dto.OutputTokenDetails) {
+	if dst == nil {
+		return
+	}
+	dst.ReasoningTokens = maxBillingUsageInt(dst.ReasoningTokens, src.ReasoningTokens)
+	dst.TextTokens = maxBillingUsageInt(dst.TextTokens, src.TextTokens)
+	dst.AudioTokens = maxBillingUsageInt(dst.AudioTokens, src.AudioTokens)
+	dst.ImageTokens = maxBillingUsageInt(dst.ImageTokens, src.ImageTokens)
+}
+
+func maxBillingUsageInt(values ...int) int {
+	max := 0
+	for _, value := range values {
+		if value > max {
+			max = value
+		}
+	}
+	return max
 }
 
 func usageFromClaudeBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
@@ -156,8 +174,8 @@ func usageFromClaudeBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 	usage := &dto.Usage{
 		PromptTokens:                claudeUsage.InputTokens,
 		CompletionTokens:            claudeUsage.OutputTokens,
-		TotalTokens:                 claudeUsage.InputTokens + claudeUsage.OutputTokens,
-		InputTokens:                 claudeUsage.InputTokens + claudeUsage.CacheReadInputTokens + claudeUsage.CacheCreationInputTokens,
+		TotalTokens:                 addUsageInts(claudeUsage.InputTokens, claudeUsage.OutputTokens),
+		InputTokens:                 addUsageInts(addUsageInts(claudeUsage.InputTokens, claudeUsage.CacheReadInputTokens), claudeUsage.CacheCreationInputTokens),
 		OutputTokens:                claudeUsage.OutputTokens,
 		UsageSemantic:               dto.BillingUsageSemanticAnthropic,
 		UsageSource:                 dto.BillingUsageSourceClaudeMessages,
@@ -172,10 +190,10 @@ func usageFromClaudeBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 
 func usageFromGeminiBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 	metadata := *billingUsage.GeminiUsageMetadata
-	promptTokens := metadata.PromptTokenCount + metadata.ToolUsePromptTokenCount
+	promptTokens := addUsageInts(metadata.PromptTokenCount, metadata.ToolUsePromptTokenCount)
 	usage := &dto.Usage{
 		PromptTokens:     promptTokens,
-		CompletionTokens: metadata.CandidatesTokenCount + metadata.ThoughtsTokenCount,
+		CompletionTokens: addUsageInts(metadata.CandidatesTokenCount, metadata.ThoughtsTokenCount),
 		TotalTokens:      metadata.TotalTokenCount,
 		UsageSemantic:    dto.BillingUsageSemanticGemini,
 		UsageSource:      dto.BillingUsageSourceGeminiChat,
@@ -202,7 +220,7 @@ func usageFromGeminiBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 	}
 
 	if usage.TotalTokens == 0 {
-		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+		usage.TotalTokens = addUsageInts(usage.PromptTokens, usage.CompletionTokens)
 	} else if usage.CompletionTokens <= 0 {
 		usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
 	}

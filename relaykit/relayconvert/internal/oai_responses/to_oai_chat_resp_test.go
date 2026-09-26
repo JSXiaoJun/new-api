@@ -1,12 +1,175 @@
 package oairesponses
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestUsageFromResponsesUsageNormalizesAliasesAndTokenDetails(t *testing.T) {
+	usage := UsageFromResponsesUsage(&dto.Usage{
+		PromptTokens:        12,
+		CompletionTokens:    5,
+		TotalTokens:         17,
+		CacheReadTokens:     4,
+		CacheCreationTokens: 3,
+		InputTokensDetails: &dto.InputTokenDetails{
+			CachedTokens:     4,
+			CacheWriteTokens: 3,
+			ImageTokens:      2,
+		},
+		OutputTokensDetails: &dto.OutputTokenDetails{
+			ReasoningTokens: 2,
+			TextTokens:      3,
+		},
+	})
+
+	require.NotNil(t, usage)
+	assert.Equal(t, 12, usage.PromptTokens)
+	assert.Equal(t, 12, usage.InputTokens)
+	assert.Equal(t, 5, usage.CompletionTokens)
+	assert.Equal(t, 5, usage.OutputTokens)
+	assert.Equal(t, 17, usage.TotalTokens)
+	assert.Equal(t, 4, usage.PromptCacheHitTokens)
+	assert.Equal(t, 4, usage.CacheReadInputTokens)
+	assert.Equal(t, 4, usage.CacheReadTokens)
+	assert.Equal(t, 3, usage.CacheCreationInputTokens)
+	assert.Equal(t, 3, usage.CacheCreationTokens)
+	assert.Equal(t, 4, usage.PromptTokensDetails.CachedTokens)
+	assert.Equal(t, 3, usage.PromptTokensDetails.CacheWriteTokens)
+	assert.Equal(t, 2, usage.PromptTokensDetails.ImageTokens)
+	assert.Equal(t, 2, usage.CompletionTokenDetails.ReasoningTokens)
+	assert.Equal(t, 3, usage.CompletionTokenDetails.TextTokens)
+	require.NotNil(t, usage.BillingUsage)
+	require.NotNil(t, usage.BillingUsage.OpenAIUsage)
+	require.NotNil(t, usage.BillingUsage.OpenAIUsage.OutputTokensDetails)
+}
+
+func TestUsageFromResponsesUsagePreservesTotalOnlyUsage(t *testing.T) {
+	usage := UsageFromResponsesUsage(&dto.Usage{TotalTokens: 20})
+
+	require.NotNil(t, usage)
+	assert.Equal(t, 20, usage.TotalTokens)
+	assert.Zero(t, usage.PromptTokens)
+	assert.Zero(t, usage.CompletionTokens)
+	require.NotNil(t, usage.BillingUsage)
+}
+
+func TestMergeResponsesUsageSynchronizesNestedBillingSnapshot(t *testing.T) {
+	usage := UsageFromResponsesUsage(&dto.Usage{
+		InputTokens:  10,
+		OutputTokens: 1,
+		TotalTokens:  11,
+	})
+
+	usage = MergeResponsesUsage(usage, &dto.Usage{
+		InputTokens:  20,
+		OutputTokens: 3,
+		TotalTokens:  23,
+	})
+
+	require.NotNil(t, usage.BillingUsage)
+	require.NotNil(t, usage.BillingUsage.OpenAIUsage)
+	assert.Equal(t, 20, usage.PromptTokens)
+	assert.Equal(t, 3, usage.CompletionTokens)
+	assert.Equal(t, 20, usage.BillingUsage.OpenAIUsage.PromptTokens)
+	assert.Equal(t, 3, usage.BillingUsage.OpenAIUsage.CompletionTokens)
+	assert.Equal(t, 23, usage.BillingUsage.OpenAIUsage.TotalTokens)
+}
+
+func TestUsageFromResponsesUsagePromotesNestedOnlyBillingSnapshot(t *testing.T) {
+	usage := UsageFromResponsesUsage(&dto.Usage{
+		BillingUsage: &dto.BillingUsage{
+			Source:   dto.BillingUsageSourceOAIResponses,
+			Semantic: dto.BillingUsageSemanticOpenAI,
+			OpenAIUsage: &dto.Usage{
+				InputTokens:  20,
+				OutputTokens: 3,
+				TotalTokens:  23,
+			},
+		},
+	})
+
+	require.NotNil(t, usage)
+	assert.Equal(t, 20, usage.PromptTokens)
+	assert.Equal(t, 3, usage.CompletionTokens)
+	assert.Equal(t, 23, usage.TotalTokens)
+	require.NotNil(t, usage.BillingUsage)
+	require.NotNil(t, usage.BillingUsage.OpenAIUsage)
+	assert.Equal(t, 20, usage.BillingUsage.OpenAIUsage.PromptTokens)
+	assert.Equal(t, 3, usage.BillingUsage.OpenAIUsage.CompletionTokens)
+}
+
+func TestUsageFromResponsesResponseSynchronizesToolUsageIntoBillingSnapshot(t *testing.T) {
+	usage := UsageFromResponsesResponse(&dto.OpenAIResponsesResponse{
+		Usage: &dto.Usage{
+			InputTokens:  10,
+			OutputTokens: 1,
+			TotalTokens:  11,
+		},
+		ToolUsage: &dto.ResponsesToolUsage{
+			ImageGen: &dto.ResponsesImageGenerationUsage{
+				InputTokens:  20,
+				OutputTokens: 3,
+			},
+		},
+	})
+
+	require.NotNil(t, usage)
+	require.NotNil(t, usage.BillingUsage)
+	require.NotNil(t, usage.BillingUsage.OpenAIUsage)
+	assert.Equal(t, 20, usage.PromptTokens)
+	assert.Equal(t, 3, usage.CompletionTokens)
+	assert.Equal(t, 23, usage.TotalTokens)
+	assert.Equal(t, 20, usage.BillingUsage.OpenAIUsage.PromptTokens)
+	assert.Equal(t, 3, usage.BillingUsage.OpenAIUsage.CompletionTokens)
+	assert.Equal(t, 23, usage.BillingUsage.OpenAIUsage.TotalTokens)
+}
+
+func TestUsageFromResponsesStreamResponseFindsNestedUsageEnvelopes(t *testing.T) {
+	event := &dto.ResponsesStreamResponse{
+		Type:  responsesEventOutputTextDelta,
+		Usage: &dto.Usage{InputTokens: 7, OutputTokens: 2, TotalTokens: 9},
+		Data:  json.RawMessage(`{"data":{"response":{"usage":{"prompt_tokens":11,"completion_tokens":4,"total_tokens":15}}}}`),
+	}
+
+	usage := UsageFromResponsesStreamResponse(event)
+	require.NotNil(t, usage)
+	// Stream snapshots are cumulative; a later nested snapshot must not be
+	// added to the earlier top-level snapshot.
+	assert.Equal(t, 11, usage.PromptTokens)
+	assert.Equal(t, 11, usage.InputTokens)
+	assert.Equal(t, 4, usage.CompletionTokens)
+	assert.Equal(t, 15, usage.TotalTokens)
+
+	dataUsage := UsageFromResponsesStreamResponse(&dto.ResponsesStreamResponse{
+		Data: json.RawMessage(`{"usage":{"input_tokens":13,"output_tokens":6}}`),
+	})
+	require.NotNil(t, dataUsage)
+	assert.Equal(t, 13, dataUsage.PromptTokens)
+	assert.Equal(t, 6, dataUsage.CompletionTokens)
+	assert.Equal(t, 19, dataUsage.TotalTokens)
+}
+
+func TestResponsesBufferedAccumulatorRetainsUsageWhenTerminalResponseOmitsIt(t *testing.T) {
+	acc := NewResponsesBufferedAccumulator()
+	acc.ProcessEvent(&dto.ResponsesStreamResponse{
+		Type:  responsesEventOutputTextDelta,
+		Delta: "buffered",
+		Usage: &dto.Usage{InputTokens: 8, OutputTokens: 3, TotalTokens: 11},
+	})
+
+	resp := &dto.OpenAIResponsesResponse{Status: []byte(`"completed"`)}
+	acc.SupplementResponseOutput(resp)
+
+	require.NotNil(t, resp.Usage)
+	assert.Equal(t, 8, resp.Usage.InputTokens)
+	assert.Equal(t, 3, resp.Usage.OutputTokens)
+	assert.Equal(t, 11, resp.Usage.TotalTokens)
+}
 
 func TestResponsesResponseToChatCompletionsPreservesTextAndToolCalls(t *testing.T) {
 	resp := &dto.OpenAIResponsesResponse{

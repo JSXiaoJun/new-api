@@ -5,6 +5,8 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/gin-gonic/gin"
 )
 
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {
@@ -48,6 +50,93 @@ func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, res
 			}
 		}
 	}
+}
+
+// ensureOpenAIUsageCompletion keeps a partial provider usage snapshot
+// billable. OpenAI-compatible gateways sometimes report only input/prompt
+// tokens even though the response contains generated text. A total token
+// count is preferred when it can supply the missing side; local counting is
+// used only when the provider total still leaves completion tokens missing.
+func ensureOpenAIUsageCompletion(_ *gin.Context, usage *dto.Usage, outputText, model string, estimatedPromptTokens int) (changed, estimated bool) {
+	if usage == nil {
+		return false, false
+	}
+	originalPrompt := usage.PromptTokens
+	originalCompletion := usage.CompletionTokens
+	originalTotal := usage.TotalTokens
+	originalInput := usage.InputTokens
+	originalOutput := usage.OutputTokens
+
+	promptTokens := maxResponsesUsageInt(usage.PromptTokens, usage.InputTokens)
+	completionTokens := maxResponsesUsageInt(usage.CompletionTokens, usage.OutputTokens)
+	totalTokens := maxResponsesUsageInt(usage.TotalTokens, addResponsesUsageTokens(promptTokens, completionTokens))
+
+	// A total-only response needs the request estimate before deriving the
+	// missing completion side. Cap the estimate so it cannot exceed the total.
+	if promptTokens == 0 && estimatedPromptTokens > 0 && totalTokens > 0 {
+		promptTokens = estimatedPromptTokens
+		if promptTokens > totalTokens {
+			promptTokens = totalTokens
+		}
+	}
+	if completionTokens == 0 && totalTokens > promptTokens {
+		completionTokens = totalTokens - promptTokens
+	}
+
+	// Output token details are authoritative even when the provider omits the
+	// aggregate output_tokens/completion_tokens field.
+	detailOutputTokens := maxResponsesUsageInt(
+		usage.CompletionTokenDetails.TextTokens,
+		usage.CompletionTokenDetails.AudioTokens,
+		usage.CompletionTokenDetails.ImageTokens,
+		usage.CompletionTokenDetails.ReasoningTokens,
+	)
+	if usage.OutputTokensDetails != nil {
+		detailOutputTokens = maxResponsesUsageInt(
+			detailOutputTokens,
+			usage.OutputTokensDetails.TextTokens,
+			usage.OutputTokensDetails.AudioTokens,
+			usage.OutputTokensDetails.ImageTokens,
+			usage.OutputTokensDetails.ReasoningTokens,
+		)
+	}
+	if completionTokens == 0 && detailOutputTokens > 0 {
+		completionTokens = detailOutputTokens
+	}
+
+	if completionTokens == 0 && outputText != "" {
+		// Count only the missing output side. The full-request fallback also marks
+		// the request as locally counted, which would incorrectly hide an upstream
+		// input-token snapshot behind a whole-request "local" billing path.
+		completionTokens = service.EstimateTokenByModel(model, outputText)
+		if completionTokens > 0 {
+			estimated = true
+		}
+	}
+	if promptTokens == 0 && completionTokens > 0 && estimatedPromptTokens > 0 {
+		promptTokens = estimatedPromptTokens
+	}
+
+	usage.PromptTokens = promptTokens
+	usage.InputTokens = maxResponsesUsageInt(usage.InputTokens, promptTokens)
+	usage.CompletionTokens = completionTokens
+	usage.OutputTokens = maxResponsesUsageInt(usage.OutputTokens, completionTokens)
+	usage.TotalTokens = maxResponsesUsageInt(totalTokens, addResponsesUsageTokens(promptTokens, completionTokens))
+	// Settlement prefers billing_usage.openai_usage when a relay conversion
+	// preserved provider-native usage there. Keep that authoritative snapshot
+	// synchronized with the canonical fields we just completed; otherwise the
+	// top-level response can show output tokens while quota settlement still
+	// sees an input-only nested snapshot.
+	if usage.BillingUsage != nil && usage.BillingUsage.OpenAIUsage != nil {
+		mergeResponsesUsageFieldsWithoutBilling(usage.BillingUsage.OpenAIUsage, usage)
+	}
+
+	changed = originalPrompt != usage.PromptTokens ||
+		originalCompletion != usage.CompletionTokens ||
+		originalTotal != usage.TotalTokens ||
+		originalInput != usage.InputTokens ||
+		originalOutput != usage.OutputTokens
+	return changed, estimated
 }
 
 func extractCachedTokensFromBody(body []byte) (int, bool) {

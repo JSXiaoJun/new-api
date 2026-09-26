@@ -120,23 +120,30 @@ func UsageFromChatUsage(src *dto.Usage) *dto.Usage {
 		usage.BillingUsage = dto.NewOpenAIChatBillingUsage(src)
 	}
 	usage.Cost = src.Cost
-	if src.PromptTokens != 0 {
-		usage.PromptTokens = src.PromptTokens
-		usage.InputTokens = src.PromptTokens
+	if src.PromptTokens != 0 || src.InputTokens != 0 {
+		usage.PromptTokens = maxChatUsageInt(src.PromptTokens, src.InputTokens)
+		usage.InputTokens = usage.PromptTokens
 	}
-	if src.CompletionTokens != 0 {
-		usage.CompletionTokens = src.CompletionTokens
-		usage.OutputTokens = src.CompletionTokens
+	if src.CompletionTokens != 0 || src.OutputTokens != 0 {
+		usage.CompletionTokens = maxChatUsageInt(src.CompletionTokens, src.OutputTokens)
+		usage.OutputTokens = usage.CompletionTokens
 	}
 	if src.TotalTokens != 0 {
 		usage.TotalTokens = src.TotalTokens
 	} else {
-		usage.TotalTokens = usage.InputTokens + usage.OutputTokens
+		usage.TotalTokens = saturatingChatUsageSum(usage.InputTokens, usage.OutputTokens)
 	}
+	usage.PromptCacheHitTokens = maxChatUsageInt(src.PromptCacheHitTokens, src.CacheReadInputTokens, src.CacheReadTokens)
+	usage.CacheReadInputTokens = maxChatUsageInt(src.CacheReadInputTokens, src.CacheReadTokens, src.PromptCacheHitTokens)
+	usage.CacheReadTokens = maxChatUsageInt(src.CacheReadTokens, src.CacheReadInputTokens, src.PromptCacheHitTokens)
+	usage.CacheCreationInputTokens = maxChatUsageInt(src.CacheCreationInputTokens, src.CacheCreationTokens)
+	usage.CacheCreationTokens = maxChatUsageInt(src.CacheCreationTokens, src.CacheCreationInputTokens)
+	usage.CacheWriteTokens = src.CacheWriteTokens
 	if src.PromptTokensDetails.CachedTokens != 0 ||
 		src.PromptTokensDetails.ImageTokens != 0 ||
 		src.PromptTokensDetails.AudioTokens != 0 ||
 		src.PromptTokensDetails.CachedCreationTokens != 0 ||
+		src.PromptTokensDetails.CacheCreationTokens != 0 ||
 		src.PromptTokensDetails.CacheWriteTokens != 0 ||
 		src.PromptTokensDetails.TextTokens != 0 {
 		details := src.PromptTokensDetails
@@ -148,9 +155,48 @@ func UsageFromChatUsage(src *dto.Usage) *dto.Usage {
 		src.CompletionTokenDetails.ImageTokens != 0 {
 		usage.CompletionTokenDetails = src.CompletionTokenDetails
 	}
+	if src.OutputTokensDetails != nil {
+		details := *src.OutputTokensDetails
+		usage.OutputTokensDetails = &details
+		mergeChatOutputTokenDetails(&usage.CompletionTokenDetails, details)
+	}
 	usage.ClaudeCacheCreation5mTokens = src.ClaudeCacheCreation5mTokens
 	usage.ClaudeCacheCreation1hTokens = src.ClaudeCacheCreation1hTokens
 	return usage
+}
+
+func maxChatUsageInt(values ...int) int {
+	max := 0
+	for _, value := range values {
+		if value > max {
+			max = value
+		}
+	}
+	return max
+}
+
+func saturatingChatUsageSum(a, b int) int {
+	if a < 0 {
+		a = 0
+	}
+	if b < 0 {
+		b = 0
+	}
+	maxInt := int(^uint(0) >> 1)
+	if a > maxInt-b {
+		return maxInt
+	}
+	return a + b
+}
+
+func mergeChatOutputTokenDetails(dst *dto.OutputTokenDetails, src dto.OutputTokenDetails) {
+	if dst == nil {
+		return
+	}
+	dst.ReasoningTokens = maxChatUsageInt(dst.ReasoningTokens, src.ReasoningTokens)
+	dst.TextTokens = maxChatUsageInt(dst.TextTokens, src.TextTokens)
+	dst.AudioTokens = maxChatUsageInt(dst.AudioTokens, src.AudioTokens)
+	dst.ImageTokens = maxChatUsageInt(dst.ImageTokens, src.ImageTokens)
 }
 
 func responseOutputStatus(resp *dto.OpenAIResponsesResponse) string {

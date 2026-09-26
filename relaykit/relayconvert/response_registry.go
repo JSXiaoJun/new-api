@@ -753,19 +753,13 @@ func canonicalUsageFromResponse(response any) *dto.Usage {
 		}
 		return UsageFromChatUsage(resp.Usage)
 	case *dto.OpenAIResponsesResponse:
-		return UsageFromResponsesUsage(resp.Usage)
+		return UsageFromResponsesResponse(resp)
 	case dto.OpenAIResponsesResponse:
-		return UsageFromResponsesUsage(resp.Usage)
+		return UsageFromResponsesResponse(&resp)
 	case *dto.ResponsesStreamResponse:
-		if resp.Response == nil {
-			return nil
-		}
-		return UsageFromResponsesUsage(resp.Response.Usage)
+		return UsageFromResponsesStreamResponse(resp)
 	case dto.ResponsesStreamResponse:
-		if resp.Response == nil {
-			return nil
-		}
-		return UsageFromResponsesUsage(resp.Response.Usage)
+		return UsageFromResponsesStreamResponse(&resp)
 	case *dto.ClaudeResponse:
 		return usageFromClaudeResponse(resp)
 	case dto.ClaudeResponse:

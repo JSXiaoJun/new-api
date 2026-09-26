@@ -78,7 +78,7 @@ func ChatCompletionsStreamChunkToResponsesEvents(chunk *dto.ChatCompletionsStrea
 		state.Created = chunk.Created
 	}
 	if chunk.Usage != nil {
-		state.Usage = UsageFromChatUsage(chunk.Usage)
+		state.Usage = mergeChatUsageSnapshots(state.Usage, UsageFromChatUsage(chunk.Usage))
 	}
 
 	events := make([]ChatToResponsesStreamEvent, 0)
@@ -109,6 +109,49 @@ func ChatCompletionsStreamChunkToResponsesEvents(chunk *dto.ChatCompletionsStrea
 		}
 	}
 	return events, nil
+}
+
+// mergeChatUsageSnapshots keeps the latest non-empty usage snapshot. Chat
+// Completions providers may emit input and output usage as separate partial
+// events, so max-merging those events would combine values that are not
+// cumulative. Empty terminal chunks must not erase the last real snapshot.
+func mergeChatUsageSnapshots(dst, src *dto.Usage) *dto.Usage {
+	if !hasChatUsageData(src) {
+		return dst
+	}
+	return src
+}
+
+func hasChatUsageData(usage *dto.Usage) bool {
+	if usage == nil {
+		return false
+	}
+	if usage.PromptTokens != 0 || usage.CompletionTokens != 0 || usage.TotalTokens != 0 ||
+		usage.PromptCacheHitTokens != 0 || usage.CacheReadInputTokens != 0 ||
+		usage.CacheCreationInputTokens != 0 || usage.CacheReadTokens != 0 ||
+		usage.CacheWriteTokens != 0 || usage.CacheCreationTokens != 0 ||
+		usage.InputTokens != 0 || usage.OutputTokens != 0 ||
+		usage.ClaudeCacheCreation5mTokens != 0 || usage.ClaudeCacheCreation1hTokens != 0 ||
+		usage.PromptTokensDetails != (dto.InputTokenDetails{}) ||
+		usage.CompletionTokenDetails != (dto.OutputTokenDetails{}) ||
+		hasChatInputTokenDetails(usage.InputTokensDetails) ||
+		hasChatOutputTokenDetails(usage.OutputTokensDetails) {
+		return true
+	}
+	if usage.BillingUsage == nil {
+		return false
+	}
+	return dto.HasOpenAIUsageTokens(usage.BillingUsage.OpenAIUsage) ||
+		dto.HasClaudeUsageTokens(usage.BillingUsage.ClaudeUsage) ||
+		dto.HasGeminiUsageMetadataTokens(usage.BillingUsage.GeminiUsageMetadata)
+}
+
+func hasChatInputTokenDetails(details *dto.InputTokenDetails) bool {
+	return details != nil && *details != (dto.InputTokenDetails{})
+}
+
+func hasChatOutputTokenDetails(details *dto.OutputTokenDetails) bool {
+	return details != nil && *details != (dto.OutputTokenDetails{})
 }
 
 func FinalizeChatCompletionsStreamToResponses(state *ChatToResponsesStreamState) []ChatToResponsesStreamEvent {

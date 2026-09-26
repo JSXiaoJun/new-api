@@ -53,12 +53,23 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		chatResp.Id = chatID
 	}
 	usage := chatResult.Usage
-
-	if usage == nil || usage.TotalTokens == 0 {
-		text := service.ExtractOutputTextFromResponses(&responsesResp)
-		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
-		chatResp.Usage = *usage
+	if usage == nil {
+		usage = &dto.Usage{}
 	}
+	mergeResponsesUsage(usage, responsesResp.Usage)
+	mergeResponsesToolUsage(usage, responsesResp.ToolUsage)
+	billing := newResponsesChatBillingTracker()
+	billing.observeResponse(info, &responsesResp)
+	billing.commit(info)
+	usage = normalizeResponsesUsage(usage, info.GetEstimatePromptTokens())
+	ensureOpenAIUsageCompletion(
+		c,
+		usage,
+		service.ExtractOutputTextFromResponses(&responsesResp),
+		info.UpstreamModelName,
+		info.GetEstimatePromptTokens(),
+	)
+	chatResp.Usage = *usage
 
 	responseValue := any(chatResp)
 	if info.RelayFormat != types.RelayFormatOpenAI {
@@ -84,18 +95,26 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 	defer service.CloseResponseBodyGracefully(resp)
 
 	accumulator := relayconvert.NewResponsesBufferedAccumulator()
+	billing := newResponsesChatBillingTracker()
 	var finalResponse *dto.OpenAIResponsesResponse
 	var streamErr *types.NewAPIError
+	eventType := ""
 
 	scanner := helper.NewStreamScanner(resp.Body)
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if len(line) < 6 || line[:5] != "data:" {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "event:") {
+			eventType = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
 			continue
 		}
-		data := line[5:]
-		data = strings.TrimSpace(data)
+		if line == "[DONE]" {
+			break
+		}
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if data == "" || data == "[DONE]" {
 			if data == "[DONE]" {
 				break
@@ -109,10 +128,17 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 			streamErr = types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			break
 		}
+		if streamResp.Type == "" {
+			streamResp.Type = eventType
+		}
+		eventType = ""
 		accumulator.ProcessEvent(&streamResp)
+		billing.observeEvent(info, &streamResp)
 		switch streamResp.Type {
 		case "response.completed", "response.done", "response.incomplete":
-			finalResponse = streamResp.Response
+			if streamResp.Response != nil {
+				finalResponse = streamResp.Response
+			}
 			if streamResp.Type == "response.incomplete" {
 				if finalResponse == nil {
 					finalResponse = &dto.OpenAIResponsesResponse{}
@@ -130,7 +156,7 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 			}
 			streamErr = types.NewOpenAIError(fmt.Errorf("responses stream error: %s", streamResp.Type), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 		}
-		if streamErr != nil || finalResponse != nil {
+		if streamErr != nil {
 			break
 		}
 	}
@@ -149,6 +175,8 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 		}
 	}
 	accumulator.SupplementResponseOutput(finalResponse)
+	billing.observeResponse(info, finalResponse)
+	billing.commit(info)
 
 	chatResult, err := relayconvert.ConvertResponse(c, info, types.RelayFormatOpenAI, finalResponse)
 	if err != nil {
@@ -162,11 +190,12 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 		chatResp.Id = chatID
 	}
 	usage := chatResult.Usage
-	if usage == nil || usage.TotalTokens == 0 {
-		text := service.ExtractOutputTextFromResponses(finalResponse)
-		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
-		chatResp.Usage = *usage
+	if usage == nil {
+		usage = &dto.Usage{}
 	}
+	usage = normalizeResponsesUsage(usage, info.GetEstimatePromptTokens())
+	ensureOpenAIUsageCompletion(c, usage, service.ExtractOutputTextFromResponses(finalResponse), info.UpstreamModelName, info.GetEstimatePromptTokens())
+	chatResp.Usage = *usage
 
 	responseValue := any(chatResp)
 	if info.RelayFormat != types.RelayFormatOpenAI {
@@ -203,6 +232,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
 	streamErr := (*types.NewAPIError)(nil)
+	billing := newResponsesChatBillingTracker()
 
 	if info.RelayFormat == types.RelayFormatClaude && info.ClaudeConvertInfo == nil {
 		info.ClaudeConvertInfo = &relaycommon.ClaudeConvertInfo{LastMessagesType: relaycommon.LastMessageTypeNone}
@@ -279,6 +309,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			sr.Error(err)
 			return
 		}
+		if streamResp.Type == "" {
+			streamResp.Type = sr.EventType()
+		}
+		billing.observeEvent(info, &streamResp)
 
 		if streamResp.Type == "response.error" || streamResp.Type == "response.failed" {
 			if streamResp.Response != nil {
@@ -311,11 +345,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		return nil, streamErr
 	}
 
-	usage := state.Usage()
-	if usage == nil || usage.TotalTokens == 0 {
-		usage = service.ResponseText2Usage(c, state.UsageText(), info.UpstreamModelName, info.GetEstimatePromptTokens())
-		state.SetUsage(usage)
-	}
+	billing.commit(info)
+	usage := normalizeResponsesUsage(state.Usage(), info.GetEstimatePromptTokens())
+	ensureOpenAIUsageCompletion(c, usage, state.UsageText(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+	state.SetUsage(usage)
 
 	if info.RelayFormat == types.RelayFormatClaude && info.ClaudeConvertInfo != nil {
 		info.ClaudeConvertInfo.Usage = usage
@@ -339,4 +372,103 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		helper.Done(c)
 	}
 	return usage, nil
+}
+
+// responsesChatBillingTracker collects billable Responses output while the
+// protocol is being converted to Chat Completions. The same output can appear
+// in item.done and in a terminal response, so the shared counters deduplicate
+// those observations before the request is settled.
+type responsesChatBillingTracker struct {
+	tools          relaycommon.ResponsesToolCallCounter
+	images         relaycommon.ImageGenerationCallCounter
+	imageToolCount int
+	nonBillable    bool
+}
+
+func newResponsesChatBillingTracker() *responsesChatBillingTracker {
+	return &responsesChatBillingTracker{}
+}
+
+func (t *responsesChatBillingTracker) observeEvent(info *relaycommon.RelayInfo, event *dto.ResponsesStreamResponse) {
+	if t == nil || event == nil {
+		return
+	}
+	switch event.Type {
+	case "response.failed", "response.error", "response.incomplete", "response.cancelled", "response.canceled":
+		t.nonBillable = true
+		t.images.Reset()
+		t.images.Commit(info)
+	}
+	if event.ToolUsage != nil {
+		t.imageToolCount = maxResponsesInt(t.imageToolCount, responsesImageToolCount(event.ToolUsage))
+	}
+	if event.Item != nil {
+		t.observeItem(info, event.Item, event.OutputIndex)
+	}
+	if event.Response != nil {
+		t.observeResponse(info, event.Response)
+	}
+	if len(event.Data) == 0 {
+		return
+	}
+	var envelope struct {
+		Response  *dto.OpenAIResponsesResponse `json:"response"`
+		ToolUsage *dto.ResponsesToolUsage      `json:"tool_usage"`
+	}
+	if err := common.Unmarshal(event.Data, &envelope); err != nil {
+		return
+	}
+	if envelope.ToolUsage != nil {
+		t.imageToolCount = maxResponsesInt(t.imageToolCount, responsesImageToolCount(envelope.ToolUsage))
+	}
+	if envelope.Response != nil {
+		t.observeResponse(info, envelope.Response)
+	}
+}
+
+func (t *responsesChatBillingTracker) observeResponse(info *relaycommon.RelayInfo, response *dto.OpenAIResponsesResponse) {
+	if t == nil || response == nil {
+		return
+	}
+	if response.ToolUsage != nil {
+		t.imageToolCount = maxResponsesInt(t.imageToolCount, responsesImageToolCount(response.ToolUsage))
+	}
+	if relaycommon.IsNonBillableResponsesStatus(response.Status) {
+		t.nonBillable = true
+		t.images.Reset()
+		t.images.Commit(info)
+		return
+	}
+	for i := range response.Output {
+		index := i
+		t.tools.Count(info, &response.Output[i], &index)
+		if !t.nonBillable {
+			t.images.Observe(&response.Output[i], &index)
+		}
+	}
+}
+
+func (t *responsesChatBillingTracker) observeItem(info *relaycommon.RelayInfo, item *dto.ResponsesOutput, outputIndex *int) {
+	if t == nil || item == nil {
+		return
+	}
+	t.tools.Count(info, item, outputIndex)
+	if !t.nonBillable {
+		t.images.Observe(item, outputIndex)
+	}
+}
+
+func (t *responsesChatBillingTracker) commit(info *relaycommon.RelayInfo) {
+	if t == nil || t.nonBillable {
+		return
+	}
+	t.images.EnsureAtLeast(t.imageToolCount)
+	t.images.Commit(info)
+}
+
+func responsesImageToolCount(toolUsage *dto.ResponsesToolUsage) int {
+	if toolUsage == nil || toolUsage.ImageGen == nil || toolUsage.ImageGen.Images < 0 {
+		return 0
+	}
+	return toolUsage.ImageGen.Images
 }

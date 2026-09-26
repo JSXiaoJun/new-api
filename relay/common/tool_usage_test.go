@@ -26,11 +26,78 @@ func TestCountBillableToolCallWebSearchPrefersDeclaredWebSearch(t *testing.T) {
 	assert.NotContains(t, info.ResponsesUsageInfo.BuiltInTools, dto.BuildInToolWebSearchPreview)
 }
 
+func TestResponsesToolCallCounterDeduplicatesDoneAndTerminalOutput(t *testing.T) {
+	t.Parallel()
+
+	info := &RelayInfo{OriginModelName: "gpt-5.1"}
+	counter := &ResponsesToolCallCounter{}
+	done := &dto.ResponsesOutput{
+		Type:   dto.BuildInCallWebSearchCall,
+		ID:     "search_1",
+		CallId: "call_1",
+	}
+	terminal := &dto.ResponsesOutput{
+		Type:   dto.BuildInCallWebSearchCall,
+		ID:     "search_1",
+		CallId: "call_1",
+	}
+
+	require.True(t, counter.Count(info, done, intPtr(0)))
+	require.False(t, counter.Count(info, terminal, intPtr(0)))
+	require.Contains(t, info.ResponsesUsageInfo.BuiltInTools, dto.BuildInToolWebSearchPreview)
+	assert.Equal(t, 1, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview].CallCount)
+}
+
+func TestResponsesToolCallCounterCountsDistinctNoIdentityCalls(t *testing.T) {
+	t.Parallel()
+
+	info := &RelayInfo{OriginModelName: "gpt-5.1"}
+	counter := &ResponsesToolCallCounter{}
+	require.True(t, counter.Count(info, &dto.ResponsesOutput{Type: dto.BuildInCallWebSearchCall}, nil))
+	require.True(t, counter.Count(info, &dto.ResponsesOutput{Type: dto.BuildInCallWebSearchCall}, nil))
+	require.Equal(t, 2, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview].CallCount)
+}
+
+func TestResponsesToolCallCounterAllowsLateFunctionName(t *testing.T) {
+	operation_setting.SetToolPriceForTest("late_named_fn", 5.0)
+	t.Cleanup(func() {
+		operation_setting.DeleteToolPriceForTest("late_named_fn")
+	})
+
+	info := &RelayInfo{OriginModelName: "gpt-5.1"}
+	counter := &ResponsesToolCallCounter{}
+	unnamed := &dto.ResponsesOutput{
+		Type:   dto.BuildInCallFunctionCall,
+		ID:     "fc_1",
+		CallId: "call_1",
+	}
+	named := &dto.ResponsesOutput{
+		Type:   dto.BuildInCallFunctionCall,
+		ID:     "fc_1",
+		CallId: "call_1",
+		Name:   "late_named_fn",
+	}
+
+	require.False(t, counter.Count(info, unnamed, intPtr(0)))
+	require.True(t, counter.Count(info, named, intPtr(0)))
+	require.Equal(t, 1, info.ResponsesUsageInfo.BuiltInTools["late_named_fn"].CallCount)
+}
+
+func intPtr(value int) *int { return &value }
+
 func TestCountBillableToolCallWebSearchDefaultsToPreview(t *testing.T) {
 	info := &RelayInfo{OriginModelName: "gpt-5.1"}
 
 	info.CountBillableToolCall(dto.BuildInCallWebSearchCall, "")
 	require.NotNil(t, info.ResponsesUsageInfo)
+	require.Contains(t, info.ResponsesUsageInfo.BuiltInTools, dto.BuildInToolWebSearchPreview)
+	assert.Equal(t, 1, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview].CallCount)
+}
+
+func TestCountBillableToolCallXSearchUsesWebSearchPrice(t *testing.T) {
+	info := &RelayInfo{OriginModelName: "gpt-5.1"}
+
+	info.CountBillableToolCall(dto.BuildInCallXSearchCall, "")
 	require.Contains(t, info.ResponsesUsageInfo.BuiltInTools, dto.BuildInToolWebSearchPreview)
 	assert.Equal(t, 1, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview].CallCount)
 }
@@ -333,6 +400,46 @@ func TestImageGenerationCallCounterCommitDoesNotBillDeclarationsAlone(t *testing
 		},
 	}
 	(&ImageGenerationCallCounter{}).Commit(info)
+	assert.Equal(t, 0, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
+}
+
+func TestImageGenerationCallCounterEmptyCommitPreservesObservedCount(t *testing.T) {
+	t.Parallel()
+
+	info := &RelayInfo{
+		ResponsesUsageInfo: &ResponsesUsageInfo{
+			BuiltInTools: map[string]*BuildInToolInfo{
+				dto.BuildInToolImageGeneration: {
+					ToolName:  dto.BuildInToolImageGeneration,
+					CallCount: 2,
+				},
+			},
+		},
+	}
+
+	// A later response snapshot without image outputs must not erase images
+	// already observed and committed for this request.
+	(&ImageGenerationCallCounter{}).Commit(info)
+	assert.Equal(t, 2, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
+}
+
+func TestImageGenerationCallCounterResetCommitClearsObservedCount(t *testing.T) {
+	t.Parallel()
+
+	info := &RelayInfo{
+		ResponsesUsageInfo: &ResponsesUsageInfo{
+			BuiltInTools: map[string]*BuildInToolInfo{
+				dto.BuildInToolImageGeneration: {
+					ToolName:  dto.BuildInToolImageGeneration,
+					CallCount: 2,
+				},
+			},
+		},
+	}
+
+	counter := &ImageGenerationCallCounter{}
+	counter.Reset()
+	counter.Commit(info)
 	assert.Equal(t, 0, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
 }
 

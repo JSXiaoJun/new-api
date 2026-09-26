@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/samber/lo"
 
@@ -131,6 +131,182 @@ func processCompletionsStreamResponse(streamResponse dto.CompletionsStreamRespon
 	}
 }
 
+type chatStreamUsageEnvelope struct {
+	Usage    *dto.Usage      `json:"usage"`
+	Response json.RawMessage `json:"response"`
+	Data     json.RawMessage `json:"data"`
+	Choices  []struct {
+		Usage *dto.Usage `json:"usage"`
+	} `json:"choices"`
+}
+
+// extractChatStreamUsage accepts the usage locations used by OpenAI-compatible
+// providers. Some providers wrap the payload in response/data objects, while
+// others report usage on an individual choice. The dto.Usage fields cover both
+// prompt/completion_tokens and input/output_tokens aliases.
+func extractChatStreamUsage(data string) *dto.Usage {
+	if strings.TrimSpace(data) == "" {
+		return nil
+	}
+
+	var merged dto.Usage
+	found := false
+	var collect func([]byte, int)
+	collect = func(raw []byte, depth int) {
+		if depth > 8 || len(raw) == 0 {
+			return
+		}
+
+		var envelope chatStreamUsageEnvelope
+		if err := common.Unmarshal(raw, &envelope); err != nil {
+			// A few gateways encode a nested envelope as a JSON string.
+			var encoded string
+			if common.Unmarshal(raw, &encoded) == nil && encoded != string(raw) {
+				collect(common.StringToByteSlice(encoded), depth+1)
+			}
+			return
+		}
+
+		if envelope.Usage != nil && mergeChatStreamUsage(&merged, envelope.Usage) {
+			found = true
+		}
+		for _, choice := range envelope.Choices {
+			if choice.Usage != nil && mergeChatStreamUsage(&merged, choice.Usage) {
+				found = true
+			}
+		}
+		for _, nested := range []json.RawMessage{envelope.Response, envelope.Data} {
+			if len(nested) == 0 || common.GetJsonType(nested) == "null" {
+				continue
+			}
+			collect(nested, depth+1)
+		}
+	}
+
+	collect(common.StringToByteSlice(data), 0)
+	if !found {
+		return nil
+	}
+	return &merged
+}
+
+// mergeChatStreamUsage keeps the largest observed value for each usage field.
+// OpenAI-compatible gateways commonly emit cumulative snapshots, and terminal
+// SSE frames frequently carry an empty or partial usage object. A smaller
+// later snapshot must not erase usage observed earlier in the stream.
+func mergeChatStreamUsage(dst *dto.Usage, src *dto.Usage) bool {
+	if dst == nil || src == nil {
+		return false
+	}
+
+	inputTokens := maxResponsesUsageInt(dst.PromptTokens, dst.InputTokens, src.PromptTokens, src.InputTokens)
+	outputTokens := maxResponsesUsageInt(dst.CompletionTokens, dst.OutputTokens, src.CompletionTokens, src.OutputTokens)
+	dst.PromptTokens = inputTokens
+	dst.InputTokens = inputTokens
+	dst.CompletionTokens = outputTokens
+	dst.OutputTokens = outputTokens
+	dst.TotalTokens = maxResponsesUsageInt(dst.TotalTokens, src.TotalTokens,
+		addResponsesUsageTokens(dst.PromptTokens, dst.CompletionTokens))
+
+	dst.PromptCacheHitTokens = maxResponsesUsageInt(dst.PromptCacheHitTokens, src.PromptCacheHitTokens)
+	dst.CacheReadInputTokens = maxResponsesUsageInt(dst.CacheReadInputTokens, src.CacheReadInputTokens)
+	dst.CacheCreationInputTokens = maxResponsesUsageInt(dst.CacheCreationInputTokens, src.CacheCreationInputTokens)
+	dst.CacheReadTokens = maxResponsesUsageInt(dst.CacheReadTokens, src.CacheReadTokens)
+	dst.CacheWriteTokens = maxResponsesUsageInt(dst.CacheWriteTokens, src.CacheWriteTokens)
+	dst.CacheCreationTokens = maxResponsesUsageInt(dst.CacheCreationTokens, src.CacheCreationTokens)
+	if src.UsageSemantic != "" {
+		dst.UsageSemantic = src.UsageSemantic
+	}
+	if src.UsageSource != "" {
+		dst.UsageSource = src.UsageSource
+	}
+
+	mergeInputTokenDetails(&dst.PromptTokensDetails, src.PromptTokensDetails)
+	if src.InputTokensDetails != nil {
+		if dst.InputTokensDetails == nil {
+			details := *src.InputTokensDetails
+			dst.InputTokensDetails = &details
+		} else {
+			mergeInputTokenDetails(dst.InputTokensDetails, *src.InputTokensDetails)
+		}
+		mergeInputTokenDetails(&dst.PromptTokensDetails, *src.InputTokensDetails)
+	}
+	mergeOutputTokenDetails(&dst.CompletionTokenDetails, src.CompletionTokenDetails)
+	if src.OutputTokensDetails != nil {
+		if dst.OutputTokensDetails == nil {
+			dst.OutputTokensDetails = &dto.OutputTokenDetails{}
+		}
+		mergeOutputTokenDetails(dst.OutputTokensDetails, *src.OutputTokensDetails)
+		mergeOutputTokenDetails(&dst.CompletionTokenDetails, *src.OutputTokensDetails)
+	}
+
+	return dst.PromptTokens > 0 ||
+		dst.CompletionTokens > 0 ||
+		dst.TotalTokens > 0 ||
+		dst.PromptCacheHitTokens > 0 ||
+		dst.CacheReadInputTokens > 0 ||
+		dst.CacheCreationInputTokens > 0 ||
+		dst.CacheReadTokens > 0 ||
+		dst.CacheWriteTokens > 0 ||
+		dst.CacheCreationTokens > 0 ||
+		dst.PromptTokensDetails.CachedTokens > 0 ||
+		dst.PromptTokensDetails.CachedCreationTokens > 0 ||
+		dst.PromptTokensDetails.CacheCreationTokens > 0 ||
+		dst.PromptTokensDetails.CacheWriteTokens > 0 ||
+		dst.PromptTokensDetails.TextTokens > 0 ||
+		dst.PromptTokensDetails.AudioTokens > 0 ||
+		dst.PromptTokensDetails.ImageTokens > 0 ||
+		dst.CompletionTokenDetails.TextTokens > 0 ||
+		dst.CompletionTokenDetails.AudioTokens > 0 ||
+		dst.CompletionTokenDetails.ImageTokens > 0 ||
+		dst.CompletionTokenDetails.ReasoningTokens > 0
+}
+
+func mergeInputTokenDetails(dst *dto.InputTokenDetails, src dto.InputTokenDetails) {
+	if dst == nil {
+		return
+	}
+	if src.CachedTokens > 0 {
+		dst.CachedTokens = maxResponsesUsageInt(dst.CachedTokens, src.CachedTokens)
+	}
+	if src.CachedCreationTokens > 0 {
+		dst.CachedCreationTokens = maxResponsesUsageInt(dst.CachedCreationTokens, src.CachedCreationTokens)
+	}
+	if src.CacheCreationTokens > 0 {
+		dst.CacheCreationTokens = maxResponsesUsageInt(dst.CacheCreationTokens, src.CacheCreationTokens)
+	}
+	if src.CacheWriteTokens > 0 {
+		dst.CacheWriteTokens = maxResponsesUsageInt(dst.CacheWriteTokens, src.CacheWriteTokens)
+	}
+	if src.TextTokens > 0 {
+		dst.TextTokens = maxResponsesUsageInt(dst.TextTokens, src.TextTokens)
+	}
+	if src.AudioTokens > 0 {
+		dst.AudioTokens = maxResponsesUsageInt(dst.AudioTokens, src.AudioTokens)
+	}
+	if src.ImageTokens > 0 {
+		dst.ImageTokens = maxResponsesUsageInt(dst.ImageTokens, src.ImageTokens)
+	}
+}
+
+func mergeOutputTokenDetails(dst *dto.OutputTokenDetails, src dto.OutputTokenDetails) {
+	if dst == nil {
+		return
+	}
+	if src.TextTokens > 0 {
+		dst.TextTokens = maxResponsesUsageInt(dst.TextTokens, src.TextTokens)
+	}
+	if src.AudioTokens > 0 {
+		dst.AudioTokens = maxResponsesUsageInt(dst.AudioTokens, src.AudioTokens)
+	}
+	if src.ImageTokens > 0 {
+		dst.ImageTokens = maxResponsesUsageInt(dst.ImageTokens, src.ImageTokens)
+	}
+	if src.ReasoningTokens > 0 {
+		dst.ReasoningTokens = maxResponsesUsageInt(dst.ReasoningTokens, src.ReasoningTokens)
+	}
+}
+
 func handleLastResponse(lastStreamData string, responseId *string, createAt *int64,
 	systemFingerprint *string, model *string, usage **dto.Usage,
 	containStreamUsage *bool, info *relaycommon.RelayInfo,
@@ -146,14 +322,18 @@ func handleLastResponse(lastStreamData string, responseId *string, createAt *int
 	*systemFingerprint = lastStreamResponse.GetSystemFingerprint()
 	*model = lastStreamResponse.Model
 
-	if service.ValidUsage(lastStreamResponse.Usage) {
-		*containStreamUsage = true
-		*usage = lastStreamResponse.Usage
-		if !info.ShouldIncludeUsage {
-			*shouldSendLastResp = lo.SomeBy(lastStreamResponse.Choices, func(choice dto.ChatCompletionsStreamResponseChoice) bool {
-				return choice.Delta.GetContentString() != "" || choice.Delta.GetReasoningContent() != ""
-			})
+	if streamUsage := extractChatStreamUsage(lastStreamData); streamUsage != nil {
+		if *usage == nil {
+			*usage = &dto.Usage{}
 		}
+		if mergeChatStreamUsage(*usage, streamUsage) {
+			*containStreamUsage = true
+		}
+	}
+	if *containStreamUsage && !info.ShouldIncludeUsage {
+		*shouldSendLastResp = lo.SomeBy(lastStreamResponse.Choices, func(choice dto.ChatCompletionsStreamResponseChoice) bool {
+			return choice.Delta.GetContentString() != "" || choice.Delta.GetReasoningContent() != ""
+		})
 	}
 
 	return nil

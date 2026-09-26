@@ -168,8 +168,10 @@ func cohereStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			return false
 		}
 	})
-	if usage.PromptTokens == 0 {
+	if !service.ValidUsage(usage) {
 		usage = service.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
+	} else if service.EnsureUsageCompletion(c, usage, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens()) {
+		service.RecalculateUsageTotal(usage)
 	}
 	return usage, nil
 }
@@ -190,6 +192,9 @@ func cohereHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	usage.PromptTokens = cohereResp.Meta.BilledUnits.InputTokens
 	usage.CompletionTokens = cohereResp.Meta.BilledUnits.OutputTokens
 	usage.TotalTokens = cohereResp.Meta.BilledUnits.InputTokens + cohereResp.Meta.BilledUnits.OutputTokens
+	if service.EnsureUsageCompletion(c, &usage, cohereResp.Text, info.UpstreamModelName, info.GetEstimatePromptTokens()) {
+		service.RecalculateUsageTotal(&usage)
+	}
 
 	var openaiResp dto.TextResponse
 	openaiResp.Id = cohereResp.ResponseId
@@ -205,6 +210,7 @@ func cohereHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 			FinishReason: stopReasonCohere2OpenAI(cohereResp.FinishReason),
 		},
 	}
+	openaiResp.Usage = usage
 
 	jsonResponse, err := json.Marshal(openaiResp)
 	if err != nil {

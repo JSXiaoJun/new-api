@@ -78,6 +78,13 @@ func cozeChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Res
 			response.Created = data.CreatedAt
 		}
 	}
+	responseText := string(responseContent)
+	var decodedResponseText string
+	if err := common.Unmarshal(responseContent, &decodedResponseText); err == nil {
+		responseText = decodedResponseText
+	}
+	service.EnsureUsageCompletion(c, &usage, responseText, info.UpstreamModelName, c.GetInt("coze_input_count"))
+	service.RecalculateUsageTotal(&usage)
 	// 添加 response.Choices
 	response.Choices = []dto.OpenAITextResponseChoice{
 		{
@@ -142,10 +149,12 @@ func cozeChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 	}
 	helper.Done(c)
 
-	if usage.TotalTokens == 0 {
+	if !service.ValidUsage(usage) {
 		usage = service.ResponseText2Usage(c, responseText, info.UpstreamModelName, c.GetInt("coze_input_count"))
+	} else {
+		service.EnsureUsageCompletion(c, usage, responseText, info.UpstreamModelName, c.GetInt("coze_input_count"))
+		service.RecalculateUsageTotal(usage)
 	}
-
 	return usage, nil
 }
 

@@ -236,9 +236,13 @@ type Usage struct {
 
 	PromptTokensDetails    InputTokenDetails  `json:"prompt_tokens_details"`
 	CompletionTokenDetails OutputTokenDetails `json:"completion_tokens_details"`
-	InputTokens            int                `json:"input_tokens"`
-	OutputTokens           int                `json:"output_tokens"`
-	InputTokensDetails     *InputTokenDetails `json:"input_tokens_details"`
+	// OutputTokensDetails is the standard Responses API spelling for output
+	// token breakdowns. Keep it alongside the legacy completion spelling so
+	// compatible gateways do not lose image/audio/reasoning usage.
+	OutputTokensDetails *OutputTokenDetails `json:"output_tokens_details,omitempty"`
+	InputTokens         int                 `json:"input_tokens"`
+	OutputTokens        int                 `json:"output_tokens"`
+	InputTokensDetails  *InputTokenDetails  `json:"input_tokens_details"`
 
 	// claude cache 1h
 	ClaudeCacheCreation5mTokens int `json:"claude_cache_creation_5_m_tokens"`
@@ -261,6 +265,9 @@ type OpenAIVideoResponse struct {
 type InputTokenDetails struct {
 	CachedTokens         int `json:"cached_tokens"`
 	CachedCreationTokens int `json:"cached_creation_tokens,omitempty"`
+	// CacheCreationTokens is a compatibility alias used by some Responses
+	// gateways for the cache-write count.
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
 	// CacheWriteTokens is OpenAI's native cache-write count, reported as
 	// prompt_tokens_details.cache_write_tokens (Chat Completions) or
 	// input_tokens_details.cache_write_tokens (Responses). It is billed at the
@@ -279,6 +286,9 @@ type InputTokenDetails struct {
 // values are clamped to zero so they can never lower a charge.
 func (d InputTokenDetails) CacheCreationTokensTotal() int {
 	total := d.CachedCreationTokens
+	if d.CacheCreationTokens > total {
+		total = d.CacheCreationTokens
+	}
 	if d.CacheWriteTokens > total {
 		total = d.CacheWriteTokens
 	}
@@ -296,28 +306,44 @@ type OutputTokenDetails struct {
 }
 
 type OpenAIResponsesResponse struct {
-	ID                 string             `json:"id"`
-	Object             string             `json:"object"`
-	CreatedAt          int                `json:"created_at"`
-	Status             json.RawMessage    `json:"status"`
-	Error              any                `json:"error,omitempty"`
-	IncompleteDetails  *IncompleteDetails `json:"incomplete_details,omitempty"`
-	Instructions       json.RawMessage    `json:"instructions"`
-	MaxOutputTokens    int                `json:"max_output_tokens"`
-	Model              string             `json:"model"`
-	Output             []ResponsesOutput  `json:"output"`
-	ParallelToolCalls  bool               `json:"parallel_tool_calls"`
-	PreviousResponseID json.RawMessage    `json:"previous_response_id"`
-	Reasoning          *Reasoning         `json:"reasoning"`
-	Store              bool               `json:"store"`
-	Temperature        float64            `json:"temperature"`
-	ToolChoice         json.RawMessage    `json:"tool_choice"`
-	Tools              []map[string]any   `json:"tools"`
-	TopP               float64            `json:"top_p"`
-	Truncation         json.RawMessage    `json:"truncation"`
-	Usage              *Usage             `json:"usage"`
-	User               json.RawMessage    `json:"user"`
-	Metadata           json.RawMessage    `json:"metadata"`
+	ID                 string              `json:"id"`
+	Object             string              `json:"object"`
+	CreatedAt          int                 `json:"created_at"`
+	Status             json.RawMessage     `json:"status"`
+	Error              any                 `json:"error,omitempty"`
+	IncompleteDetails  *IncompleteDetails  `json:"incomplete_details,omitempty"`
+	Instructions       json.RawMessage     `json:"instructions"`
+	MaxOutputTokens    int                 `json:"max_output_tokens"`
+	Model              string              `json:"model"`
+	Output             []ResponsesOutput   `json:"output"`
+	ParallelToolCalls  bool                `json:"parallel_tool_calls"`
+	PreviousResponseID json.RawMessage     `json:"previous_response_id"`
+	Reasoning          *Reasoning          `json:"reasoning"`
+	Store              bool                `json:"store"`
+	Temperature        float64             `json:"temperature"`
+	ToolChoice         json.RawMessage     `json:"tool_choice"`
+	Tools              []map[string]any    `json:"tools"`
+	TopP               float64             `json:"top_p"`
+	ToolUsage          *ResponsesToolUsage `json:"tool_usage,omitempty"`
+	Truncation         json.RawMessage     `json:"truncation"`
+	Usage              *Usage              `json:"usage"`
+	User               json.RawMessage     `json:"user"`
+	Metadata           json.RawMessage     `json:"metadata"`
+}
+
+// ResponsesToolUsage contains provider-specific usage emitted by compatible
+// Responses gateways. Sub2API reports image generation counts and token
+// details here even when response.output is empty.
+type ResponsesToolUsage struct {
+	ImageGen *ResponsesImageGenerationUsage `json:"image_gen,omitempty"`
+}
+
+type ResponsesImageGenerationUsage struct {
+	Images              int                 `json:"images,omitempty"`
+	InputTokens         int                 `json:"input_tokens,omitempty"`
+	OutputTokens        int                 `json:"output_tokens,omitempty"`
+	InputTokensDetails  *InputTokenDetails  `json:"input_tokens_details,omitempty"`
+	OutputTokensDetails *OutputTokenDetails `json:"output_tokens_details,omitempty"`
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构
@@ -376,7 +402,11 @@ const (
 )
 
 const (
-	BuildInCallWebSearchCall  = "web_search_call"
+	BuildInCallWebSearchCall = "web_search_call"
+	// BuildInCallXSearchCall is the Responses output type emitted by
+	// xAI-compatible gateways (including Sub2API) for a native web search.
+	// It has the same per-call billing semantics as web_search_call.
+	BuildInCallXSearchCall    = "x_search_call"
 	BuildInCallFileSearchCall = "file_search_call"
 	BuildInCallFunctionCall   = "function_call"
 	BuildInCallToolUse        = "tool_use"
@@ -389,12 +419,15 @@ const (
 
 // ResponsesStreamResponse 用于处理 /v1/responses 流式响应
 type ResponsesStreamResponse struct {
-	Type     string                   `json:"type"`
-	Response *OpenAIResponsesResponse `json:"response,omitempty"`
-	Usage    *Usage                   `json:"usage,omitempty"`
-	Data     json.RawMessage          `json:"data,omitempty"`
-	Delta    string                   `json:"delta,omitempty"`
-	Item     *ResponsesOutput         `json:"item,omitempty"`
+	Type      string                   `json:"type"`
+	Response  *OpenAIResponsesResponse `json:"response,omitempty"`
+	Usage     *Usage                   `json:"usage,omitempty"`
+	ToolUsage *ResponsesToolUsage      `json:"tool_usage,omitempty"`
+	Data      json.RawMessage          `json:"data,omitempty"`
+	Delta     string                   `json:"delta,omitempty"`
+	Text      string                   `json:"text,omitempty"`
+	Arguments string                   `json:"arguments,omitempty"`
+	Item      *ResponsesOutput         `json:"item,omitempty"`
 	// - response.function_call_arguments.delta
 	// - response.function_call_arguments.done
 	OutputIndex  *int                           `json:"output_index,omitempty"`

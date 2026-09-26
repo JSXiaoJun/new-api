@@ -116,17 +116,14 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
+	imageUsage := usage.(*dto.Usage)
+	if !service.ValidUsage(imageUsage) {
+		imageUsage = fallbackImageUsage(info, imageUsage)
+	}
 
 	imageN := uint(1)
 	if request.N != nil {
 		imageN = *request.N
-	}
-
-	if usage.(*dto.Usage).TotalTokens == 0 {
-		usage.(*dto.Usage).TotalTokens = 1
-	}
-	if usage.(*dto.Usage).PromptTokens == 0 {
-		usage.(*dto.Usage).PromptTokens = 1
 	}
 
 	quality := request.Quality
@@ -146,6 +143,28 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		logContent = append(logContent, fmt.Sprintf("生成数量 %d", imageN))
 	}
 
-	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
+	service.PostTextConsumeQuota(c, info, imageUsage, logContent)
 	return nil
+}
+
+func fallbackImageUsage(info *relaycommon.RelayInfo, usage *dto.Usage) *dto.Usage {
+	if usage == nil {
+		usage = &dto.Usage{}
+	}
+	if info == nil || info.PriceData.UsePrice {
+		usage.PromptTokens = 1
+		usage.TotalTokens = 1
+		return usage
+	}
+
+	usage.PromptTokens = max(info.GetEstimatePromptTokens(), common.PreConsumedQuota)
+	if imageRequest, ok := info.Request.(*dto.ImageRequest); ok && imageRequest != nil {
+		usage.CompletionTokens = max(imageRequest.GetTokenCountMeta().MaxTokens, 0)
+	}
+	service.RecalculateUsageTotal(usage)
+	if usage.TotalTokens == 0 {
+		usage.PromptTokens = 1
+		usage.TotalTokens = 1
+	}
+	return usage
 }

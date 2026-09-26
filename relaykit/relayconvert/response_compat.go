@@ -116,6 +116,18 @@ func UsageFromResponsesUsage(src *dto.Usage) *dto.Usage {
 	return oairesponses.UsageFromResponsesUsage(src)
 }
 
+func UsageFromResponsesResponse(resp *dto.OpenAIResponsesResponse) *dto.Usage {
+	return oairesponses.UsageFromResponsesResponse(resp)
+}
+
+func MergeResponsesUsage(dst, src *dto.Usage) *dto.Usage {
+	return oairesponses.MergeResponsesUsage(dst, src)
+}
+
+func UsageFromResponsesStreamResponse(event *dto.ResponsesStreamResponse) *dto.Usage {
+	return oairesponses.UsageFromResponsesStreamResponse(event)
+}
+
 func ExtractOutputTextFromResponses(resp *dto.OpenAIResponsesResponse) string {
 	return oairesponses.ExtractOutputTextFromResponses(resp)
 }

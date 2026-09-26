@@ -108,6 +108,7 @@ func ollamaStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	var responseId = common.GetUUID()
 	var created = time.Now().Unix()
 	var toolCallIndex int
+	var responseText strings.Builder
 	start := helper.GenerateStartEmptyResponse(responseId, created, model, nil)
 	if data, err := common.Marshal(start); err == nil {
 		_ = helper.StringData(c, string(data))
@@ -137,6 +138,7 @@ func ollamaStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			} else {
 				content = chunk.Response
 			}
+			responseText.WriteString(content)
 			delta := dto.ChatCompletionsStreamResponse{
 				Id:      responseId,
 				Object:  "chat.completion.chunk",
@@ -177,6 +179,8 @@ func ollamaStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		usage.PromptTokens = chunk.PromptEvalCount
 		usage.CompletionTokens = chunk.EvalCount
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+		service.EnsureUsageCompletion(c, usage, responseText.String(), model, info.GetEstimatePromptTokens())
+		service.RecalculateUsageTotal(usage)
 		finishReason := chunk.DoneReason
 		if finishReason == "" {
 			finishReason = "stop"
@@ -304,6 +308,8 @@ func ollamaChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 	created := toUnix(lastChunk.CreatedAt)
 	usage := &dto.Usage{PromptTokens: lastChunk.PromptEvalCount, CompletionTokens: lastChunk.EvalCount, TotalTokens: lastChunk.PromptEvalCount + lastChunk.EvalCount}
 	content := aggContent.String()
+	service.EnsureUsageCompletion(c, usage, content+reasoningBuilder.String(), model, info.GetEstimatePromptTokens())
+	service.RecalculateUsageTotal(usage)
 	finishReason := lastChunk.DoneReason
 	if finishReason == "" {
 		finishReason = "stop"

@@ -157,6 +157,7 @@ func streamMetaResponseZhipu2OpenAI(zhipuResponse *ZhipuStreamMetaResponse) (*dt
 
 func zhipuStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	var usage *dto.Usage
+	var responseText strings.Builder
 	scanner := helper.NewStreamScanner(resp.Body)
 	scanner.Split(bufio.ScanLines)
 	dataChan := make(chan string)
@@ -189,6 +190,7 @@ func zhipuStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	c.Stream(func(w io.Writer) bool {
 		select {
 		case data := <-dataChan:
+			responseText.WriteString(data)
 			response := streamResponseZhipu2OpenAI(data)
 			jsonResponse, err := json.Marshal(response)
 			if err != nil {
@@ -218,6 +220,12 @@ func zhipuStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 			return false
 		}
 	})
+	if usage == nil {
+		usage = service.ResponseText2Usage(c, responseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+	} else {
+		service.EnsureUsageCompletion(c, usage, responseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		service.RecalculateUsageTotal(usage)
+	}
 	service.CloseResponseBodyGracefully(resp)
 	return usage, nil
 }
@@ -239,6 +247,12 @@ func zhipuHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respon
 			Code:    zhipuResponse.Code,
 		}, resp.StatusCode)
 	}
+	var responseText strings.Builder
+	for _, choice := range zhipuResponse.Data.Choices {
+		responseText.WriteString(choice.Content)
+	}
+	service.EnsureUsageCompletion(c, &zhipuResponse.Data.Usage, responseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+	service.RecalculateUsageTotal(&zhipuResponse.Data.Usage)
 	fullTextResponse := responseZhipu2OpenAI(&zhipuResponse)
 	jsonResponse, err := json.Marshal(fullTextResponse)
 	if err != nil {

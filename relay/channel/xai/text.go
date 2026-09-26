@@ -57,6 +57,9 @@ func xAIStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			usage.PromptTokens = xAIResp.Usage.PromptTokens
 			usage.TotalTokens = xAIResp.Usage.TotalTokens
 			usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
+			if usage.CompletionTokens < 0 {
+				usage.CompletionTokens = 0
+			}
 		}
 
 		openaiResponse := streamResponseXAI2OpenAI(xAIResp, usage)
@@ -70,6 +73,11 @@ func xAIStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	if !containStreamUsage {
 		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 		usage.CompletionTokens += toolCount * 7
+		service.RecalculateUsageTotal(usage)
+	} else {
+		service.EnsureUsageCompletion(c, usage, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		usage.CompletionTokens += toolCount * 7
+		service.RecalculateUsageTotal(usage)
 	}
 
 	helper.Done(c)
@@ -89,9 +97,21 @@ func xAIHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
+	var responseText strings.Builder
+	for _, choice := range xaiResponse.Choices {
+		responseText.WriteString(choice.Message.StringContent())
+		responseText.WriteString(choice.Message.GetReasoningContent())
+	}
+	if xaiResponse.Usage == nil {
+		xaiResponse.Usage = service.ResponseText2Usage(c, responseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+	} else {
+		service.EnsureUsageCompletion(c, xaiResponse.Usage, responseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+	}
 	if xaiResponse.Usage != nil {
-		xaiResponse.Usage.CompletionTokens = xaiResponse.Usage.TotalTokens - xaiResponse.Usage.PromptTokens
 		xaiResponse.Usage.CompletionTokenDetails.TextTokens = xaiResponse.Usage.CompletionTokens - xaiResponse.Usage.CompletionTokenDetails.ReasoningTokens
+		if xaiResponse.Usage.CompletionTokenDetails.TextTokens < 0 {
+			xaiResponse.Usage.CompletionTokenDetails.TextTokens = 0
+		}
 	}
 
 	// new body

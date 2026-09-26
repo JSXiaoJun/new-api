@@ -133,6 +133,12 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			}
 		}
 		if len(data) > 0 {
+			if streamUsage := extractChatStreamUsage(data); streamUsage != nil {
+				if mergeChatStreamUsage(usage, streamUsage) {
+					containStreamUsage = true
+				}
+			}
+
 			// 对音频模型，保存倒数第二个stream data
 			if isAudioModel && lastStreamData != "" {
 				secondLastStreamData = lastStreamData
@@ -149,13 +155,10 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {
-		var streamResp struct {
-			Usage *dto.Usage `json:"usage"`
-		}
-		err := common.Unmarshal([]byte(secondLastStreamData), &streamResp)
-		if err == nil && streamResp.Usage != nil && service.ValidUsage(streamResp.Usage) {
-			usage = streamResp.Usage
-			containStreamUsage = true
+		if streamUsage := extractChatStreamUsage(secondLastStreamData); streamUsage != nil {
+			if mergeChatStreamUsage(usage, streamUsage) {
+				containStreamUsage = true
+			}
 
 			if common.DebugEnabled {
 				logger.LogDebug(c, "Audio model usage extracted from second last SSE: PromptTokens=%d, CompletionTokens=%d, TotalTokens=%d, InputTokens=%d, OutputTokens=%d",
@@ -181,6 +184,12 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	if !containStreamUsage {
 		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 		usage.CompletionTokens += toolCount * 7
+	} else {
+		// A number of OpenAI-compatible gateways (including Sub2API) emit a
+		// usage object containing only prompt/input tokens. Keep that
+		// authoritative input count, but recover missing output tokens from the
+		// response text and output details so the request cannot settle at zero.
+		ensureOpenAIUsageCompletion(c, usage, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 	}
 
 	applyUsagePostProcessing(info, usage, common.StringToByteSlice(lastStreamData))
@@ -271,22 +280,17 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		forceFormat = true
 	}
 
-	usageModified := false
-	if simpleResponse.Usage.PromptTokens == 0 {
-		completionTokens := simpleResponse.Usage.CompletionTokens
-		if completionTokens == 0 {
-			for _, choice := range simpleResponse.Choices {
-				ctkm := service.CountTextToken(choice.Message.StringContent()+choice.Message.GetReasoningContent(), info.UpstreamModelName)
-				completionTokens += ctkm
-			}
+	var responseTextBuilder strings.Builder
+	for _, choice := range simpleResponse.Choices {
+		responseTextBuilder.WriteString(choice.Message.StringContent())
+		responseTextBuilder.WriteString(choice.Message.GetReasoningContent())
+		for _, toolCall := range choice.Message.ParseToolCalls() {
+			responseTextBuilder.WriteString(toolCall.Function.Name)
+			responseTextBuilder.WriteString(toolCall.Function.Arguments)
 		}
-		simpleResponse.Usage = dto.Usage{
-			PromptTokens:     info.GetEstimatePromptTokens(),
-			CompletionTokens: completionTokens,
-			TotalTokens:      info.GetEstimatePromptTokens() + completionTokens,
-		}
-		usageModified = true
 	}
+	usageModified, _ := ensureOpenAIUsageCompletion(c, &simpleResponse.Usage,
+		responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 
 	applyUsagePostProcessing(info, &simpleResponse.Usage, responseBody)
 

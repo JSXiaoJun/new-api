@@ -67,7 +67,7 @@ func GeminiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, types.NewOpenAIError(fmt.Errorf("expected OpenAI responses response, got %T", convertResult.Value), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	responsesUsage := convertResult.Usage
-	if responsesUsage == nil || responsesUsage.TotalTokens == 0 {
+	if !service.ValidUsage(responsesUsage) {
 		responsesResp.Usage = relayconvert.UsageFromChatUsage(&usage)
 	}
 

@@ -116,6 +116,7 @@ func embeddingResponseBaidu2OpenAI(response *BaiduEmbeddingResponse) *dto.OpenAI
 
 func baiduStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*types.NewAPIError, *dto.Usage) {
 	usage := &dto.Usage{}
+	var responseText strings.Builder
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		var baiduResponse BaiduChatStreamResponse
 		if err := common.Unmarshal([]byte(data), &baiduResponse); err != nil {
@@ -128,12 +129,15 @@ func baiduStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 			usage.PromptTokens = baiduResponse.Usage.PromptTokens
 			usage.CompletionTokens = baiduResponse.Usage.TotalTokens - baiduResponse.Usage.PromptTokens
 		}
+		responseText.WriteString(baiduResponse.Result)
 		response := streamResponseBaidu2OpenAI(&baiduResponse)
 		if err := helper.ObjectData(c, response); err != nil {
 			common.SysLog("error sending stream response: " + err.Error())
 			sr.Error(err)
 		}
 	})
+	service.EnsureUsageCompletion(c, usage, responseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+	service.RecalculateUsageTotal(usage)
 	service.CloseResponseBodyGracefully(resp)
 	return nil, usage
 }
@@ -152,6 +156,8 @@ func baiduHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respon
 	if baiduResponse.ErrorMsg != "" {
 		return types.NewError(fmt.Errorf("%s", baiduResponse.ErrorMsg), types.ErrorCodeBadResponseBody), nil
 	}
+	service.EnsureUsageCompletion(c, &baiduResponse.Usage, baiduResponse.Result, info.UpstreamModelName, info.GetEstimatePromptTokens())
+	service.RecalculateUsageTotal(&baiduResponse.Usage)
 	fullTextResponse := responseBaidu2OpenAI(&baiduResponse)
 	jsonResponse, err := json.Marshal(fullTextResponse)
 	if err != nil {

@@ -254,11 +254,16 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 			CompletionTokens: 0,
 			TotalTokens:      relayInfo.GetEstimatePromptTokens(),
 		}
+	} else {
+		usage = normalizeUsageForBilling(usage, relayInfo.GetEstimatePromptTokens())
 	}
 
 	summary.PromptTokens = usage.PromptTokens
 	summary.CompletionTokens = usage.CompletionTokens
-	summary.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	summary.TotalTokens = usage.TotalTokens
+	if summary.TotalTokens < addUsageInts(summary.PromptTokens, summary.CompletionTokens) {
+		summary.TotalTokens = addUsageInts(summary.PromptTokens, summary.CompletionTokens)
+	}
 	summary.CacheTokens = usage.PromptTokensDetails.CachedTokens
 	summary.CacheCreationTokens = usage.PromptTokensDetails.CacheCreationTokensTotal()
 	summary.CacheCreationTokens5m = usage.ClaudeCacheCreation5mTokens
@@ -413,6 +418,7 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
 	originUsage := usage
 	billingUsage := effectiveBillingUsage(usage)
+	billingUsage = normalizeUsageForBilling(billingUsage, relayInfo.GetEstimatePromptTokens())
 	if usage == nil {
 		extraContent = append(extraContent, "上游无计费信息")
 	}

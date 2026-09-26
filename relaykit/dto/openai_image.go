@@ -14,6 +14,8 @@ import (
 // wrapped-negative n overflows quota calculation into a negative charge.
 const MaxImageN = 128
 
+const maxImageOutputTokensPerImage = 1584
+
 type ImageRequest struct {
 	Model             string          `json:"model"`
 	Prompt            string          `json:"prompt" binding:"required"`
@@ -154,9 +156,13 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 		}
 	}
 
-	imageN := uint(1)
+	imageN := 1
 	if i.N != nil && *i.N > 0 {
-		imageN = *i.N
+		if *i.N > MaxImageN {
+			imageN = MaxImageN
+		} else {
+			imageN = int(*i.N)
+		}
 	}
 
 	// Keep n separate from ImagePriceRatio so size/quality and count remain
@@ -164,7 +170,7 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	// PriceData, and image settlement reuses or replaces the same "n" ratio.
 	return &types.TokenCountMeta{
 		CombineText:     i.Prompt,
-		MaxTokens:       1584,
+		MaxTokens:       maxImageOutputTokensPerImage * imageN,
 		ImagePriceRatio: sizeRatio * qualityRatio,
 		BillingRatios:   map[string]float64{"n": float64(imageN)},
 	}

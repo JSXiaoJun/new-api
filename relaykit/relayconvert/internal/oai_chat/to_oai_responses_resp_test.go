@@ -74,6 +74,28 @@ func TestChatCompletionsResponseToResponsesMapsIncompleteFinishReasons(t *testin
 	}
 }
 
+func TestUsageFromChatUsagePreservesInputOutputAliases(t *testing.T) {
+	usage := UsageFromChatUsage(&dto.Usage{
+		InputTokens:     11,
+		OutputTokens:    4,
+		TotalTokens:     15,
+		CacheReadTokens: 3,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CacheCreationTokens: 2,
+		},
+	})
+
+	require.NotNil(t, usage)
+	assert.Equal(t, 11, usage.PromptTokens)
+	assert.Equal(t, 11, usage.InputTokens)
+	assert.Equal(t, 4, usage.CompletionTokens)
+	assert.Equal(t, 4, usage.OutputTokens)
+	assert.Equal(t, 15, usage.TotalTokens)
+	assert.Equal(t, 3, usage.CacheReadTokens)
+	require.NotNil(t, usage.InputTokensDetails)
+	assert.Equal(t, 2, usage.InputTokensDetails.CacheCreationTokens)
+}
+
 func TestChatCompletionsStreamToResponsesEventsAggregatesUsageAndToolArgs(t *testing.T) {
 	state := NewChatToResponsesStreamState("resp_1", "gpt-test")
 	state.Created = 123
@@ -130,6 +152,25 @@ func TestChatCompletionsStreamToResponsesEventsAggregatesUsageAndToolArgs(t *tes
 	require.Len(t, events[9].Payload.Response.Output, 2)
 	assert.Equal(t, "hello", events[9].Payload.Response.Output[0].Content[0].Text)
 	assert.Equal(t, `"{\"q\":\"x\"}"`, string(events[9].Payload.Response.Output[1].Arguments))
+}
+
+func TestChatCompletionsStreamToResponsesKeepsUsageAfterEmptyTerminalChunk(t *testing.T) {
+	state := NewChatToResponsesStreamState("resp_1", "gpt-test")
+	mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Usage: &dto.Usage{PromptTokens: 7, CompletionTokens: 3, TotalTokens: 10},
+	})
+	mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Usage: &dto.Usage{},
+	})
+
+	events := FinalizeChatCompletionsStreamToResponses(state)
+	require.NotEmpty(t, events)
+	last := events[len(events)-1]
+	require.NotNil(t, last.Payload.Response)
+	require.NotNil(t, last.Payload.Response.Usage)
+	assert.Equal(t, 7, last.Payload.Response.Usage.InputTokens)
+	assert.Equal(t, 3, last.Payload.Response.Usage.OutputTokens)
+	assert.Equal(t, 10, last.Payload.Response.Usage.TotalTokens)
 }
 
 func mustResponsesEventsFromChatChunk(t *testing.T, state *ChatToResponsesStreamState, chunk *dto.ChatCompletionsStreamResponse) []ChatToResponsesStreamEvent {

@@ -47,11 +47,13 @@ func OaiChatToResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		return nil, types.NewOpenAIError(fmt.Errorf("expected OpenAI responses response, got %T", convertResult.Value), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	usage := convertResult.Usage
-	if usage == nil || usage.TotalTokens == 0 {
-		text := service.ExtractOutputTextFromResponses(responsesResp)
-		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
-		responsesResp.Usage = relayconvert.UsageFromChatUsage(usage)
+	if usage == nil {
+		usage = &dto.Usage{}
 	}
+	mergeResponsesUsage(usage, responsesResp.Usage)
+	usage = normalizeResponsesUsage(usage, info.GetEstimatePromptTokens())
+	ensureOpenAIUsageCompletion(c, usage, service.ExtractOutputTextFromResponses(responsesResp), info.UpstreamModelName, info.GetEstimatePromptTokens())
+	responsesResp.Usage = relayconvert.UsageFromChatUsage(usage)
 
 	responseBody, err := common.Marshal(responsesResp)
 	if err != nil {
@@ -134,11 +136,9 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		return nil, streamErr
 	}
 
-	usage := state.Usage()
-	if usage == nil || usage.TotalTokens == 0 {
-		usage = service.ResponseText2Usage(c, state.UsageText(), info.UpstreamModelName, info.GetEstimatePromptTokens())
-		state.SetUsage(usage)
-	}
+	usage := normalizeResponsesUsage(state.Usage(), info.GetEstimatePromptTokens())
+	ensureOpenAIUsageCompletion(c, usage, state.UsageText(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+	state.SetUsage(usage)
 
 	finalResults, err := relayconvert.FinalizeStreamResponse(c, info, state)
 	if err != nil {

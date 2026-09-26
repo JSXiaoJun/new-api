@@ -1,6 +1,8 @@
 package oairesponses
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -63,7 +65,7 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 	text := ExtractOutputTextFromResponses(resp)
 	reasoning := ExtractReasoningTextFromResponses(resp)
 
-	usage := UsageFromResponsesUsage(resp.Usage)
+	usage := UsageFromResponsesResponse(resp)
 
 	created := resp.CreatedAt
 
@@ -128,51 +130,289 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 	return out, usage, nil
 }
 
+// UsageFromResponsesResponse converts a complete Responses response into the
+// canonical usage shape used by the host billing layer. Compatible gateways
+// sometimes put tool usage next to the regular usage object, so both sources
+// are merged before returning.
+func UsageFromResponsesResponse(resp *dto.OpenAIResponsesResponse) *dto.Usage {
+	if resp == nil {
+		return nil
+	}
+	usage := UsageFromResponsesUsage(resp.Usage)
+	mergeResponsesToolUsage(usage, resp.ToolUsage)
+	return usage
+}
+
+// UsageFromResponsesUsage normalizes both native Responses names
+// (input/output_tokens) and Chat Completions compatible aliases
+// (prompt/completion_tokens). It deliberately keeps total-only usage as
+// total-only; the request-aware billing layer can split it using its prompt
+// estimate without inventing a provider-side breakdown here.
 func UsageFromResponsesUsage(src *dto.Usage) *dto.Usage {
 	usage := &dto.Usage{}
 	if src == nil {
 		return usage
 	}
-	usage.UsageSemantic = src.UsageSemantic
-	usage.UsageSource = src.UsageSource
-	usage.BillingUsage = dto.CloneBillingUsage(src.BillingUsage)
-	if usage.BillingUsage == nil {
+	if src.BillingUsage != nil && src.BillingUsage.OpenAIUsage != nil {
+		mergeResponsesUsageFields(usage, src.BillingUsage.OpenAIUsage)
+	}
+	mergeResponsesUsageFields(usage, src)
+	if src.BillingUsage != nil {
+		usage.BillingUsage = dto.CloneBillingUsage(src.BillingUsage)
+	} else {
+		// Keep the nested source payload faithful to the upstream spelling. The
+		// service billing layer normalizes input/output aliases when it consumes
+		// this nested record, while preserving this shape avoids changing the
+		// serialized response contract for native Responses usage.
 		usage.BillingUsage = dto.NewOpenAIResponsesBillingUsage(src)
 	}
-	usage.Cost = src.Cost
-	if src.InputTokens != 0 {
-		usage.PromptTokens = src.InputTokens
-		usage.InputTokens = src.InputTokens
-	}
-	if src.OutputTokens != 0 {
-		usage.CompletionTokens = src.OutputTokens
-		usage.OutputTokens = src.OutputTokens
-	}
-	if src.TotalTokens != 0 {
-		usage.TotalTokens = src.TotalTokens
-	} else {
-		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
-	}
-	if src.InputTokensDetails != nil {
-		usage.PromptTokensDetails.CachedTokens = src.InputTokensDetails.CachedTokens
-		usage.PromptTokensDetails.CachedCreationTokens = src.InputTokensDetails.CachedCreationTokens
-		usage.PromptTokensDetails.CacheWriteTokens = src.InputTokensDetails.CacheWriteTokens
-		usage.PromptTokensDetails.TextTokens = src.InputTokensDetails.TextTokens
-		usage.PromptTokensDetails.ImageTokens = src.InputTokensDetails.ImageTokens
-		usage.PromptTokensDetails.AudioTokens = src.InputTokensDetails.AudioTokens
-	}
-	if src.CompletionTokenDetails.ReasoningTokens != 0 ||
-		src.CompletionTokenDetails.TextTokens != 0 ||
-		src.CompletionTokenDetails.AudioTokens != 0 ||
-		src.CompletionTokenDetails.ImageTokens != 0 {
-		usage.CompletionTokenDetails.ReasoningTokens = src.CompletionTokenDetails.ReasoningTokens
-		usage.CompletionTokenDetails.TextTokens = src.CompletionTokenDetails.TextTokens
-		usage.CompletionTokenDetails.AudioTokens = src.CompletionTokenDetails.AudioTokens
-		usage.CompletionTokenDetails.ImageTokens = src.CompletionTokenDetails.ImageTokens
-	}
-	usage.ClaudeCacheCreation5mTokens = src.ClaudeCacheCreation5mTokens
-	usage.ClaudeCacheCreation1hTokens = src.ClaudeCacheCreation1hTokens
+	syncResponsesBillingUsage(usage)
 	return usage
+}
+
+// MergeResponsesUsage merges a usage snapshot into dst. Responses streams can
+// report cumulative snapshots more than once, so token counts use the largest
+// non-negative value rather than summing snapshots. Missing snapshots never
+// erase a previously observed authoritative value.
+func MergeResponsesUsage(dst, src *dto.Usage) *dto.Usage {
+	if src == nil {
+		return dst
+	}
+	if dst == nil {
+		dst = &dto.Usage{}
+	}
+	// Compatible Responses gateways may expose the authoritative snapshot only
+	// under billing_usage.openai_usage. Promote it before the top-level merge so
+	// callers never fall back to local text estimation for a real usage record.
+	if src.BillingUsage != nil && src.BillingUsage.OpenAIUsage != nil {
+		mergeResponsesUsageFields(dst, src.BillingUsage.OpenAIUsage)
+	}
+	mergeResponsesUsageFields(dst, src)
+	if dst.BillingUsage == nil && src.BillingUsage != nil {
+		dst.BillingUsage = dto.CloneBillingUsage(src.BillingUsage)
+	}
+	syncResponsesBillingUsage(dst)
+	return dst
+}
+
+// UsageFromResponsesStreamResponse finds usage in all envelopes emitted by
+// Responses-compatible gateways: event.usage, event.response.usage,
+// event.data.usage, and nested data.response.usage. The raw data traversal is
+// intentionally bounded because Data is provider-controlled JSON.
+func UsageFromResponsesStreamResponse(event *dto.ResponsesStreamResponse) *dto.Usage {
+	if event == nil {
+		return nil
+	}
+	var usage *dto.Usage
+	usage = MergeResponsesUsage(usage, event.Usage)
+	if event.Response != nil {
+		usage = MergeResponsesUsage(usage, UsageFromResponsesResponse(event.Response))
+	}
+	usage = MergeResponsesUsage(usage, usageFromResponsesRawEnvelope(event.Data, 0))
+	if usage == nil || !hasResponsesUsageData(usage) {
+		return nil
+	}
+	return usage
+}
+
+func usageFromResponsesRawEnvelope(raw json.RawMessage, depth int) *dto.Usage {
+	if depth > 5 {
+		return nil
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil
+	}
+	var object map[string]json.RawMessage
+	if err := kitutil.Unmarshal(trimmed, &object); err != nil {
+		var nested string
+		if kitutil.Unmarshal(trimmed, &nested) == nil && strings.TrimSpace(nested) != "" {
+			return usageFromResponsesRawEnvelope([]byte(nested), depth+1)
+		}
+		return nil
+	}
+
+	var usage *dto.Usage
+	if usageRaw, ok := object["usage"]; ok {
+		var parsed dto.Usage
+		if kitutil.Unmarshal(usageRaw, &parsed) == nil {
+			usage = MergeResponsesUsage(usage, &parsed)
+		}
+	}
+	if toolRaw, ok := object["tool_usage"]; ok {
+		var toolUsage dto.ResponsesToolUsage
+		if kitutil.Unmarshal(toolRaw, &toolUsage) == nil {
+			if usage == nil {
+				usage = &dto.Usage{}
+			}
+			mergeResponsesToolUsage(usage, &toolUsage)
+		}
+	}
+	for _, key := range []string{"response", "data"} {
+		if nestedRaw, ok := object[key]; ok {
+			usage = MergeResponsesUsage(usage, usageFromResponsesRawEnvelope(nestedRaw, depth+1))
+		}
+	}
+	return usage
+}
+
+func mergeResponsesUsageFields(dst, src *dto.Usage) {
+	if dst == nil || src == nil {
+		return
+	}
+	dst.UsageSemantic = firstNonEmptyUsageString(dst.UsageSemantic, src.UsageSemantic)
+	dst.UsageSource = firstNonEmptyUsageString(dst.UsageSource, src.UsageSource)
+	if dst.Cost == nil && src.Cost != nil {
+		dst.Cost = src.Cost
+	}
+
+	// Keep both spellings populated in the canonical result. This also handles
+	// Sub2API responses that only expose prompt_tokens/completion_tokens.
+	inputTokens := maxUsageInt(dst.PromptTokens, dst.InputTokens, src.PromptTokens, src.InputTokens)
+	outputTokens := maxUsageInt(dst.CompletionTokens, dst.OutputTokens, src.CompletionTokens, src.OutputTokens)
+	dst.PromptTokens = inputTokens
+	dst.InputTokens = inputTokens
+	dst.CompletionTokens = outputTokens
+	dst.OutputTokens = outputTokens
+	dst.TotalTokens = maxUsageInt(dst.TotalTokens, src.TotalTokens)
+
+	dst.PromptCacheHitTokens = maxUsageInt(dst.PromptCacheHitTokens, src.PromptCacheHitTokens, src.CacheReadInputTokens, src.CacheReadTokens)
+	dst.CacheReadInputTokens = maxUsageInt(dst.CacheReadInputTokens, src.CacheReadInputTokens, src.CacheReadTokens, src.PromptCacheHitTokens)
+	dst.CacheReadTokens = maxUsageInt(dst.CacheReadTokens, src.CacheReadTokens, src.CacheReadInputTokens, src.PromptCacheHitTokens)
+	dst.CacheCreationInputTokens = maxUsageInt(dst.CacheCreationInputTokens, src.CacheCreationInputTokens, src.CacheCreationTokens)
+	dst.CacheCreationTokens = maxUsageInt(dst.CacheCreationTokens, src.CacheCreationTokens, src.CacheCreationInputTokens)
+	dst.CacheWriteTokens = maxUsageInt(dst.CacheWriteTokens, src.CacheWriteTokens)
+	dst.ClaudeCacheCreation5mTokens = maxUsageInt(dst.ClaudeCacheCreation5mTokens, src.ClaudeCacheCreation5mTokens)
+	dst.ClaudeCacheCreation1hTokens = maxUsageInt(dst.ClaudeCacheCreation1hTokens, src.ClaudeCacheCreation1hTokens)
+
+	if src.InputTokensDetails != nil {
+		if dst.InputTokensDetails == nil {
+			details := *src.InputTokensDetails
+			dst.InputTokensDetails = &details
+		} else {
+			mergeInputTokenDetails(dst.InputTokensDetails, *src.InputTokensDetails)
+		}
+		mergeInputTokenDetails(&dst.PromptTokensDetails, *src.InputTokensDetails)
+	}
+	mergeInputTokenDetails(&dst.PromptTokensDetails, src.PromptTokensDetails)
+	if src.OutputTokensDetails != nil {
+		if dst.OutputTokensDetails == nil {
+			details := *src.OutputTokensDetails
+			dst.OutputTokensDetails = &details
+		} else {
+			mergeOutputTokenDetails(dst.OutputTokensDetails, *src.OutputTokensDetails)
+		}
+		mergeOutputTokenDetails(&dst.CompletionTokenDetails, *src.OutputTokensDetails)
+	}
+	mergeOutputTokenDetails(&dst.CompletionTokenDetails, src.CompletionTokenDetails)
+
+	sides := saturatingUsageSum(dst.PromptTokens, dst.CompletionTokens)
+	if dst.TotalTokens == 0 {
+		dst.TotalTokens = sides
+	}
+	if dst.InputTokens == 0 {
+		dst.InputTokens = dst.PromptTokens
+	}
+	if dst.OutputTokens == 0 {
+		dst.OutputTokens = dst.CompletionTokens
+	}
+}
+
+func mergeInputTokenDetails(dst *dto.InputTokenDetails, src dto.InputTokenDetails) {
+	if dst == nil {
+		return
+	}
+	dst.CachedTokens = maxUsageInt(dst.CachedTokens, src.CachedTokens)
+	dst.CachedCreationTokens = maxUsageInt(dst.CachedCreationTokens, src.CachedCreationTokens)
+	dst.CacheCreationTokens = maxUsageInt(dst.CacheCreationTokens, src.CacheCreationTokens)
+	dst.CacheWriteTokens = maxUsageInt(dst.CacheWriteTokens, src.CacheWriteTokens)
+	dst.TextTokens = maxUsageInt(dst.TextTokens, src.TextTokens)
+	dst.AudioTokens = maxUsageInt(dst.AudioTokens, src.AudioTokens)
+	dst.ImageTokens = maxUsageInt(dst.ImageTokens, src.ImageTokens)
+}
+
+func mergeOutputTokenDetails(dst *dto.OutputTokenDetails, src dto.OutputTokenDetails) {
+	if dst == nil {
+		return
+	}
+	dst.ReasoningTokens = maxUsageInt(dst.ReasoningTokens, src.ReasoningTokens)
+	dst.TextTokens = maxUsageInt(dst.TextTokens, src.TextTokens)
+	dst.AudioTokens = maxUsageInt(dst.AudioTokens, src.AudioTokens)
+	dst.ImageTokens = maxUsageInt(dst.ImageTokens, src.ImageTokens)
+}
+
+func mergeResponsesToolUsage(dst *dto.Usage, toolUsage *dto.ResponsesToolUsage) {
+	if dst == nil || toolUsage == nil || toolUsage.ImageGen == nil {
+		return
+	}
+	imageGen := toolUsage.ImageGen
+	inputTokens := maxUsageInt(dst.PromptTokens, dst.InputTokens, imageGen.InputTokens)
+	outputTokens := maxUsageInt(dst.CompletionTokens, dst.OutputTokens, imageGen.OutputTokens)
+	dst.PromptTokens = inputTokens
+	dst.InputTokens = inputTokens
+	dst.CompletionTokens = outputTokens
+	dst.OutputTokens = outputTokens
+	if imageGen.InputTokensDetails != nil {
+		mergeInputTokenDetails(&dst.PromptTokensDetails, *imageGen.InputTokensDetails)
+	}
+	if imageGen.OutputTokensDetails != nil {
+		mergeOutputTokenDetails(&dst.CompletionTokenDetails, *imageGen.OutputTokensDetails)
+	}
+	if dst.TotalTokens < saturatingUsageSum(dst.PromptTokens, dst.CompletionTokens) {
+		dst.TotalTokens = saturatingUsageSum(dst.PromptTokens, dst.CompletionTokens)
+	}
+	syncResponsesBillingUsage(dst)
+}
+
+// syncResponsesBillingUsage keeps the nested billing payload in lockstep with
+// the canonical top-level usage. Settlement intentionally prefers
+// BillingUsage when present, so leaving this record at an earlier stream
+// snapshot would silently undercharge later token usage or tool usage.
+func syncResponsesBillingUsage(usage *dto.Usage) {
+	if usage == nil || usage.BillingUsage == nil || usage.BillingUsage.OpenAIUsage == nil {
+		return
+	}
+	mergeResponsesUsageFields(usage.BillingUsage.OpenAIUsage, usage)
+}
+
+func hasResponsesUsageData(usage *dto.Usage) bool {
+	if usage == nil {
+		return false
+	}
+	return usage.PromptTokens != 0 || usage.CompletionTokens != 0 || usage.TotalTokens != 0 ||
+		usage.InputTokens != 0 || usage.OutputTokens != 0 || usage.PromptCacheHitTokens != 0 ||
+		usage.CacheReadInputTokens != 0 || usage.CacheCreationInputTokens != 0 ||
+		usage.CacheReadTokens != 0 || usage.CacheWriteTokens != 0 || usage.CacheCreationTokens != 0 ||
+		usage.PromptTokensDetails != (dto.InputTokenDetails{}) ||
+		usage.CompletionTokenDetails != (dto.OutputTokenDetails{}) || usage.InputTokensDetails != nil ||
+		usage.OutputTokensDetails != nil
+}
+
+func maxUsageInt(values ...int) int {
+	max := 0
+	for _, value := range values {
+		if value > max {
+			max = value
+		}
+	}
+	return max
+}
+
+func saturatingUsageSum(a, b int) int {
+	a = maxUsageInt(a)
+	b = maxUsageInt(b)
+	maxInt := int(^uint(0) >> 1)
+	if a > maxInt-b {
+		return maxInt
+	}
+	return a + b
+}
+
+func firstNonEmptyUsageString(current, incoming string) string {
+	if strings.TrimSpace(current) != "" {
+		return current
+	}
+	return incoming
 }
 
 func ExtractOutputTextFromResponses(resp *dto.OpenAIResponsesResponse) string {

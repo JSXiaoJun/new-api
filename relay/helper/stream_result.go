@@ -8,8 +8,9 @@ import (
 // to record soft errors, signal fatal stops, or mark normal completion.
 // StreamScannerHandler checks IsStopped() after each callback invocation.
 type StreamResult struct {
-	status  *relaycommon.StreamStatus
-	stopped bool
+	status    *relaycommon.StreamStatus
+	stopped   bool
+	eventType string
 }
 
 func newStreamResult(status *relaycommon.StreamStatus) *StreamResult {
@@ -46,7 +47,19 @@ func (r *StreamResult) IsStopped() bool {
 	return r.stopped
 }
 
+// EventType returns the SSE event name associated with the current data
+// payload, when the upstream sent an `event:` line. Most OpenAI-compatible
+// streams repeat the type in JSON, but Responses gateways are also allowed to
+// carry it only in the SSE envelope.
+func (r *StreamResult) EventType() string {
+	if r == nil {
+		return ""
+	}
+	return r.eventType
+}
+
 // reset clears the per-chunk stopped flag so the object can be reused.
 func (r *StreamResult) reset() {
 	r.stopped = false
+	r.eventType = ""
 }

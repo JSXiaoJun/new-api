@@ -72,6 +72,7 @@ func ResponsesStreamEventToChatChunks(event *dto.ResponsesStreamResponse, state 
 	if event == nil || state == nil {
 		return nil, nil
 	}
+	state.captureEventUsage(event)
 
 	switch event.Type {
 	case responsesEventCreated:
@@ -131,8 +132,15 @@ func (s *ResponsesToChatStreamState) applyResponseMetadata(response *dto.OpenAIR
 	if response.CreatedAt != 0 {
 		s.Created = int64(response.CreatedAt)
 	}
-	if response.Usage != nil {
-		s.Usage = UsageFromResponsesUsage(response.Usage)
+	s.Usage = MergeResponsesUsage(s.Usage, UsageFromResponsesResponse(response))
+}
+
+func (s *ResponsesToChatStreamState) captureEventUsage(event *dto.ResponsesStreamResponse) {
+	if s == nil || event == nil {
+		return
+	}
+	if usage := UsageFromResponsesStreamResponse(event); usage != nil {
+		s.Usage = MergeResponsesUsage(s.Usage, usage)
 	}
 }
 
@@ -556,6 +564,7 @@ func (s *ResponsesToChatStreamState) keyForEvent(event *dto.ResponsesStreamRespo
 type ResponsesBufferedAccumulator struct {
 	text                 strings.Builder
 	reasoning            strings.Builder
+	usage                *dto.Usage
 	tools                []*responsesBufferedTool
 	outputIndexToToolIdx map[int]int
 	itemIDToToolIdx      map[string]int
@@ -582,6 +591,9 @@ func NewResponsesBufferedAccumulator() *ResponsesBufferedAccumulator {
 func (a *ResponsesBufferedAccumulator) ProcessEvent(event *dto.ResponsesStreamResponse) {
 	if a == nil || event == nil {
 		return
+	}
+	if usage := UsageFromResponsesStreamResponse(event); usage != nil {
+		a.usage = MergeResponsesUsage(a.usage, usage)
 	}
 	switch event.Type {
 	case responsesEventOutputTextDelta:
@@ -610,10 +622,15 @@ func (a *ResponsesBufferedAccumulator) ProcessEvent(event *dto.ResponsesStreamRe
 }
 
 func (a *ResponsesBufferedAccumulator) SupplementResponseOutput(resp *dto.OpenAIResponsesResponse) {
-	if a == nil || resp == nil || len(resp.Output) > 0 {
+	if a == nil || resp == nil {
 		return
 	}
-	resp.Output = a.BuildOutput()
+	if len(resp.Output) == 0 {
+		resp.Output = a.BuildOutput()
+	}
+	if a.usage != nil {
+		resp.Usage = MergeResponsesUsage(resp.Usage, a.usage)
+	}
 }
 
 func (a *ResponsesBufferedAccumulator) BuildOutput() []dto.ResponsesOutput {
