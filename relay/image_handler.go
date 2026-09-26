@@ -117,7 +117,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		return newAPIError
 	}
 	imageUsage := usage.(*dto.Usage)
-	if !service.ValidUsage(imageUsage) {
+	if !service.ValidUsage(imageUsage) || (!info.PriceData.UsePrice && imageUsageMissingOutput(imageUsage)) {
 		imageUsage = fallbackImageUsage(info, imageUsage)
 	}
 
@@ -157,14 +157,54 @@ func fallbackImageUsage(info *relaycommon.RelayInfo, usage *dto.Usage) *dto.Usag
 		return usage
 	}
 
-	usage.PromptTokens = max(info.GetEstimatePromptTokens(), common.PreConsumedQuota)
-	if imageRequest, ok := info.Request.(*dto.ImageRequest); ok && imageRequest != nil {
-		usage.CompletionTokens = max(imageRequest.GetTokenCountMeta().MaxTokens, 0)
+	usage.PromptTokens = max(
+		usage.PromptTokens,
+		usage.InputTokens,
+		info.GetEstimatePromptTokens(),
+		common.PreConsumedQuota,
+	)
+	if usage.CompletionTokens < usage.OutputTokens {
+		usage.CompletionTokens = usage.OutputTokens
 	}
+	if imageRequest, ok := info.Request.(*dto.ImageRequest); ok && imageRequest != nil {
+		if usage.CompletionTokens <= 0 {
+			if usage.TotalTokens > usage.PromptTokens {
+				usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
+			} else {
+				usage.CompletionTokens = max(imageRequest.GetTokenCountMeta().MaxTokens, 0)
+			}
+		}
+	}
+	upstreamTotal := usage.TotalTokens
 	service.RecalculateUsageTotal(usage)
+	if upstreamTotal > usage.TotalTokens {
+		usage.TotalTokens = upstreamTotal
+	}
 	if usage.TotalTokens == 0 {
 		usage.PromptTokens = 1
 		usage.TotalTokens = 1
 	}
 	return usage
+}
+
+// imageUsageMissingOutput catches the partial usage shape returned by some
+// OpenAI-compatible image gateways (including sub2api). Input usage or input
+// details alone are not a complete proportional billing result: the requested
+// image output still has to be charged when output_tokens are omitted.
+func imageUsageMissingOutput(usage *dto.Usage) bool {
+	if usage == nil {
+		return true
+	}
+	if usage.CompletionTokens > 0 || usage.OutputTokens > 0 {
+		return false
+	}
+	return usage.CompletionTokenDetails.TextTokens == 0 &&
+		usage.CompletionTokenDetails.AudioTokens == 0 &&
+		usage.CompletionTokenDetails.ImageTokens == 0 &&
+		usage.CompletionTokenDetails.ReasoningTokens == 0 &&
+		(usage.OutputTokensDetails == nil ||
+			(usage.OutputTokensDetails.TextTokens == 0 &&
+				usage.OutputTokensDetails.AudioTokens == 0 &&
+				usage.OutputTokensDetails.ImageTokens == 0 &&
+				usage.OutputTokensDetails.ReasoningTokens == 0))
 }
