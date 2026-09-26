@@ -95,33 +95,40 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			return
 		}
 		sendResponsesStreamData(c, streamResponse, data)
+		mergeResponsesUsage(usage, streamResponse.Usage)
+		if streamResponse.Response != nil {
+			mergeResponsesUsage(usage, streamResponse.Response.Usage)
+		}
+		var wrappedResponse *dto.OpenAIResponsesResponse
+		if streamResponse.Data != nil {
+			var dataResponse struct {
+				Usage    *dto.Usage                   `json:"usage"`
+				Response *dto.OpenAIResponsesResponse `json:"response"`
+			}
+			if err := common.Unmarshal(streamResponse.Data, &dataResponse); err == nil {
+				mergeResponsesUsage(usage, dataResponse.Usage)
+				wrappedResponse = dataResponse.Response
+				if wrappedResponse != nil {
+					mergeResponsesUsage(usage, wrappedResponse.Usage)
+				}
+			}
+		}
+		response := streamResponse.Response
+		if response == nil {
+			response = wrappedResponse
+		}
 		switch streamResponse.Type {
 		case "response.completed", "response.done":
-			if streamResponse.Response != nil {
-				if streamResponse.Response.Usage != nil {
-					if streamResponse.Response.Usage.InputTokens != 0 {
-						usage.PromptTokens = streamResponse.Response.Usage.InputTokens
-					}
-					if streamResponse.Response.Usage.OutputTokens != 0 {
-						usage.CompletionTokens = streamResponse.Response.Usage.OutputTokens
-					}
-					if streamResponse.Response.Usage.TotalTokens != 0 {
-						usage.TotalTokens = streamResponse.Response.Usage.TotalTokens
-					}
-					if streamResponse.Response.Usage.InputTokensDetails != nil {
-						usage.PromptTokensDetails.CachedTokens = streamResponse.Response.Usage.InputTokensDetails.CachedTokens
-						usage.PromptTokensDetails.CacheWriteTokens = streamResponse.Response.Usage.InputTokensDetails.CacheWriteTokens
-					}
-				}
+			if response != nil {
 				if !imageCommitted {
-					if relaycommon.IsNonBillableResponsesStatus(streamResponse.Response.Status) {
+					if relaycommon.IsNonBillableResponsesStatus(response.Status) {
 						imageCounter.Reset()
 						imageCounter.Commit(info)
 						imageCommitted = true
 					} else {
-						for i := range streamResponse.Response.Output {
+						for i := range response.Output {
 							idx := i
-							imageCounter.Observe(&streamResponse.Response.Output[i], &idx)
+							imageCounter.Observe(&response.Output[i], &idx)
 						}
 						imageCounter.Commit(info)
 						imageCommitted = true
@@ -135,21 +142,6 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			// Responses providers can include authoritative usage on any terminal
 			// event, not only response.completed/response.done. Preserve it so an
 			// interrupted or cancelled stream is still billed when usage is present.
-			if streamResponse.Response != nil && streamResponse.Response.Usage != nil {
-				if streamResponse.Response.Usage.InputTokens != 0 {
-					usage.PromptTokens = streamResponse.Response.Usage.InputTokens
-				}
-				if streamResponse.Response.Usage.OutputTokens != 0 {
-					usage.CompletionTokens = streamResponse.Response.Usage.OutputTokens
-				}
-				if streamResponse.Response.Usage.TotalTokens != 0 {
-					usage.TotalTokens = streamResponse.Response.Usage.TotalTokens
-				}
-				if streamResponse.Response.Usage.InputTokensDetails != nil {
-					usage.PromptTokensDetails.CachedTokens = streamResponse.Response.Usage.InputTokensDetails.CachedTokens
-					usage.PromptTokensDetails.CacheWriteTokens = streamResponse.Response.Usage.InputTokensDetails.CacheWriteTokens
-				}
-			}
 			if !imageCommitted {
 				imageCounter.Reset()
 				imageCounter.Commit(info)
@@ -193,4 +185,67 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 
 	return usage, nil
+}
+
+func mergeResponsesUsage(dst *dto.Usage, src *dto.Usage) {
+	if dst == nil || src == nil {
+		return
+	}
+
+	inputTokens := src.InputTokens
+	if inputTokens == 0 {
+		inputTokens = src.PromptTokens
+	}
+	if inputTokens > 0 {
+		dst.PromptTokens = inputTokens
+	}
+
+	outputTokens := src.OutputTokens
+	if outputTokens == 0 {
+		outputTokens = src.CompletionTokens
+	}
+	if outputTokens > 0 {
+		dst.CompletionTokens = outputTokens
+	}
+
+	if src.TotalTokens > 0 {
+		dst.TotalTokens = src.TotalTokens
+	}
+	if src.InputTokensDetails != nil {
+		if src.InputTokensDetails.CachedTokens > 0 {
+			dst.PromptTokensDetails.CachedTokens = src.InputTokensDetails.CachedTokens
+		}
+		if src.InputTokensDetails.CacheWriteTokens > 0 {
+			dst.PromptTokensDetails.CacheWriteTokens = src.InputTokensDetails.CacheWriteTokens
+		}
+		if src.InputTokensDetails.CachedCreationTokens > 0 {
+			dst.PromptTokensDetails.CachedCreationTokens = src.InputTokensDetails.CachedCreationTokens
+		}
+	}
+	if src.PromptTokensDetails.CachedTokens > 0 || src.PromptTokensDetails.CacheWriteTokens > 0 || src.PromptTokensDetails.CachedCreationTokens > 0 {
+		if src.PromptTokensDetails.CachedTokens > 0 {
+			dst.PromptTokensDetails.CachedTokens = src.PromptTokensDetails.CachedTokens
+		}
+		if src.PromptTokensDetails.CacheWriteTokens > 0 {
+			dst.PromptTokensDetails.CacheWriteTokens = src.PromptTokensDetails.CacheWriteTokens
+		}
+		if src.PromptTokensDetails.CachedCreationTokens > 0 {
+			dst.PromptTokensDetails.CachedCreationTokens = src.PromptTokensDetails.CachedCreationTokens
+		}
+	}
+
+	if src.CacheReadInputTokens > 0 {
+		dst.PromptTokensDetails.CachedTokens = src.CacheReadInputTokens
+	} else if src.CacheReadTokens > 0 {
+		dst.PromptTokensDetails.CachedTokens = src.CacheReadTokens
+	} else if src.PromptCacheHitTokens > 0 {
+		dst.PromptTokensDetails.CachedTokens = src.PromptCacheHitTokens
+	}
+	if src.CacheCreationInputTokens > 0 {
+		dst.PromptTokensDetails.CachedCreationTokens = src.CacheCreationInputTokens
+	} else if src.CacheWriteTokens > 0 {
+		dst.PromptTokensDetails.CacheWriteTokens = src.CacheWriteTokens
+	} else if src.CacheCreationTokens > 0 {
+		dst.PromptTokensDetails.CachedCreationTokens = src.CacheCreationTokens
+	}
 }

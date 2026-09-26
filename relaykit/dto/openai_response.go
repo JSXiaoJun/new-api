@@ -221,13 +221,18 @@ type CompletionsStreamResponse struct {
 }
 
 type Usage struct {
-	PromptTokens         int           `json:"prompt_tokens"`
-	CompletionTokens     int           `json:"completion_tokens"`
-	TotalTokens          int           `json:"total_tokens"`
-	PromptCacheHitTokens int           `json:"prompt_cache_hit_tokens,omitempty"`
-	UsageSemantic        string        `json:"usage_semantic,omitempty"`
-	UsageSource          string        `json:"usage_source,omitempty"`
-	BillingUsage         *BillingUsage `json:"billing_usage,omitempty"`
+	PromptTokens             int           `json:"prompt_tokens"`
+	CompletionTokens         int           `json:"completion_tokens"`
+	TotalTokens              int           `json:"total_tokens"`
+	PromptCacheHitTokens     int           `json:"prompt_cache_hit_tokens,omitempty"`
+	CacheReadInputTokens     int           `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens int           `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadTokens          int           `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens         int           `json:"cache_write_tokens,omitempty"`
+	CacheCreationTokens      int           `json:"cache_creation_tokens,omitempty"`
+	UsageSemantic            string        `json:"usage_semantic,omitempty"`
+	UsageSource              string        `json:"usage_source,omitempty"`
+	BillingUsage             *BillingUsage `json:"billing_usage,omitempty"`
 
 	PromptTokensDetails    InputTokenDetails  `json:"prompt_tokens_details"`
 	CompletionTokenDetails OutputTokenDetails `json:"completion_tokens_details"`
@@ -386,6 +391,8 @@ const (
 type ResponsesStreamResponse struct {
 	Type     string                   `json:"type"`
 	Response *OpenAIResponsesResponse `json:"response,omitempty"`
+	Usage    *Usage                   `json:"usage,omitempty"`
+	Data     json.RawMessage          `json:"data,omitempty"`
 	Delta    string                   `json:"delta,omitempty"`
 	Item     *ResponsesOutput         `json:"item,omitempty"`
 	// - response.function_call_arguments.delta
