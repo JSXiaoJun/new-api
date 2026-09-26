@@ -210,7 +210,6 @@ func cohereHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 			FinishReason: stopReasonCohere2OpenAI(cohereResp.FinishReason),
 		},
 	}
-	openaiResp.Usage = usage
 
 	jsonResponse, err := json.Marshal(openaiResp)
 	if err != nil {
