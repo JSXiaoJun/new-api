@@ -440,6 +440,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			TokenID:   params.TokenId,
 			ChannelID: params.ChannelId,
 			NodeName:  common.NodeName,
+			Count:     1,
 		})
 	}
 }
@@ -487,21 +488,33 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	if err != nil {
 		common.SysLog("failed to record task billing log: " + err.Error())
 	}
-	if params.LogType == LogTypeConsume && common.DataExportEnabled {
+	// 数据看板是物化的累计表，退款必须回减，否则失败任务的预扣额度会永久
+	// 留在统计里。退款不是一次新调用，所以只冲减额度、不增加请求次数。
+	// LogConsumeEnabled 关闭时消耗侧从未写入，退款也必须跳过，避免出现负数。
+	isConsume := params.LogType == LogTypeConsume
+	isRefund := params.LogType == LogTypeRefund
+	if (isConsume || isRefund) && common.DataExportEnabled && common.LogConsumeEnabled {
 		nodeName := params.NodeName
 		if nodeName == "" {
 			nodeName = common.NodeName
+		}
+		quota := params.Quota
+		count := 1
+		if isRefund {
+			quota = -quota
+			count = 0
 		}
 		LogQuotaData(QuotaDataLogParams{
 			UserID:    params.UserId,
 			Username:  username,
 			ModelName: params.ModelName,
-			Quota:     params.Quota,
+			Quota:     quota,
 			CreatedAt: createdAt,
 			UseGroup:  params.Group,
 			TokenID:   params.TokenId,
 			ChannelID: params.ChannelId,
 			NodeName:  nodeName,
+			Count:     count,
 		})
 	}
 }
@@ -701,7 +714,11 @@ type Stat struct {
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
+	// 用量是净额：退款日志（type=LogTypeRefund）记录的是正数额度，
+	// 表示该笔消耗已被退还，因此统计时必须回减而不是累加。
+	// 类型常量直接内联，避免在 SELECT 投影里绑定参数（各日志库驱动行为不一致）。
+	tx := LOG_DB.Table("logs").
+		Select(fmt.Sprintf("COALESCE(sum(CASE WHEN type = %d THEN -quota ELSE quota END), 0) quota", LogTypeRefund))
 
 	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
@@ -737,7 +754,8 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
 	}
 
-	tx = tx.Where("type = ?", LogTypeConsume)
+	tx = tx.Where("type IN ?", []int{LogTypeConsume, LogTypeRefund})
+	// RPM/TPM 只反映真实请求量，退款不是一次新的调用。
 	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
 
 	// 只统计最近60秒的rpm和tpm

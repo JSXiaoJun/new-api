@@ -36,6 +36,9 @@ type QuotaDataLogParams struct {
 	TokenID   int
 	ChannelID int
 	NodeName  string
+	// Count 是本次写入计入的请求次数。消耗为 1；退款只回减额度，
+	// 不改变请求次数，因此传 0。零值保持为 0，调用方必须显式指定。
+	Count int
 }
 
 func UpdateQuotaData() {
@@ -87,7 +90,7 @@ func LogQuotaData(params QuotaDataLogParams) {
 		TokenID:   params.TokenID,
 		ChannelID: params.ChannelID,
 		NodeName:  params.NodeName,
-		Count:     1,
+		Count:     params.Count,
 		Quota:     params.Quota,
 		TokenUsed: params.TokenUsed,
 	}

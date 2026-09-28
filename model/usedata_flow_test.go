@@ -149,6 +149,7 @@ func TestLogQuotaDataSplitsRowsByUseGroupTokenChannelAndNode(t *testing.T) {
 		NodeName:  "node-a",
 		Quota:     100,
 		TokenUsed: 40,
+		Count:     1,
 	})
 	LogQuotaData(QuotaDataLogParams{
 		UserID:    1,
@@ -161,6 +162,7 @@ func TestLogQuotaDataSplitsRowsByUseGroupTokenChannelAndNode(t *testing.T) {
 		NodeName:  "node-a",
 		Quota:     50,
 		TokenUsed: 20,
+		Count:     1,
 	})
 	LogQuotaData(QuotaDataLogParams{
 		UserID:    1,
@@ -173,6 +175,7 @@ func TestLogQuotaDataSplitsRowsByUseGroupTokenChannelAndNode(t *testing.T) {
 		NodeName:  "node-a",
 		Quota:     25,
 		TokenUsed: 10,
+		Count:     1,
 	})
 
 	SaveQuotaDataCache()
