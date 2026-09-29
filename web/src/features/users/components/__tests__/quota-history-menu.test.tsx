@@ -158,113 +158,139 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+// The first render mounts the whole Users page (router + table + queries).
+// On loaded CI runners that alone can exceed the 1s findBy default and the
+// 5s test default, so both are widened for these page-level tests.
+const PAGE_RENDER_WAIT = { timeout: 5000 }
+const PAGE_TEST_TIMEOUT = 15000
+
 describe('User quota history menu', () => {
-  it('loads quota records only after opening the selected user quota history', async () => {
-    const user = userEvent.setup()
-    renderUsersPage()
+  it(
+    'loads quota records only after opening the selected user quota history',
+    { timeout: PAGE_TEST_TIMEOUT },
+    async () => {
+      const user = userEvent.setup()
+      renderUsersPage()
 
-    const targetRow = await screen.findByRole('row', {
-      name: /recharge-target/,
-    })
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(api.get).not.toHaveBeenCalledWith(
-      expect.stringMatching(/\/quota\/log$/),
-      expect.anything()
-    )
+      const targetRow = await screen.findByRole(
+        'row',
+        { name: /recharge-target/ },
+        PAGE_RENDER_WAIT
+      )
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(api.get).not.toHaveBeenCalledWith(
+        expect.stringMatching(/\/quota\/log$/),
+        expect.anything()
+      )
 
-    await user.click(
-      within(targetRow).getByRole('button', { name: 'Open menu' })
-    )
-    expect(api.get).not.toHaveBeenCalledWith(
-      expect.stringMatching(/\/quota\/log$/),
-      expect.anything()
-    )
-    await user.click(
-      await screen.findByRole('menuitem', { name: 'Quota History' })
-    )
+      await user.click(
+        within(targetRow).getByRole('button', { name: 'Open menu' })
+      )
+      expect(api.get).not.toHaveBeenCalledWith(
+        expect.stringMatching(/\/quota\/log$/),
+        expect.anything()
+      )
+      await user.click(
+        await screen.findByRole('menuitem', { name: 'Quota History' })
+      )
 
-    const dialog = await screen.findByRole('dialog', { name: 'Quota History' })
-    expect(dialog).toHaveAccessibleDescription('recharge-target (User ID: 82)')
-    expect(
-      await within(dialog).findByText('Latest recharge')
-    ).toBeInTheDocument()
-    expect(api.get).toHaveBeenCalledWith(
-      '/api/user/82/quota/log',
-      expect.objectContaining({
-        params: { p: 1, page_size: 10, view: 'credits' },
+      const dialog = await screen.findByRole('dialog', {
+        name: 'Quota History',
       })
-    )
-    expect(api.get).not.toHaveBeenCalledWith(
-      '/api/user/41/quota/log',
-      expect.anything()
-    )
-  })
-
-  it('returns to the first page when the user closes and reopens quota history', async () => {
-    const user = userEvent.setup()
-    renderUsersPage()
-    const targetRow = await screen.findByRole('row', {
-      name: /recharge-target/,
-    })
-    await user.click(
-      within(targetRow).getByRole('button', { name: 'Open menu' })
-    )
-    await user.click(
-      await screen.findByRole('menuitem', { name: 'Quota History' })
-    )
-    const dialog = await screen.findByRole('dialog', { name: 'Quota History' })
-    await within(dialog).findByText('Latest recharge')
-
-    await user.click(
-      within(dialog).getByRole('button', { name: 'Go to next page' })
-    )
-    expect(
-      await within(dialog).findByText('Earlier recharge')
-    ).toBeInTheDocument()
-    expect(within(dialog).getByText('Page 2 of 2')).toBeInTheDocument()
-    expect(api.get).toHaveBeenCalledWith(
-      '/api/user/82/quota/log',
-      expect.objectContaining({
-        params: { p: 2, page_size: 10, view: 'credits' },
-      })
-    )
-    await user.click(within(dialog).getByRole('button', { name: 'Close' }))
-    await waitFor(() => {
+      expect(dialog).toHaveAccessibleDescription(
+        'recharge-target (User ID: 82)'
+      )
       expect(
-        screen.queryByRole('dialog', { name: 'Quota History' })
-      ).not.toBeInTheDocument()
-    })
-    vi.mocked(api.get).mockClear()
+        await within(dialog).findByText('Latest recharge')
+      ).toBeInTheDocument()
+      expect(api.get).toHaveBeenCalledWith(
+        '/api/user/82/quota/log',
+        expect.objectContaining({
+          params: { p: 1, page_size: 10, view: 'credits' },
+        })
+      )
+      expect(api.get).not.toHaveBeenCalledWith(
+        '/api/user/41/quota/log',
+        expect.anything()
+      )
+    }
+  )
 
-    await user.click(
-      within(targetRow).getByRole('button', { name: 'Open menu' })
-    )
-    await user.click(
-      await screen.findByRole('menuitem', { name: 'Quota History' })
-    )
-    const reopenedDialog = await screen.findByRole('dialog', {
-      name: 'Quota History',
-    })
-    expect(
-      await within(reopenedDialog).findByText('Latest recharge')
-    ).toBeInTheDocument()
-    expect(within(reopenedDialog).getByText('Page 1 of 2')).toBeInTheDocument()
-    expect(
-      within(reopenedDialog).getByRole('button', {
-        name: 'Go to previous page',
+  it(
+    'returns to the first page when the user closes and reopens quota history',
+    { timeout: PAGE_TEST_TIMEOUT },
+    async () => {
+      const user = userEvent.setup()
+      renderUsersPage()
+      const targetRow = await screen.findByRole(
+        'row',
+        { name: /recharge-target/ },
+        PAGE_RENDER_WAIT
+      )
+      await user.click(
+        within(targetRow).getByRole('button', { name: 'Open menu' })
+      )
+      await user.click(
+        await screen.findByRole('menuitem', { name: 'Quota History' })
+      )
+      const dialog = await screen.findByRole('dialog', {
+        name: 'Quota History',
       })
-    ).toBeDisabled()
-    expect(api.get).toHaveBeenCalledWith(
-      '/api/user/82/quota/log',
-      expect.objectContaining({
-        params: { p: 1, page_size: 10, view: 'credits' },
+      await within(dialog).findByText('Latest recharge')
+
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Go to next page' })
+      )
+      expect(
+        await within(dialog).findByText('Earlier recharge')
+      ).toBeInTheDocument()
+      expect(within(dialog).getByText('Page 2 of 2')).toBeInTheDocument()
+      expect(api.get).toHaveBeenCalledWith(
+        '/api/user/82/quota/log',
+        expect.objectContaining({
+          params: { p: 2, page_size: 10, view: 'credits' },
+        })
+      )
+      await user.click(within(dialog).getByRole('button', { name: 'Close' }))
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('dialog', { name: 'Quota History' })
+        ).not.toBeInTheDocument()
       })
-    )
-    expect(api.get).not.toHaveBeenCalledWith(
-      '/api/user/82/quota/log',
-      expect.objectContaining({
-        params: { p: 2, page_size: 10, view: 'credits' },
+      vi.mocked(api.get).mockClear()
+
+      await user.click(
+        within(targetRow).getByRole('button', { name: 'Open menu' })
+      )
+      await user.click(
+        await screen.findByRole('menuitem', { name: 'Quota History' })
+      )
+      const reopenedDialog = await screen.findByRole('dialog', {
+        name: 'Quota History',
       })
-    )
-  })
+      expect(
+        await within(reopenedDialog).findByText('Latest recharge')
+      ).toBeInTheDocument()
+      expect(
+        within(reopenedDialog).getByText('Page 1 of 2')
+      ).toBeInTheDocument()
+      expect(
+        within(reopenedDialog).getByRole('button', {
+          name: 'Go to previous page',
+        })
+      ).toBeDisabled()
+      expect(api.get).toHaveBeenCalledWith(
+        '/api/user/82/quota/log',
+        expect.objectContaining({
+          params: { p: 1, page_size: 10, view: 'credits' },
+        })
+      )
+      expect(api.get).not.toHaveBeenCalledWith(
+        '/api/user/82/quota/log',
+        expect.objectContaining({
+          params: { p: 2, page_size: 10, view: 'credits' },
+        })
+      )
+    }
+  )
 })
