@@ -195,6 +195,7 @@ export interface RedemptionRequest {
 export interface PurchaseAgreementRequest {
   confirm_not_mainland_citizen: boolean
   confirm_not_in_mainland: boolean
+  confirm_no_invoice: boolean
   /** Confirmation phrase typed by the user */
   statement: string
 }

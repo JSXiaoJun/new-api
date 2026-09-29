@@ -18,6 +18,7 @@ const purchaseAgreementStatementMaxLength = 64
 type PurchaseAgreementRequest struct {
 	ConfirmNotMainlandCitizen bool   `json:"confirm_not_mainland_citizen"`
 	ConfirmNotInMainland      bool   `json:"confirm_not_in_mainland"`
+	ConfirmNoInvoice          bool   `json:"confirm_no_invoice"`
 	Statement                 string `json:"statement"`
 }
 
@@ -33,6 +34,7 @@ func ConfirmPurchaseAgreement(c *gin.Context) {
 	statement := strings.TrimSpace(req.Statement)
 	if !req.ConfirmNotMainlandCitizen ||
 		!req.ConfirmNotInMainland ||
+		!req.ConfirmNoInvoice ||
 		statement == "" ||
 		utf8.RuneCountInString(statement) > purchaseAgreementStatementMaxLength {
 		common.ApiErrorI18n(c, i18n.MsgPurchaseAgreementInvalid)

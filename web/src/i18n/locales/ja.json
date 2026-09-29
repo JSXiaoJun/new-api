@@ -5507,6 +5507,15 @@
     "Pre-purchase confirmation completed": "購入前の確認が完了しました",
     "Confirmation failed": "確認に失敗しました",
     "Confirmed": "確認済み",
-    "Not confirmed": "未確認"
+    "Not confirmed": "未確認",
+    "Yunying API Top-up Terms of Service": "Yunying API チャージ利用規約",
+    "This site does not issue invoices. If you need an invoice or reimbursement receipt, or cannot accept any part of these terms, do not agree to these terms and do not top up.": "当サイトでは請求書（インボイス）を発行しておりません。請求書や経費精算用の証憑が必要な場合、または本規約のいずれかの内容に同意できない場合は、本規約に同意せず、チャージも行わないでください。",
+    "Confirm agreement to the top-up terms?": "チャージ規約に同意しますか？",
+    "Please confirm the following again. You will proceed to top up after confirming:": "以下の内容を再度ご確認ください。確認後、チャージに進みます：",
+    "This site's services are not provided to individuals or organizations in mainland China.": "当サイトのサービスは中国大陸の個人または法人には提供していません。",
+    "This site does not provide invoices or reimbursement receipts of any kind.": "当サイトではいかなる形式の請求書・経費精算用の証憑も発行しません。",
+    "Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.": "チャージ残高は本アカウントでのみ利用でき、出金・譲渡・現金への交換はできません。",
+    "Review again": "もう一度確認する",
+    "Agree and top up": "同意してチャージへ進む"
   }
 }

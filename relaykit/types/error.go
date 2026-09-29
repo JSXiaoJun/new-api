@@ -396,12 +396,23 @@ func ErrOptionWithStatusCode(statusCode int) NewAPIErrorOptions {
 	}
 }
 
+// hiddenError replaces the user-visible message while keeping the original
+// cause reachable for errors.Is / errors.As (for example context.Canceled
+// when the client disconnects).
+type hiddenError struct {
+	msg   string
+	cause error
+}
+
+func (e *hiddenError) Error() string { return e.msg }
+func (e *hiddenError) Unwrap() error { return e.cause }
+
 func ErrOptionWithHideErrMsg(replaceStr string) NewAPIErrorOptions {
 	return func(e *NewAPIError) {
 		if kitutil.Debug.Load() {
 			fmt.Printf("ErrOptionWithHideErrMsg: %s, origin error: %s", replaceStr, e.Err)
 		}
-		e.Err = errors.New(replaceStr)
+		e.Err = &hiddenError{msg: replaceStr, cause: e.Err}
 	}
 }
 

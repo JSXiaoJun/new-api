@@ -20,7 +20,7 @@ import i18n from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
 
-import { convertDetectedLanguage } from './languages'
+import { convertDetectedLanguage, toIntlLocale } from './languages'
 import en from './locales/en.json'
 import fr from './locales/fr.json'
 import ja from './locales/ja.json'
@@ -60,5 +60,12 @@ i18n
       convertDetectedLanguage,
     },
   })
+
+// Keep <html lang> in sync with the UI language. A hardcoded lang="en" on a
+// Chinese UI makes browsers offer (or auto-run) page translation.
+i18n.on('languageChanged', (lng) => {
+  document.documentElement.lang = toIntlLocale(lng) ?? 'en'
+})
+document.documentElement.lang = toIntlLocale(i18n.resolvedLanguage) ?? 'en'
 
 export default i18n

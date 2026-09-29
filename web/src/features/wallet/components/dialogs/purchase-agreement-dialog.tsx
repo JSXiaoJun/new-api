@@ -21,6 +21,16 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -48,8 +58,11 @@ export function PurchaseAgreementDialog(props: PurchaseAgreementDialogProps) {
   const { t } = useTranslation()
   const [notMainlandCitizen, setNotMainlandCitizen] = useState(false)
   const [notInMainland, setNotInMainland] = useState(false)
+  const [noInvoice, setNoInvoice] = useState(false)
   const [statement, setStatement] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Second confirmation shown after the form is complete; only it submits
+  const [secondConfirmOpen, setSecondConfirmOpen] = useState(false)
 
   const signed = (props.signedAt ?? 0) > 0
   const phrase = t('I understand and confirm')
@@ -57,7 +70,10 @@ export function PurchaseAgreementDialog(props: PurchaseAgreementDialogProps) {
   const statementMismatch =
     !signed && trimmedStatement !== '' && trimmedStatement !== phrase
   const canSubmit =
-    notMainlandCitizen && notInMainland && trimmedStatement === phrase
+    notMainlandCitizen &&
+    notInMainland &&
+    noInvoice &&
+    trimmedStatement === phrase
 
   const items = [
     {
@@ -76,6 +92,14 @@ export function PurchaseAgreementDialog(props: PurchaseAgreementDialogProps) {
       checked: notInMainland,
       onChange: setNotInMainland,
     },
+    {
+      id: 'no-invoice',
+      label: t(
+        'This site does not issue invoices. If you need an invoice or reimbursement receipt, or cannot accept any part of these terms, do not agree to these terms and do not top up.'
+      ),
+      checked: noInvoice,
+      onChange: setNoInvoice,
+    },
   ]
 
   const handleSubmit = async () => {
@@ -85,6 +109,7 @@ export function PurchaseAgreementDialog(props: PurchaseAgreementDialogProps) {
       const response = await confirmPurchaseAgreement({
         confirm_not_mainland_citizen: notMainlandCitizen,
         confirm_not_in_mainland: notInMainland,
+        confirm_no_invoice: noInvoice,
         statement: trimmedStatement,
       })
       const signedAt = response.data?.purchase_agreement_at ?? 0
@@ -98,6 +123,7 @@ export function PurchaseAgreementDialog(props: PurchaseAgreementDialogProps) {
       toast.error(t('Confirmation failed'))
     } finally {
       setSubmitting(false)
+      setSecondConfirmOpen(false)
     }
   }
 
@@ -106,7 +132,7 @@ export function PurchaseAgreementDialog(props: PurchaseAgreementDialogProps) {
       <DialogContent className='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-lg'>
         <DialogHeader>
           <DialogTitle className='text-lg font-semibold'>
-            {t('Pre-purchase Confirmation')}
+            {t('Yunying API Top-up Terms of Service')}
           </DialogTitle>
           <DialogDescription>
             {t(
@@ -169,12 +195,61 @@ export function PurchaseAgreementDialog(props: PurchaseAgreementDialogProps) {
               {t('Close')}
             </Button>
           ) : (
-            <Button onClick={handleSubmit} disabled={!canSubmit || submitting}>
-              {submitting && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
+            <Button
+              onClick={() => canSubmit && setSecondConfirmOpen(true)}
+              disabled={!canSubmit || submitting}
+            >
               {t('Confirm and Continue')}
             </Button>
           )}
         </DialogFooter>
+
+        {/* Nested inside DialogContent so the parent dialog treats it as a child popup */}
+        <AlertDialog
+          open={secondConfirmOpen}
+          onOpenChange={(open) => !submitting && setSecondConfirmOpen(open)}
+        >
+          <AlertDialogContent className='data-[size=default]:sm:max-w-md'>
+            <AlertDialogHeader>
+              <AlertDialogTitle className='text-lg font-semibold'>
+                {t('Confirm agreement to the top-up terms?')}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(
+                  'Please confirm the following again. You will proceed to top up after confirming:'
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <ul className='list-disc space-y-2 pl-5 text-sm leading-6'>
+              <li>
+                {t(
+                  "This site's services are not provided to individuals or organizations in mainland China."
+                )}
+              </li>
+              <li className='font-semibold'>
+                {t(
+                  'This site does not provide invoices or reimbursement receipts of any kind.'
+                )}
+              </li>
+              <li>
+                {t(
+                  'Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.'
+                )}
+              </li>
+            </ul>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={submitting}>
+                {t('Review again')}
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleSubmit} disabled={submitting}>
+                {submitting && (
+                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                )}
+                {t('Agree and top up')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   )

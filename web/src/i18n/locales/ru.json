@@ -5507,6 +5507,15 @@
     "Pre-purchase confirmation completed": "Подтверждение перед покупкой выполнено",
     "Confirmation failed": "Не удалось подтвердить",
     "Confirmed": "Подтверждено",
-    "Not confirmed": "Не подтверждено"
+    "Not confirmed": "Не подтверждено",
+    "Yunying API Top-up Terms of Service": "Условия обслуживания пополнения Yunying API",
+    "This site does not issue invoices. If you need an invoice or reimbursement receipt, or cannot accept any part of these terms, do not agree to these terms and do not top up.": "Этот сайт не выставляет счета-фактуры. Если вам нужен счёт или документ для возмещения расходов, либо вы не согласны с какой-либо частью этих условий, не принимайте их и не пополняйте баланс.",
+    "Confirm agreement to the top-up terms?": "Подтвердить согласие с условиями пополнения?",
+    "Please confirm the following again. You will proceed to top up after confirming:": "Пожалуйста, ещё раз подтвердите следующее. После подтверждения вы перейдёте к пополнению:",
+    "This site's services are not provided to individuals or organizations in mainland China.": "Услуги этого сайта не предоставляются физическим лицам и организациям из материкового Китая.",
+    "This site does not provide invoices or reimbursement receipts of any kind.": "Этот сайт не предоставляет счета-фактуры или документы для возмещения расходов в какой-либо форме.",
+    "Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.": "Пополненный баланс может использоваться только этим аккаунтом и не подлежит выводу, передаче или обмену на наличные.",
+    "Review again": "Посмотреть ещё раз",
+    "Agree and top up": "Согласиться и пополнить"
   }
 }

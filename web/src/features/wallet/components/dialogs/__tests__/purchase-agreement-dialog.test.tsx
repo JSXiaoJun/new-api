@@ -49,7 +49,7 @@ describe('PurchaseAgreementDialog', () => {
     vi.clearAllMocks()
   })
 
-  it('keeps submit disabled until both items are checked and the phrase is typed', async () => {
+  it('keeps submit disabled until all three items are checked and the phrase is typed', async () => {
     const user = userEvent.setup()
     render(
       <PurchaseAgreementDialog
@@ -60,14 +60,18 @@ describe('PurchaseAgreementDialog', () => {
     )
     const submit = screen.getByRole('button', { name: 'Confirm and Continue' })
 
-    await user.click(screen.getAllByRole('checkbox')[0])
+    const checkboxes = screen.getAllByRole('checkbox')
+    expect(checkboxes).toHaveLength(3)
+    await user.click(checkboxes[0])
+    await user.click(checkboxes[1])
     await user.type(
       screen.getByRole('textbox', { name: 'Confirmation text' }),
       PHRASE
     )
+    // The no-invoice item is still unchecked
     expect(submit).toBeDisabled()
 
-    await user.click(screen.getAllByRole('checkbox')[1])
+    await user.click(checkboxes[2])
     expect(submit).toBeEnabled()
   })
 
@@ -112,13 +116,50 @@ describe('PurchaseAgreementDialog', () => {
     await user.click(
       screen.getByRole('button', { name: 'Confirm and Continue' })
     )
+    await user.click(
+      await screen.findByRole('button', { name: 'Agree and top up' })
+    )
 
     await waitFor(() => expect(onConfirmed).toHaveBeenCalledWith(1_700_000_000))
     expect(confirmPurchaseAgreement).toHaveBeenCalledWith({
       confirm_not_mainland_citizen: true,
       confirm_not_in_mainland: true,
+      confirm_no_invoice: true,
       statement: PHRASE,
     })
+  })
+
+  it('asks for a second confirmation and submits nothing when the user reviews again', async () => {
+    const user = userEvent.setup()
+    render(
+      <PurchaseAgreementDialog
+        open
+        onOpenChange={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    )
+
+    await completeForm(user)
+    await user.click(
+      screen.getByRole('button', { name: 'Confirm and Continue' })
+    )
+
+    expect(
+      await screen.findByRole('alertdialog', {
+        name: 'Confirm agreement to the top-up terms?',
+      })
+    ).toBeInTheDocument()
+    expect(confirmPurchaseAgreement).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Review again' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(confirmPurchaseAgreement).not.toHaveBeenCalled()
+    // The form stays filled in so the user can continue without retyping
+    expect(
+      screen.getByRole('textbox', { name: 'Confirmation text' })
+    ).toHaveValue(PHRASE)
   })
 
   it('does not report confirmation when the server rejects it', async () => {
@@ -139,6 +180,9 @@ describe('PurchaseAgreementDialog', () => {
     await completeForm(user)
     await user.click(
       screen.getByRole('button', { name: 'Confirm and Continue' })
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Agree and top up' })
     )
 
     await waitFor(() => expect(confirmPurchaseAgreement).toHaveBeenCalled())

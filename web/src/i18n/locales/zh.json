@@ -5507,6 +5507,15 @@
     "Pre-purchase confirmation completed": "购前确认已完成",
     "Confirmation failed": "确认失败",
     "Confirmed": "已确认",
-    "Not confirmed": "未确认"
+    "Not confirmed": "未确认",
+    "Yunying API Top-up Terms of Service": "云影API充值服务条款",
+    "This site does not issue invoices. If you need an invoice or reimbursement receipt, or cannot accept any part of these terms, do not agree to these terms and do not top up.": "本站不支持开具发票，如你需要发票或报销凭证，或不能接受本条款的任何内容，请不要同意本条款，也不要充值。",
+    "Confirm agreement to the top-up terms?": "确认同意充值条款？",
+    "Please confirm the following again. You will proceed to top up after confirming:": "请再次确认以下内容，确认后将进入充值页面：",
+    "This site's services are not provided to individuals or organizations in mainland China.": "本站服务不向中国大陆地区的个人或机构提供。",
+    "This site does not provide invoices or reimbursement receipts of any kind.": "本站不提供任何形式的发票或报销凭证。",
+    "Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.": "充值额度仅限本账户使用，不可提现、转让或兑换为现金。",
+    "Review again": "再看看",
+    "Agree and top up": "确认同意，进入充值"
   }
 }
