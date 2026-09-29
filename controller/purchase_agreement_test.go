@@ -60,10 +60,12 @@ func TestConfirmPurchaseAgreementRejectsIncompleteRequests(t *testing.T) {
 		name string
 		body string
 	}{
-		{name: "citizen item unchecked", body: `{"confirm_not_mainland_citizen":false,"confirm_not_in_mainland":true,"statement":"我已知晓并确认"}`},
-		{name: "location item unchecked", body: `{"confirm_not_mainland_citizen":true,"confirm_not_in_mainland":false,"statement":"我已知晓并确认"}`},
-		{name: "blank statement", body: `{"confirm_not_mainland_citizen":true,"confirm_not_in_mainland":true,"statement":"   "}`},
-		{name: "oversized statement", body: `{"confirm_not_mainland_citizen":true,"confirm_not_in_mainland":true,"statement":"` + strings.Repeat("x", purchaseAgreementStatementMaxLength+1) + `"}`},
+		{name: "citizen item unchecked", body: `{"confirm_not_mainland_citizen":false,"confirm_not_in_mainland":true,"confirm_no_invoice":true,"statement":"我已知晓并确认"}`},
+		{name: "location item unchecked", body: `{"confirm_not_mainland_citizen":true,"confirm_not_in_mainland":false,"confirm_no_invoice":true,"statement":"我已知晓并确认"}`},
+		{name: "invoice item unchecked", body: `{"confirm_not_mainland_citizen":true,"confirm_not_in_mainland":true,"confirm_no_invoice":false,"statement":"我已知晓并确认"}`},
+		{name: "invoice item missing", body: `{"confirm_not_mainland_citizen":true,"confirm_not_in_mainland":true,"statement":"我已知晓并确认"}`},
+		{name: "blank statement", body: `{"confirm_not_mainland_citizen":true,"confirm_not_in_mainland":true,"confirm_no_invoice":true,"statement":"   "}`},
+		{name: "oversized statement", body: `{"confirm_not_mainland_citizen":true,"confirm_not_in_mainland":true,"confirm_no_invoice":true,"statement":"` + strings.Repeat("x", purchaseAgreementStatementMaxLength+1) + `"}`},
 	}
 
 	for _, tc := range testCases {
@@ -80,7 +82,7 @@ func TestConfirmPurchaseAgreementRejectsIncompleteRequests(t *testing.T) {
 
 func TestConfirmPurchaseAgreementKeepsFirstSignatureTime(t *testing.T) {
 	setupPurchaseAgreementControllerTest(t)
-	const body = `{"confirm_not_mainland_citizen":true,"confirm_not_in_mainland":true,"statement":"我已知晓并确认"}`
+	const body = `{"confirm_not_mainland_citizen":true,"confirm_not_in_mainland":true,"confirm_no_invoice":true,"statement":"我已知晓并确认"}`
 
 	first := postPurchaseAgreement(t, body)
 	require.Contains(t, first.Body.String(), `"success":true`)

@@ -5507,6 +5507,15 @@
     "Pre-purchase confirmation completed": "Đã hoàn tất xác nhận trước khi mua",
     "Confirmation failed": "Xác nhận thất bại",
     "Confirmed": "Đã xác nhận",
-    "Not confirmed": "Chưa xác nhận"
+    "Not confirmed": "Chưa xác nhận",
+    "Yunying API Top-up Terms of Service": "Điều khoản dịch vụ nạp tiền Yunying API",
+    "This site does not issue invoices. If you need an invoice or reimbursement receipt, or cannot accept any part of these terms, do not agree to these terms and do not top up.": "Trang web này không xuất hóa đơn. Nếu bạn cần hóa đơn hoặc chứng từ hoàn ứng, hoặc không chấp nhận bất kỳ nội dung nào của điều khoản này, vui lòng không đồng ý với điều khoản và không nạp tiền.",
+    "Confirm agreement to the top-up terms?": "Xác nhận đồng ý với điều khoản nạp tiền?",
+    "Please confirm the following again. You will proceed to top up after confirming:": "Vui lòng xác nhận lại các nội dung sau. Sau khi xác nhận, bạn sẽ chuyển đến trang nạp tiền:",
+    "This site's services are not provided to individuals or organizations in mainland China.": "Dịch vụ của trang web này không cung cấp cho cá nhân hoặc tổ chức tại Trung Quốc đại lục.",
+    "This site does not provide invoices or reimbursement receipts of any kind.": "Trang web này không cung cấp bất kỳ hình thức hóa đơn hay chứng từ hoàn ứng nào.",
+    "Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.": "Số dư nạp chỉ được sử dụng cho tài khoản này, không thể rút, chuyển nhượng hoặc đổi thành tiền mặt.",
+    "Review again": "Xem lại",
+    "Agree and top up": "Đồng ý và nạp tiền"
   }
 }

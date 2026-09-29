@@ -5507,6 +5507,15 @@
     "Pre-purchase confirmation completed": "Confirmation avant achat effectuée",
     "Confirmation failed": "Échec de la confirmation",
     "Confirmed": "Confirmé",
-    "Not confirmed": "Non confirmé"
+    "Not confirmed": "Non confirmé",
+    "Yunying API Top-up Terms of Service": "Conditions de service de recharge Yunying API",
+    "This site does not issue invoices. If you need an invoice or reimbursement receipt, or cannot accept any part of these terms, do not agree to these terms and do not top up.": "Ce site n'émet pas de factures. Si vous avez besoin d'une facture ou d'un justificatif de remboursement, ou si vous n'acceptez pas une partie de ces conditions, n'acceptez pas ces conditions et n'effectuez pas de recharge.",
+    "Confirm agreement to the top-up terms?": "Confirmer l'acceptation des conditions de recharge ?",
+    "Please confirm the following again. You will proceed to top up after confirming:": "Veuillez confirmer à nouveau les points suivants. Vous passerez à la recharge après confirmation :",
+    "This site's services are not provided to individuals or organizations in mainland China.": "Les services de ce site ne sont pas fournis aux particuliers ou organisations de Chine continentale.",
+    "This site does not provide invoices or reimbursement receipts of any kind.": "Ce site ne fournit aucune facture ni justificatif de remboursement, sous quelque forme que ce soit.",
+    "Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.": "Le solde rechargé ne peut être utilisé que par ce compte et ne peut être ni retiré, ni transféré, ni converti en espèces.",
+    "Review again": "Revoir",
+    "Agree and top up": "Accepter et recharger"
   }
 }

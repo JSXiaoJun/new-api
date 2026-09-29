@@ -5507,6 +5507,15 @@
     "Pre-purchase confirmation completed": "Pre-purchase confirmation completed",
     "Confirmation failed": "Confirmation failed",
     "Confirmed": "Confirmed",
-    "Not confirmed": "Not confirmed"
+    "Not confirmed": "Not confirmed",
+    "Yunying API Top-up Terms of Service": "Yunying API Top-up Terms of Service",
+    "This site does not issue invoices. If you need an invoice or reimbursement receipt, or cannot accept any part of these terms, do not agree to these terms and do not top up.": "This site does not issue invoices. If you need an invoice or reimbursement receipt, or cannot accept any part of these terms, do not agree to these terms and do not top up.",
+    "Confirm agreement to the top-up terms?": "Confirm agreement to the top-up terms?",
+    "Please confirm the following again. You will proceed to top up after confirming:": "Please confirm the following again. You will proceed to top up after confirming:",
+    "This site's services are not provided to individuals or organizations in mainland China.": "This site's services are not provided to individuals or organizations in mainland China.",
+    "This site does not provide invoices or reimbursement receipts of any kind.": "This site does not provide invoices or reimbursement receipts of any kind.",
+    "Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.": "Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.",
+    "Review again": "Review again",
+    "Agree and top up": "Agree and top up"
   }
 }
