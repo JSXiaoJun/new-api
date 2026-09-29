@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -39,6 +40,9 @@ func TestDoApiRequestPropagatesInboundContextCancellation(t *testing.T) {
 	upstreamStarted := make(chan struct{})
 	upstreamCanceled := make(chan struct{})
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// net/http only notices a client disconnect once the request body has
+		// been consumed, so drain it before waiting on the request context.
+		_, _ = io.ReadAll(r.Body)
 		close(upstreamStarted)
 		select {
 		case <-r.Context().Done():
