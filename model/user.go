@@ -111,6 +111,7 @@ type User struct {
 	CreatedAt        int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	LastLoginAt      int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	AuthVersion      int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
+	PurchaseAgreedAt int64                      `json:"-" gorm:"type:bigint;default:0;column:purchase_agreement_at"` // 购前确认签署时间，0 表示未签署；仅由 ConfirmUserPurchaseAgreement 写入
 	AdminPermissions map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
 }
 

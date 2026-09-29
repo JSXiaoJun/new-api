@@ -141,6 +141,8 @@ payment.webhook_not_configured: "Webhook is not configured"
 payment.price_id_not_configured: "StripePriceId is not configured for this plan"
 payment.creem_not_configured: "CreemProductId is not configured for this plan"
 payment.compliance_required: "Payment, redemption, subscription, and invitation reward features are disabled. The administrator must confirm compliance terms before enabling them."
+payment.purchase_agreement_required: "Please complete the pre-purchase confirmation in your wallet before topping up, redeeming codes, or purchasing subscriptions."
+payment.purchase_agreement_invalid: "Please check all confirmation items and enter the confirmation text."
 
 # Topup messages
 topup.not_provided: "Payment order number not provided"

@@ -41,6 +41,7 @@ import type {
   WaffoPancakePaymentResponse,
   TopupPaymentStatus,
   EpayQRCodePaymentData,
+  PurchaseAgreementRequest,
 } from './types'
 
 // ============================================================================
@@ -59,6 +60,16 @@ export function isApiSuccess(response: ApiResponse): boolean {
  */
 export async function getTopupInfo(): Promise<TopupInfoResponse> {
   const res = await api.get('/api/user/topup/info')
+  return res.data
+}
+
+/**
+ * Sign the one-time pre-purchase confirmation for the current user
+ */
+export async function confirmPurchaseAgreement(
+  request: PurchaseAgreementRequest
+): Promise<ApiResponse<{ purchase_agreement_at: number }>> {
+  const res = await api.post('/api/user/purchase-agreement', request)
   return res.data
 }
 

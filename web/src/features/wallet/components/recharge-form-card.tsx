@@ -16,7 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Gift, ExternalLink, Loader2, Receipt, WalletCards } from 'lucide-react'
+import {
+  Gift,
+  ExternalLink,
+  Loader2,
+  Receipt,
+  ShieldAlert,
+  ShieldCheck,
+  WalletCards,
+} from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -81,6 +89,8 @@ interface RechargeFormCardProps {
   waffoMinTopup?: number
   onWaffoMethodSelect?: (method: WaffoPayMethod, index: number) => void
   enableWaffoPancakeTopup?: boolean
+  purchaseAgreementSigned?: boolean
+  onOpenPurchaseAgreement?: () => void
 }
 
 export function RechargeFormCard({
@@ -111,6 +121,8 @@ export function RechargeFormCard({
   waffoMinTopup,
   onWaffoMethodSelect,
   enableWaffoPancakeTopup,
+  purchaseAgreementSigned,
+  onOpenPurchaseAgreement,
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
@@ -202,16 +214,43 @@ export function RechargeFormCard({
       iconTone='success'
       disableHoverEffect
       action={
-        onOpenBilling ? (
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={onOpenBilling}
-            className='w-full gap-2 sm:w-auto'
-          >
-            <Receipt className='h-4 w-4' />
-            {t('Order History')}
-          </Button>
+        onOpenPurchaseAgreement || onOpenBilling ? (
+          <div className='flex w-full gap-2 sm:w-auto'>
+            {onOpenPurchaseAgreement && (
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={onOpenPurchaseAgreement}
+                aria-label={`${t('Pre-purchase Confirmation')}: ${
+                  purchaseAgreementSigned ? t('Confirmed') : t('Not confirmed')
+                }`}
+                className={cn(
+                  'flex-1 gap-2 sm:flex-none',
+                  purchaseAgreementSigned
+                    ? 'text-green-600 dark:text-green-500'
+                    : 'text-amber-600 dark:text-amber-500'
+                )}
+              >
+                {purchaseAgreementSigned ? (
+                  <ShieldCheck className='h-4 w-4' aria-hidden='true' />
+                ) : (
+                  <ShieldAlert className='h-4 w-4' aria-hidden='true' />
+                )}
+                {t('Pre-purchase Confirmation')}
+              </Button>
+            )}
+            {onOpenBilling && (
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={onOpenBilling}
+                className='flex-1 gap-2 sm:flex-none'
+              >
+                <Receipt className='h-4 w-4' />
+                {t('Order History')}
+              </Button>
+            )}
+          </div>
         ) : null
       }
       contentClassName='space-y-4 sm:space-y-6'

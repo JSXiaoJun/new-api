@@ -5492,6 +5492,21 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Pre-purchase Confirmation": "购前确认",
+    "This service is not provided to individuals or organizations in mainland China. Before continuing, please confirm the following:": "本服务不向中国大陆地区的个人或机构提供。继续购买前，请确认以下内容：",
+    "I confirm that I am not a citizen of mainland China or an entity within mainland China.": "我确认自己不是中国大陆公民或中国大陆境内主体。",
+    "I confirm that my current location is not in mainland China, and I voluntarily continue with the purchase.": "我确认当前所在地区不在中国大陆，并自愿继续购买。",
+    "By continuing, you declare that you are not a citizen or resident of any region restricted by this service.": "继续购买即表示您声明自己不是本服务限制管辖地区的公民或居民。",
+    "I understand and confirm": "我已知晓并确认",
+    "Please enter \"{{phrase}}\"": "请输入{{phrase}}",
+    "Confirmation text": "确认文字",
+    "The text you entered does not match": "输入内容不一致",
+    "Confirmed at {{time}}": "确认时间：{{time}}",
+    "Confirm and Continue": "确认并继续",
+    "Pre-purchase confirmation completed": "购前确认已完成",
+    "Confirmation failed": "确认失败",
+    "Confirmed": "已确认",
+    "Not confirmed": "未确认"
   }
 }

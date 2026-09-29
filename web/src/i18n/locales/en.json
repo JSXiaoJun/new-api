@@ -5492,6 +5492,21 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Pre-purchase Confirmation": "Pre-purchase Confirmation",
+    "This service is not provided to individuals or organizations in mainland China. Before continuing, please confirm the following:": "This service is not provided to individuals or organizations in mainland China. Before continuing, please confirm the following:",
+    "I confirm that I am not a citizen of mainland China or an entity within mainland China.": "I confirm that I am not a citizen of mainland China or an entity within mainland China.",
+    "I confirm that my current location is not in mainland China, and I voluntarily continue with the purchase.": "I confirm that my current location is not in mainland China, and I voluntarily continue with the purchase.",
+    "By continuing, you declare that you are not a citizen or resident of any region restricted by this service.": "By continuing, you declare that you are not a citizen or resident of any region restricted by this service.",
+    "I understand and confirm": "I understand and confirm",
+    "Please enter \"{{phrase}}\"": "Please enter \"{{phrase}}\"",
+    "Confirmation text": "Confirmation text",
+    "The text you entered does not match": "The text you entered does not match",
+    "Confirmed at {{time}}": "Confirmed at {{time}}",
+    "Confirm and Continue": "Confirm and Continue",
+    "Pre-purchase confirmation completed": "Pre-purchase confirmation completed",
+    "Confirmation failed": "Confirmation failed",
+    "Confirmed": "Confirmed",
+    "Not confirmed": "Not confirmed"
   }
 }

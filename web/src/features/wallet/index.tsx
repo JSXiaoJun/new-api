@@ -30,6 +30,7 @@ import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
+import { PurchaseAgreementDialog } from './components/dialogs/purchase-agreement-dialog'
 import { TransferDialog } from './components/dialogs/transfer-dialog'
 import { WeChatPaymentDialog } from './components/dialogs/wechat-payment-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
@@ -82,6 +83,7 @@ export function Wallet(props: WalletProps) {
   const [selectedCreemProduct, setSelectedCreemProduct] =
     useState<CreemProduct | null>(null)
   const [showSubscriptionPanel, setShowSubscriptionPanel] = useState(true)
+  const [agreementDialogOpen, setAgreementDialogOpen] = useState(false)
 
   const { status } = useStatus()
   const { currency } = useSystemConfig()
@@ -141,6 +143,33 @@ export function Wallet(props: WalletProps) {
     fetchUser()
   }, [fetchUser])
 
+  // 未签署购前确认的用户首次进入钱包时自动弹窗（关闭后本次访问不再自动弹出）
+  const purchaseAgreementAt = user?.purchase_agreement_at ?? 0
+  const purchaseAgreementSigned = purchaseAgreementAt > 0
+  const agreementPromptedRef = useRef(false)
+  useEffect(() => {
+    if (!user || agreementPromptedRef.current) return
+    agreementPromptedRef.current = true
+    if (!purchaseAgreementSigned) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAgreementDialogOpen(true)
+    }
+  }, [user, purchaseAgreementSigned])
+
+  // 充值、兑换、订阅前的统一拦截：未签署则弹出购前确认
+  const ensurePurchaseAgreement = useCallback(() => {
+    if (purchaseAgreementSigned) return true
+    setAgreementDialogOpen(true)
+    return false
+  }, [purchaseAgreementSigned])
+
+  const handlePurchaseAgreementConfirmed = (signedAt: number) => {
+    setUser((prev) =>
+      prev ? { ...prev, purchase_agreement_at: signedAt } : prev
+    )
+    setAgreementDialogOpen(false)
+  }
+
   useEffect(() => {
     let active = true
     void getPendingWechatPayment()
@@ -198,6 +227,7 @@ export function Wallet(props: WalletProps) {
 
   // Handle payment method selection
   const handlePaymentMethodSelect = async (method: PaymentMethod) => {
+    if (!ensurePurchaseAgreement()) return
     setSelectedPaymentMethod(method)
     setSelectedWaffoMethodIndex(null)
     setPaymentLoading(method.type)
@@ -244,6 +274,7 @@ export function Wallet(props: WalletProps) {
 
   // Handle redemption
   const handleRedeem = async () => {
+    if (!ensurePurchaseAgreement()) return
     if (!redemptionCode) return
 
     const success = await redeemCode(redemptionCode)
@@ -264,6 +295,7 @@ export function Wallet(props: WalletProps) {
 
   // Handle Creem product selection
   const handleCreemProductSelect = (product: CreemProduct) => {
+    if (!ensurePurchaseAgreement()) return
     setSelectedCreemProduct(product)
     setCreemDialogOpen(true)
   }
@@ -284,6 +316,7 @@ export function Wallet(props: WalletProps) {
     method: WaffoPayMethod,
     index: number
   ) => {
+    if (!ensurePurchaseAgreement()) return
     const loadingKey = `waffo-${index}`
     setSelectedPaymentMethod({
       name: method.name,
@@ -359,6 +392,8 @@ export function Wallet(props: WalletProps) {
                   enableWaffoPancakeTopup={
                     topupInfo?.enable_waffo_pancake_topup
                   }
+                  purchaseAgreementSigned={purchaseAgreementSigned}
+                  onOpenPurchaseAgreement={() => setAgreementDialogOpen(true)}
                 />
               </div>
 
@@ -367,6 +402,7 @@ export function Wallet(props: WalletProps) {
                 onAvailabilityChange={handleSubscriptionAvailabilityChange}
                 userQuota={user?.quota}
                 onPurchaseSuccess={fetchUser}
+                onBeforePurchase={ensurePurchaseAgreement}
               />
             </div>
 
@@ -382,6 +418,13 @@ export function Wallet(props: WalletProps) {
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
+
+      <PurchaseAgreementDialog
+        open={agreementDialogOpen}
+        onOpenChange={setAgreementDialogOpen}
+        signedAt={purchaseAgreementAt}
+        onConfirmed={handlePurchaseAgreementConfirmed}
+      />
 
       <PaymentConfirmDialog
         open={confirmDialogOpen}

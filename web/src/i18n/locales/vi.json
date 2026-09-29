@@ -5492,6 +5492,21 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Pre-purchase Confirmation": "Xác nhận trước khi mua",
+    "This service is not provided to individuals or organizations in mainland China. Before continuing, please confirm the following:": "Dịch vụ này không cung cấp cho cá nhân hoặc tổ chức tại Trung Quốc đại lục. Trước khi tiếp tục, vui lòng xác nhận các nội dung sau:",
+    "I confirm that I am not a citizen of mainland China or an entity within mainland China.": "Tôi xác nhận rằng tôi không phải là công dân Trung Quốc đại lục hoặc tổ chức trong lãnh thổ Trung Quốc đại lục.",
+    "I confirm that my current location is not in mainland China, and I voluntarily continue with the purchase.": "Tôi xác nhận vị trí hiện tại của tôi không ở Trung Quốc đại lục và tôi tự nguyện tiếp tục mua.",
+    "By continuing, you declare that you are not a citizen or resident of any region restricted by this service.": "Khi tiếp tục, bạn tuyên bố rằng mình không phải là công dân hoặc cư dân của khu vực bị dịch vụ này hạn chế.",
+    "I understand and confirm": "Tôi đã hiểu và xác nhận",
+    "Please enter \"{{phrase}}\"": "Vui lòng nhập \"{{phrase}}\"",
+    "Confirmation text": "Văn bản xác nhận",
+    "The text you entered does not match": "Văn bản đã nhập không khớp",
+    "Confirmed at {{time}}": "Đã xác nhận lúc {{time}}",
+    "Confirm and Continue": "Xác nhận và tiếp tục",
+    "Pre-purchase confirmation completed": "Đã hoàn tất xác nhận trước khi mua",
+    "Confirmation failed": "Xác nhận thất bại",
+    "Confirmed": "Đã xác nhận",
+    "Not confirmed": "Chưa xác nhận"
   }
 }

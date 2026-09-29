@@ -540,6 +540,8 @@ func buildSelfUserData(user *model.User) map[string]interface{} {
 		"has_paid":          hasPaid,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,
+		// 购前确认签署时间，0 表示未签署
+		"purchase_agreement_at": user.PurchaseAgreedAt,
 	}
 }
 

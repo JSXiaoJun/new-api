@@ -66,6 +66,8 @@ interface SubscriptionPlansCardProps {
   onAvailabilityChange?: (available: boolean) => void
   userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
+  /** Return false to block opening the purchase dialog */
+  onBeforePurchase?: () => boolean
 }
 
 function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
@@ -97,6 +99,7 @@ export function SubscriptionPlansCard({
   onAvailabilityChange,
   userQuota,
   onPurchaseSuccess,
+  onBeforePurchase,
 }: SubscriptionPlansCardProps) {
   const { t } = useTranslation()
 
@@ -614,6 +617,7 @@ export function SubscriptionPlansCard({
                         variant='outline'
                         className='w-full'
                         onClick={() => {
+                          if (onBeforePurchase && !onBeforePurchase()) return
                           setSelectedPlan(p)
                           setPurchaseOpen(true)
                         }}

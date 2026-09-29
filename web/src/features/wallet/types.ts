@@ -190,6 +190,16 @@ export interface RedemptionRequest {
 }
 
 /**
+ * Pre-purchase confirmation request
+ */
+export interface PurchaseAgreementRequest {
+  confirm_not_mainland_citizen: boolean
+  confirm_not_in_mainland: boolean
+  /** Confirmation phrase typed by the user */
+  statement: string
+}
+
+/**
  * Payment request parameters
  */
 export interface PaymentRequest {
@@ -257,6 +267,8 @@ export interface UserWalletData {
   group: string
   /** Whether the user has completed at least one top-up */
   has_paid: boolean
+  /** Unix seconds when the pre-purchase confirmation was signed; 0 if unsigned */
+  purchase_agreement_at?: number
 }
 
 /**

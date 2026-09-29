@@ -5492,6 +5492,21 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Pre-purchase Confirmation": "購入前の確認",
+    "This service is not provided to individuals or organizations in mainland China. Before continuing, please confirm the following:": "本サービスは中国本土の個人または組織には提供されません。購入を続ける前に、以下の内容をご確認ください：",
+    "I confirm that I am not a citizen of mainland China or an entity within mainland China.": "私は中国本土の国民または中国本土内の法人・団体ではないことを確認します。",
+    "I confirm that my current location is not in mainland China, and I voluntarily continue with the purchase.": "私の現在地が中国本土ではないことを確認し、自らの意思で購入を続けます。",
+    "By continuing, you declare that you are not a citizen or resident of any region restricted by this service.": "続行することで、本サービスの制限対象地域の国民または居住者ではないことを表明したものとみなされます。",
+    "I understand and confirm": "内容を理解し確認しました",
+    "Please enter \"{{phrase}}\"": "「{{phrase}}」と入力してください",
+    "Confirmation text": "確認テキスト",
+    "The text you entered does not match": "入力内容が一致しません",
+    "Confirmed at {{time}}": "確認日時：{{time}}",
+    "Confirm and Continue": "確認して続行",
+    "Pre-purchase confirmation completed": "購入前の確認が完了しました",
+    "Confirmation failed": "確認に失敗しました",
+    "Confirmed": "確認済み",
+    "Not confirmed": "未確認"
   }
 }

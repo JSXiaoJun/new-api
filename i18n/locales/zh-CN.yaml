@@ -142,6 +142,8 @@ payment.webhook_not_configured: "Webhook 未配置"
 payment.price_id_not_configured: "该套餐未配置 StripePriceId"
 payment.creem_not_configured: "该套餐未配置 CreemProductId"
 payment.compliance_required: "支付、兑换码、订阅计划和邀请返利功能已禁用。管理员需先确认合规声明后方可启用。"
+payment.purchase_agreement_required: "请先在钱包页面完成购前确认，确认后才能充值、兑换或购买订阅。"
+payment.purchase_agreement_invalid: "请勾选全部确认项并输入确认文字。"
 
 # Topup messages
 topup.not_provided: "未提供支付单号"

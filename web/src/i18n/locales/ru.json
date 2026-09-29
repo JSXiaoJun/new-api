@@ -5492,6 +5492,21 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Pre-purchase Confirmation": "Подтверждение перед покупкой",
+    "This service is not provided to individuals or organizations in mainland China. Before continuing, please confirm the following:": "Сервис не предоставляется физическим лицам и организациям из материкового Китая. Прежде чем продолжить, подтвердите следующее:",
+    "I confirm that I am not a citizen of mainland China or an entity within mainland China.": "Я подтверждаю, что не являюсь гражданином материкового Китая или организацией, зарегистрированной в материковом Китае.",
+    "I confirm that my current location is not in mainland China, and I voluntarily continue with the purchase.": "Я подтверждаю, что в данный момент нахожусь не в материковом Китае и добровольно продолжаю покупку.",
+    "By continuing, you declare that you are not a citizen or resident of any region restricted by this service.": "Продолжая, вы заявляете, что не являетесь гражданином или резидентом региона, на который распространяются ограничения сервиса.",
+    "I understand and confirm": "Я ознакомлен и подтверждаю",
+    "Please enter \"{{phrase}}\"": "Введите «{{phrase}}»",
+    "Confirmation text": "Текст подтверждения",
+    "The text you entered does not match": "Введённый текст не совпадает",
+    "Confirmed at {{time}}": "Подтверждено: {{time}}",
+    "Confirm and Continue": "Подтвердить и продолжить",
+    "Pre-purchase confirmation completed": "Подтверждение перед покупкой выполнено",
+    "Confirmation failed": "Не удалось подтвердить",
+    "Confirmed": "Подтверждено",
+    "Not confirmed": "Не подтверждено"
   }
 }

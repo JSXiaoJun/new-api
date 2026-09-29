@@ -5492,6 +5492,21 @@
     "Zero retention": "Aucune rétention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Pre-purchase Confirmation": "Confirmation avant achat",
+    "This service is not provided to individuals or organizations in mainland China. Before continuing, please confirm the following:": "Ce service n'est pas fourni aux particuliers ou organisations de Chine continentale. Avant de continuer, veuillez confirmer ce qui suit :",
+    "I confirm that I am not a citizen of mainland China or an entity within mainland China.": "Je confirme que je ne suis pas citoyen de Chine continentale ni une entité établie en Chine continentale.",
+    "I confirm that my current location is not in mainland China, and I voluntarily continue with the purchase.": "Je confirme que ma localisation actuelle n'est pas en Chine continentale et je poursuis l'achat de mon plein gré.",
+    "By continuing, you declare that you are not a citizen or resident of any region restricted by this service.": "En continuant, vous déclarez ne pas être citoyen ou résident d'une région restreinte par ce service.",
+    "I understand and confirm": "J'ai compris et je confirme",
+    "Please enter \"{{phrase}}\"": "Veuillez saisir « {{phrase}} »",
+    "Confirmation text": "Texte de confirmation",
+    "The text you entered does not match": "Le texte saisi ne correspond pas",
+    "Confirmed at {{time}}": "Confirmé le {{time}}",
+    "Confirm and Continue": "Confirmer et continuer",
+    "Pre-purchase confirmation completed": "Confirmation avant achat effectuée",
+    "Confirmation failed": "Échec de la confirmation",
+    "Confirmed": "Confirmé",
+    "Not confirmed": "Non confirmé"
   }
 }
