@@ -35,6 +35,7 @@ import '@/lib/dayjs'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
 import { handleServerError } from '@/lib/handle-server-error'
 import { installTrafficAccessGuard } from '@/lib/traffic-access-guard'
+import { installTranslationDomGuard } from '@/lib/translation-dom-guard'
 
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
@@ -50,6 +51,9 @@ import './styles/index.css'
 // VChart theme is driven by our ThemeProvider (html.light/html.dark) via per-chart `theme` prop.
 initializeFrontendCache()
 installBuildMetadata()
+// Must run before React mounts: page translation rewrites React-owned text
+// nodes and would otherwise crash route changes with NotFoundError
+installTranslationDomGuard()
 
 const queryClient = new QueryClient({
   defaultOptions: {
