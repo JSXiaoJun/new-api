@@ -31,6 +31,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/assert"
@@ -53,7 +54,17 @@ func setupSecurityEnrollmentTest(t *testing.T) (*model.User, service.AuthIdentit
 		dialect = "sqlite"
 	}
 	dsn := os.Getenv("TEST_" + strings.ToUpper(dialect) + "_DSN")
-	db, _ := newAuditTestDatabase(t, dialect, dsn)
+	db, mainPath := newAuditTestDatabase(t, dialect, dsn)
+	if dialect == "sqlite" {
+		// Use production SQLite locking (busy timeout, WAL, BEGIN IMMEDIATE) so
+		// concurrent account changes serialize instead of failing with SQLITE_BUSY.
+		_, options, _ := strings.Cut(common.SQLitePath, "?")
+		connection, err := db.DB()
+		require.NoError(t, err)
+		require.NoError(t, connection.Close())
+		db, err = gorm.Open(sqlite.Open(mainPath+"?"+options), &gorm.Config{})
+		require.NoError(t, err)
+	}
 	logDB, _ := newAuditTestDatabase(t, dialect, dsn)
 	db.Logger = logger.Default.LogMode(logger.Silent)
 	logDB.Logger = logger.Default.LogMode(logger.Silent)
