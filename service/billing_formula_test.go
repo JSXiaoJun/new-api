@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/QuantumNous/new-api/model"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -14,7 +15,7 @@ import (
 )
 
 func TestAppendBillingFormulaRecordsFrozenDiscountInputs(t *testing.T) {
-	other := map[string]interface{}{}
+	other := model.NewLogOther()
 	info := &relaycommon.RelayInfo{
 		BillingBaseGroupRatio:   1.25,
 		BillingDiscountRatio:    0.8,
@@ -26,7 +27,7 @@ func TestAppendBillingFormulaRecordsFrozenDiscountInputs(t *testing.T) {
 
 	appendBillingFormula(other, info, "per_token", 1200, 1.5, 25, 1825)
 
-	formula, ok := other["billing_formula"].(billingFormulaLog)
+	formula, ok := other.Snapshot()["billing_formula"].(billingFormulaLog)
 	require.True(t, ok)
 	assert.Equal(t, "per_token", formula.Mode)
 	assert.InDelta(t, 1200, formula.BaseQuota, 0.000001)
@@ -39,7 +40,7 @@ func TestAppendBillingFormulaRecordsFrozenDiscountInputs(t *testing.T) {
 }
 
 func TestAppendBillingFormulaRejectsNegativeAuditValues(t *testing.T) {
-	other := map[string]interface{}{}
+	other := model.NewLogOther()
 	info := &relaycommon.RelayInfo{
 		BillingDiscountRatio:    1,
 		BillingDiscountResolved: true,
@@ -50,11 +51,11 @@ func TestAppendBillingFormulaRejectsNegativeAuditValues(t *testing.T) {
 
 	appendBillingFormula(other, info, "per_token", -1, 1, 0, 10)
 
-	assert.NotContains(t, other, "billing_formula")
+	assert.NotContains(t, other.Snapshot(), "billing_formula")
 }
 
 func TestViolationFeeFormulaDoesNotApplyScheduledDiscount(t *testing.T) {
-	other := map[string]interface{}{}
+	other := model.NewLogOther()
 	info := &relaycommon.RelayInfo{
 		BillingBaseGroupRatio:   1,
 		BillingDiscountRatio:    0.01,
@@ -66,14 +67,14 @@ func TestViolationFeeFormulaDoesNotApplyScheduledDiscount(t *testing.T) {
 
 	appendBillingFormula(other, info, "violation_fee", 100, 1, 0, 100)
 
-	formula, ok := other["billing_formula"].(billingFormulaLog)
+	formula, ok := other.Snapshot()["billing_formula"].(billingFormulaLog)
 	require.True(t, ok)
 	assert.Equal(t, 1.0, formula.DiscountRatio)
 	assert.Equal(t, 1.0, formula.EffectiveGroupRatio)
 }
 
 func TestAppendBillingFormulaRecordsSkippedDiscount(t *testing.T) {
-	other := map[string]interface{}{}
+	other := model.NewLogOther()
 	info := &relaycommon.RelayInfo{
 		BillingBaseGroupRatio:   1,
 		BillingDiscountRatio:    0.01,
@@ -86,7 +87,7 @@ func TestAppendBillingFormulaRecordsSkippedDiscount(t *testing.T) {
 
 	appendBillingFormula(other, info, "per_call", 1, 1, 0, 1)
 
-	formula, ok := other["billing_formula"].(billingFormulaLog)
+	formula, ok := other.Snapshot()["billing_formula"].(billingFormulaLog)
 	require.True(t, ok)
 	assert.True(t, formula.DiscountSkipped)
 	assert.Equal(t, 1.0, formula.EffectiveGroupRatio)
@@ -114,10 +115,10 @@ func TestTextBillingFormulaRecomposesDiscountedQuota(t *testing.T) {
 		CompletionTokens: 50,
 		TotalTokens:      150,
 	})
-	other := map[string]interface{}{}
+	other := model.NewLogOther()
 	appendBillingFormula(other, info, "per_token", summary.BaseQuotaBeforeGroup.InexactFloat64(), summary.OtherRatioMultiplier, summary.ToolCallSurchargeQuota.InexactFloat64(), summary.Quota)
 
-	formula, ok := other["billing_formula"].(billingFormulaLog)
+	formula, ok := other.Snapshot()["billing_formula"].(billingFormulaLog)
 	require.True(t, ok)
 	assert.Equal(t, 480, summary.Quota)
 	assert.Equal(t, summary.Quota, formula.FinalQuota)

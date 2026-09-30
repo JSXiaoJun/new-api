@@ -247,3 +247,36 @@ func addUsageInts(a, b int) int {
 	}
 	return a + b
 }
+
+func mergeBillingInputTokenDetails(dst *dto.InputTokenDetails, src dto.InputTokenDetails) {
+	if dst == nil {
+		return
+	}
+	dst.CachedTokens = maxBillingUsageInt(dst.CachedTokens, src.CachedTokens)
+	dst.CachedCreationTokens = maxBillingUsageInt(dst.CachedCreationTokens, src.CachedCreationTokens)
+	dst.CacheCreationTokens = maxBillingUsageInt(dst.CacheCreationTokens, src.CacheCreationTokens)
+	dst.CacheWriteTokens = maxBillingUsageInt(dst.CacheWriteTokens, src.CacheWriteTokens)
+	dst.TextTokens = maxBillingUsageInt(dst.TextTokens, src.TextTokens)
+	dst.AudioTokens = maxBillingUsageInt(dst.AudioTokens, src.AudioTokens)
+	dst.ImageTokens = maxBillingUsageInt(dst.ImageTokens, src.ImageTokens)
+}
+
+func mergeBillingOutputTokenDetails(dst *dto.OutputTokenDetails, src dto.OutputTokenDetails) {
+	if dst == nil {
+		return
+	}
+	dst.ReasoningTokens = maxBillingUsageInt(dst.ReasoningTokens, src.ReasoningTokens)
+	dst.TextTokens = maxBillingUsageInt(dst.TextTokens, src.TextTokens)
+	dst.AudioTokens = maxBillingUsageInt(dst.AudioTokens, src.AudioTokens)
+	dst.ImageTokens = maxBillingUsageInt(dst.ImageTokens, src.ImageTokens)
+}
+
+func maxBillingUsageInt(values ...int) int {
+	max := 0
+	for _, value := range values {
+		if value > max {
+			max = value
+		}
+	}
+	return max
+}

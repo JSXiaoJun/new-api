@@ -254,17 +254,23 @@ describe('User quota history dialog', () => {
     expect(screen.getByText('Page 1 of 3')).toBeVisible()
   })
 
+  // Quota audits render as "summary · description" (see
+  // buildQuotaAuditOperation); these legacy rows record no target user.
   test.each([
-    ['user.quota_add', { quota: '$10.00' }, 'Increased user quota by $10.00'],
+    [
+      'user.quota_add',
+      { quota: '$10.00' },
+      'Increase user quota · Target not recorded · Requested quota: $10.00 · Not recorded → Not recorded',
+    ],
     [
       'user.quota_subtract',
       { quota: '$3.00' },
-      'Decreased user quota by $3.00',
+      'Decrease user quota · Target not recorded · Requested quota: $3.00 · Not recorded → Not recorded',
     ],
     [
       'user.quota_override',
       { from: '$4.00', to: '$12.00' },
-      'Overrode user quota from $4.00 to $12.00',
+      'Override user quota · Target not recorded · Requested quota: $12.00 · $4.00 → $12.00',
     ],
   ])(
     'historical %s retains the recorded amounts and administrator identity',

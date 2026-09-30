@@ -113,6 +113,14 @@ func PublicImageAssetProxy(c *gin.Context) {
 	}
 }
 
+func copyPublicMediaResponseHeaders(c *gin.Context, resp *http.Response) {
+	for _, key := range []string{"Content-Type", "Content-Length"} {
+		if value := resp.Header.Get(key); value != "" {
+			c.Writer.Header().Set(key, value)
+		}
+	}
+}
+
 func isSupportedPublicImageType(mediaType string) bool {
 	switch strings.ToLower(mediaType) {
 	case "image/avif", "image/gif", "image/jpeg", "image/jpg", "image/png", "image/webp":

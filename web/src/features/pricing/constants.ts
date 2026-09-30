@@ -50,6 +50,7 @@ export const QUOTA_TYPES = {
   TOKEN: 'token',
   REQUEST: 'request',
   SECOND: 'second',
+  TASK: 'task',
 } as const
 
 export type QuotaTypeOption = (typeof QUOTA_TYPES)[keyof typeof QUOTA_TYPES]
@@ -63,6 +64,7 @@ export function getQuotaTypeLabels(
     [QUOTA_TYPES.TOKEN]: t('Token-based'),
     [QUOTA_TYPES.REQUEST]: t('Per Request'),
     [QUOTA_TYPES.SECOND]: t('Per-second'),
+    [QUOTA_TYPES.TASK]: t('Task billing'),
   }
 }
 

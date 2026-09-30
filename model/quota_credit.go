@@ -56,30 +56,3 @@ func GetUserQuotaCredits(userId, startIdx, num int) ([]*QuotaCredit, int64, erro
 	err := query.Order("created_at DESC, id DESC").Offset(startIdx).Limit(num).Find(&credits).Error
 	return credits, total, err
 }
-
-// OverrideUserQuota observes the actual database value under a row lock so a
-// concurrent administrator update cannot produce a fabricated credit delta.
-func OverrideUserQuota(id, quota int, meta QuotaCreditMeta) (int, error) {
-	if quota < 0 || quota > common.MaxQuota {
-		return 0, errors.New("invalid quota")
-	}
-	var previous int
-	err := withWalletTransaction(id, func(tx *gorm.DB) error {
-		var user User
-		if err := lockForUpdate(tx).Select("id", "quota").First(&user, id).Error; err != nil {
-			return err
-		}
-		previous = user.Quota
-		if err := tx.Model(&User{}).Where("id = ?", id).Update("quota", quota).Error; err != nil {
-			return err
-		}
-		return RecordQuotaCredit(tx, QuotaCredit{
-			UserId: id, Delta: int64(quota) - int64(previous), Source: "admin_override",
-			OperatorId: meta.OperatorId, RequestId: meta.RequestId, Ip: meta.Ip,
-		})
-	})
-	if err != nil {
-		return 0, err
-	}
-	return previous, nil
-}

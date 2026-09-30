@@ -108,7 +108,9 @@ func ensureOpenAIUsageCompletion(_ *gin.Context, usage *dto.Usage, outputText, m
 		// Count only the missing output side. The full-request fallback also marks
 		// the request as locally counted, which would incorrectly hide an upstream
 		// input-token snapshot behind a whole-request "local" billing path.
-		completionTokens = service.EstimateTokenByModel(model, outputText)
+		// Match the shared Responses accumulator: tokenize OpenAI text models and
+		// estimate only for providers without a local tokenizer.
+		completionTokens = service.CountTextToken(outputText, model)
 		if completionTokens > 0 {
 			estimated = true
 		}

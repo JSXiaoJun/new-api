@@ -143,7 +143,7 @@ func validatePrompt(prompt string) *dto.TaskError {
 // MaxTaskDurationSeconds caps user-supplied video duration. Duration is used
 // as a billing multiplier (OtherRatio "seconds"); an unbounded value could
 // overflow quota calculation into a negative charge.
-const MaxTaskDurationSeconds = 3600
+const MaxTaskDurationSeconds = constant.MaxTaskDurationSeconds
 
 func validateTaskDurationBounds(req TaskSubmitReq) *dto.TaskError {
 	seconds := req.Duration
@@ -169,7 +169,7 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 		Mode:     formData.Get("mode"),
 		Image:    formData.Get("image"),
 		Size:     formData.Get("size"),
-		Metadata: make(map[string]interface{}),
+		Metadata: make(map[string]any),
 	}
 
 	if durationStr := formData.Get("seconds"); durationStr != "" {
@@ -238,9 +238,9 @@ func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
 		return taskErr
 	}
 
-	action := constant.TaskActionTextGenerate
+	action := constant.TaskActionTextToVideo
 	if hasInputReference {
-		action = constant.TaskActionGenerate
+		action = constant.TaskActionImageToVideo
 	}
 	if strings.HasPrefix(model, "sora-2") {
 

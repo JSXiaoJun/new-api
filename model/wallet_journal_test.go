@@ -238,9 +238,9 @@ func TestWalletOverrideDrainsPendingDebitsAndAuditsActualIncrease(t *testing.T) 
 	common.BatchUpdateEnabled = true
 	user := createReserveTestUser(t, 100)
 	require.NoError(t, DecreaseUserQuota(user.Id, 80, false))
-	previous, err := OverrideUserQuota(user.Id, 50, QuotaCreditMeta{OperatorId: 9})
+	adjustment, err := AdjustUserQuota(user.Id, common.RoleRootUser, "override", 50, QuotaCreditMeta{OperatorId: 9})
 	require.NoError(t, err)
-	assert.Equal(t, 20, previous)
+	assert.Equal(t, 20, adjustment.Before)
 	FlushWalletJournals()
 	assert.Equal(t, 50, getUserQuotaFromDB(t, user.Id))
 	rows, total, err := GetUserQuotaCredits(user.Id, 0, 10)
@@ -376,8 +376,12 @@ func TestWalletIntegerBoundariesDoNotTurnChargesIntoCredits(t *testing.T) {
 				useUserCacheMiniRedis(t)
 				common.BatchUpdateEnabled = true
 			}
+			// A wallet already at the 64-bit ceiling rejects further credits.
+			full := createReserveTestUser(t, common.MaxWalletQuota)
+			require.ErrorIs(t, IncreaseUserQuota(full.Id, 1, false), ErrWalletQuotaLimitExceeded)
+			assert.Equal(t, common.MaxWalletQuota, getUserQuotaFromDB(t, full.Id))
+
 			user := createReserveTestUser(t, common.MaxQuota)
-			require.Error(t, IncreaseUserQuota(user.Id, 1, false))
 			ok, err := TryReserveUserQuota(user.Id, common.MaxQuota+1)
 			require.Error(t, err)
 			assert.False(t, ok)
@@ -385,14 +389,46 @@ func TestWalletIntegerBoundariesDoNotTurnChargesIntoCredits(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, ok)
 			require.NoError(t, DecreaseUserQuota(user.Id, common.MaxQuota, false))
-			require.Error(t, DecreaseUserQuota(user.Id, 2, false))
 			FlushWalletJournals()
+			// The reservation and the overdraft each took MaxQuota.
 			assert.Equal(t, -common.MaxQuota, getUserQuotaFromDB(t, user.Id))
 			_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
 			require.NoError(t, err)
 			assert.Zero(t, total)
+
+			// An overdraft may not cross the negative wallet floor.
+			floor := createReserveTestUser(t, -common.MaxWalletQuota+1)
+			require.Error(t, DecreaseUserQuota(floor.Id, 2, false))
+			FlushWalletJournals()
+			assert.Equal(t, -common.MaxWalletQuota+1, getUserQuotaFromDB(t, floor.Id))
+			_, total, err = GetUserQuotaCredits(floor.Id, 0, 10)
+			require.NoError(t, err)
+			assert.Zero(t, total)
 		})
 	}
+}
+
+func TestWalletJournalKeepsLargeBalancesExact(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	server := useUserCacheMiniRedis(t)
+	common.BatchUpdateEnabled = true
+	// Lua number formatting would write this balance in exponent notation.
+	start := common.MaxWalletQuota - 1_000_000
+	user := createReserveTestUser(t, start)
+
+	require.NoError(t, DecreaseUserQuota(user.Id, 7, false))
+	require.NoError(t, IncreaseUserQuota(user.Id, 1_000_007, false))
+	assert.Equal(t, "9007199254740991", server.HGet(walletKeys(user.Id)[0], "quota"))
+	quota, err := getWalletQuota(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, common.MaxWalletQuota, quota)
+
+	FlushWalletJournals()
+	assert.Equal(t, common.MaxWalletQuota, getUserQuotaFromDB(t, user.Id))
+	require.ErrorIs(t, IncreaseUserQuota(user.Id, 1, false), ErrWalletQuotaLimitExceeded)
+	FlushWalletJournals()
+	assert.Equal(t, common.MaxWalletQuota, getUserQuotaFromDB(t, user.Id))
 }
 
 func TestWalletEnrollmentRollbackRecoversWithoutApplyingFailedCredit(t *testing.T) {

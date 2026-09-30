@@ -32,8 +32,8 @@ func TestEnsureOpenAIUsageCompletionSynchronizesNestedBillingUsage(t *testing.T)
 		PromptTokens: 12,
 		TotalTokens:  12,
 		BillingUsage: dto.NewOpenAIResponsesBillingUsage(&dto.Usage{
-			InputTokens:  12,
-			TotalTokens:  12,
+			InputTokens: 12,
+			TotalTokens: 12,
 		}),
 	}
 

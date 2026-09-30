@@ -48,7 +48,7 @@ func TestPeakTaskModeOverridesLegacySoraModeAndSurvivesPersistence(t *testing.T)
 			var context model.TaskBillingContext
 			require.NoError(t, common.Unmarshal(data, &context))
 			other := taskBillingOther(&model.Task{PrivateData: model.TaskPrivateData{BillingContext: &context}})
-			assert.Equal(t, info.PeakPricing, other["peak_pricing"])
+			assert.Equal(t, info.PeakPricing, other.Snapshot()["peak_pricing"])
 		})
 	}
 }

@@ -67,6 +67,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     detail: true,
     token: true,
     log: true,
+    audit: true,
     midjourney: true,
     task: true,
   },
@@ -74,6 +75,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     enabled: true,
     topup: true,
     personal: true,
+    security: true,
   },
   admin: {
     enabled: true,

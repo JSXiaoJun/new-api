@@ -1,6 +1,7 @@
 package model
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -58,14 +59,14 @@ func resetBatchUpdateTestState(t *testing.T) {
 	t.Helper()
 	oldBatchEnabled := common.BatchUpdateEnabled
 	common.BatchUpdateEnabled = false
-	for i := 0; i < BatchUpdateTypeCount; i++ {
+	for i := range BatchUpdateTypeCount {
 		batchUpdateLocks[i].Lock()
 		batchUpdateStores[i] = make(map[int]int)
 		batchUpdateLocks[i].Unlock()
 	}
 	t.Cleanup(func() {
 		common.BatchUpdateEnabled = oldBatchEnabled
-		for i := 0; i < BatchUpdateTypeCount; i++ {
+		for i := range BatchUpdateTypeCount {
 			batchUpdateLocks[i].Lock()
 			batchUpdateStores[i] = make(map[int]int)
 			batchUpdateLocks[i].Unlock()
@@ -135,6 +136,38 @@ func TestRedisBatchReserveQueuesWalletAndTokenAccounting(t *testing.T) {
 	reloadedToken := getTokenFromDB(t, token.Id)
 	assert.Equal(t, 2, reloadedToken.RemainQuota)
 	assert.Equal(t, 7, reloadedToken.UsedQuota)
+}
+
+func TestBatchUpdateAccumulatesTwoMaximumRequestCharges(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	common.BatchUpdateEnabled = true
+
+	user := createReserveTestUser(t, common.MaxQuota*2+100)
+	require.NoError(t, DecreaseUserQuota(user.Id, common.MaxQuota, false))
+	require.NoError(t, DecreaseUserQuota(user.Id, common.MaxQuota, false))
+
+	batchUpdate()
+	assert.Equal(t, 100, getUserQuotaFromDB(t, user.Id))
+}
+
+func TestBatchUpdateAccumulatorSaturatesOverflow(t *testing.T) {
+	resetBatchUpdateTestState(t)
+
+	addNewRecord(BatchUpdateTypeTokenQuota, 1, math.MaxInt)
+	addNewRecord(BatchUpdateTypeTokenQuota, 1, 1)
+	batchUpdateLocks[BatchUpdateTypeTokenQuota].Lock()
+	assert.Equal(t, math.MaxInt, batchUpdateStores[BatchUpdateTypeTokenQuota][1])
+	batchUpdateLocks[BatchUpdateTypeTokenQuota].Unlock()
+
+	batchUpdateLocks[BatchUpdateTypeTokenQuota].Lock()
+	batchUpdateStores[BatchUpdateTypeTokenQuota] = make(map[int]int)
+	batchUpdateLocks[BatchUpdateTypeTokenQuota].Unlock()
+	addNewRecord(BatchUpdateTypeTokenQuota, 1, math.MinInt)
+	addNewRecord(BatchUpdateTypeTokenQuota, 1, -1)
+	batchUpdateLocks[BatchUpdateTypeTokenQuota].Lock()
+	assert.Equal(t, math.MinInt, batchUpdateStores[BatchUpdateTypeTokenQuota][1])
+	batchUpdateLocks[BatchUpdateTypeTokenQuota].Unlock()
 }
 
 func TestReserveFailsClosedWhenRedisIsUnavailable(t *testing.T) {

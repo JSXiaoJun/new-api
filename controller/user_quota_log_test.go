@@ -57,7 +57,10 @@ func TestGetUserQuotaLogsReturnsAdministratorQuotaChangesForTarget(t *testing.T)
 	assert.Equal(t, 3, response.Data.Total)
 	require.Len(t, response.Data.Items, 1)
 	log := response.Data.Items[0]
-	assert.Equal(t, 9999, log.UserId, "audit ownership must remain with the operator")
+	// Matches upstream: the balance change is a top-up entry owned by the
+	// affected user; the operator is kept in admin-only metadata.
+	assert.Equal(t, 42, log.UserId)
+	assert.Equal(t, model.LogTypeTopup, log.Type)
 	assert.Contains(t, log.Other, `"action":"user.quota_add"`)
 	assert.Contains(t, log.Other, `"target_user_id":42`)
 	assert.Contains(t, log.Other, `"admin_username":"root-operator"`)

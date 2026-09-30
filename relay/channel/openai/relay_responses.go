@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -16,6 +17,9 @@ import (
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
@@ -34,6 +38,9 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
+
+	info.ObserveResponseModel(responsesResponse.Model)
+	responseBody = rewriteSGLangResponsesCreatedAt(info, responseBody, "created_at", responsesResponse.CreatedAt)
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
@@ -116,6 +123,13 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		if streamResponse.Type == "" {
 			streamResponse.Type = sr.EventType()
 		}
+		if streamResponse.Response != nil {
+			data = string(rewriteSGLangResponsesCreatedAt(info, []byte(data), "response.created_at", streamResponse.Response.CreatedAt))
+		}
+		if streamResponse.Response != nil {
+			info.ObserveResponseModel(streamResponse.Response.Model)
+		}
+		service.ObserveResponsesOutcome(info, &streamResponse)
 		sendResponsesStreamData(c, streamResponse, data)
 		// Responses-compatible gateways can wrap usage several levels deep
 		// inside data/response envelopes. Use relaykit's bounded recursive
@@ -202,8 +216,8 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			key := responsesStreamPartKey("text:"+streamResponse.ItemID, streamResponse.OutputIndex, streamResponse.ContentIndex)
 			if _, seen := seenCompletedText[key]; !seen {
 				seenCompletedText[key] = struct{}{}
-				if streamResponse.Text != "" {
-					responseTextBuilder.WriteString(streamResponse.Text)
+				if lo.FromPtr(streamResponse.Text) != "" {
+					responseTextBuilder.WriteString(lo.FromPtr(streamResponse.Text))
 					responseTextObserved = true
 				}
 			}
@@ -215,11 +229,16 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			key := responsesStreamPartKey("reasoning:"+streamResponse.ItemID, streamResponse.OutputIndex, streamResponse.SummaryIndex)
 			if _, seen := seenCompletedText[key]; !seen {
 				seenCompletedText[key] = struct{}{}
-				if streamResponse.Text != "" {
-					responseTextBuilder.WriteString(streamResponse.Text)
+				if lo.FromPtr(streamResponse.Text) != "" {
+					responseTextBuilder.WriteString(lo.FromPtr(streamResponse.Text))
 					responseTextObserved = true
 				}
 			}
+		case "response.reasoning_text.delta", "response.refusal.delta":
+			// Generated output that upstream bills as output tokens; it feeds the
+			// missing-usage estimate like the shared accumulator does.
+			responseTextBuilder.WriteString(streamResponse.Delta)
+			responseTextObserved = true
 		case "response.function_call_arguments.delta":
 			responseTextBuilder.WriteString(streamResponse.Delta)
 			responseTextObserved = true
@@ -228,8 +247,8 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			key := responsesStreamPartKey("arguments:"+streamResponse.ItemID, streamResponse.OutputIndex, streamResponse.ContentIndex)
 			if _, seen := seenCompletedArguments[key]; !seen {
 				seenCompletedArguments[key] = struct{}{}
-				if streamResponse.Arguments != "" {
-					responseTextBuilder.WriteString(streamResponse.Arguments)
+				if lo.FromPtr(streamResponse.Arguments) != "" {
+					responseTextBuilder.WriteString(lo.FromPtr(streamResponse.Arguments))
 					responseTextObserved = true
 				}
 			}
@@ -265,7 +284,23 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	usage = normalizeResponsesUsage(usage, estimatedPromptTokens)
 	ensureOpenAIUsageCompletion(c, usage, responseTextBuilder.String(), upstreamModelName, estimatedPromptTokens)
 
+	common.SetContextKey(c, constant.ContextKeyResponseStreamStatus, info.StreamStatus)
+	info.StreamStatus.RequireTerminal()
 	return usage, nil
+}
+
+func rewriteSGLangResponsesCreatedAt(info *relaycommon.RelayInfo, payload []byte, path string, createdAt dto.IntValue) []byte {
+	if info.GetChannelType() != constant.ChannelTypeSGLang {
+		return payload
+	}
+	if !gjson.GetBytes(payload, path).Exists() {
+		return payload
+	}
+	patched, err := sjson.SetBytes(payload, path, int(createdAt))
+	if err != nil {
+		return payload
+	}
+	return patched
 }
 
 func maxResponsesInt(a, b int) int {
