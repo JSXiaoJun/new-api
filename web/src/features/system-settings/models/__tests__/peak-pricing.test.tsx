@@ -16,8 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { createRef, useState } from 'react'
+import { createRef, useState, type ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -35,6 +36,16 @@ import {
   type PeakPricing,
 } from '../peak-pricing'
 import { PeakPricingEditor } from '../peak-pricing-editor'
+
+// The editor panel loads pricing previews, so it needs a query client.
+function QueryWrapper(props: { children: ReactNode }) {
+  const [client] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  )
+  return (
+    <QueryClientProvider client={client}>{props.children}</QueryClientProvider>
+  )
+}
 
 function schedule(): PeakPricing {
   return {
@@ -147,7 +158,8 @@ describe('peak pricing editor', () => {
           billingMode: 'peak',
           peakPricing: value,
         }}
-      />
+      />,
+      { wrapper: QueryWrapper }
     )
     const region = screen.getByRole('region', { name: 'Default pricing' })
     const expression =
@@ -194,7 +206,8 @@ describe('peak pricing editor', () => {
           billingMode: 'peak',
           peakPricing: schedule(),
         }}
-      />
+      />,
+      { wrapper: QueryWrapper }
     )
     expect(screen.getByRole('tab', { name: 'Peak pricing' })).toHaveAttribute(
       'aria-selected',

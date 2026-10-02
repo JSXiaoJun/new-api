@@ -14,6 +14,12 @@ var ErrWalletUnavailable = errors.New("wallet state unavailable; reconciliation 
 
 const walletDirtyKey = "wallet:v1:dirty"
 
+// walletQuotaLimit bounds wallet balances to the JavaScript-safe 64-bit
+// domain shared with top-ups. Journal scripts only compare balances in Lua;
+// every write is an exact integer (Go-formatted argument or HINCRBY), because
+// Lua number formatting would turn large balances into exponent notation.
+const walletQuotaLimit = common.MaxWalletQuota
+
 func walletKeys(id int) []string {
 	return []string{fmt.Sprintf("wallet:v1:%d", id), fmt.Sprintf("wallet:v1:%d:events", id), walletDirtyKey}
 }
@@ -45,8 +51,8 @@ func withWalletTransaction(id int, work func(*gorm.DB) error) error {
 			if err := tx.Select("quota").First(&user, id).Error; err != nil {
 				return err
 			}
-			if user.Quota < common.MinQuota || user.Quota > common.MaxQuota {
-				return errors.New("wallet quota limit exceeded")
+			if user.Quota < -walletQuotaLimit || user.Quota > walletQuotaLimit {
+				return ErrWalletQuotaLimitExceeded
 			}
 			return nil
 		})
@@ -142,7 +148,7 @@ return 1`
 				credits = append(credits, event.Credit)
 			}
 		}
-		if applied != sequence || int64(user.Quota)+delta < common.MinQuota || int64(user.Quota)+delta > common.MaxQuota {
+		if applied != sequence || int64(user.Quota)+delta < -walletQuotaLimit || int64(user.Quota)+delta > walletQuotaLimit {
 			return ErrWalletUnavailable
 		}
 		if applied != user.WalletSequence {
@@ -167,8 +173,8 @@ return 1`
 			return err
 		}
 		finalQuota, finalSequence = updated.Quota, updated.WalletSequence
-		if finalQuota < common.MinQuota || finalQuota > common.MaxQuota {
-			return errors.New("wallet quota limit exceeded")
+		if finalQuota < -walletQuotaLimit || finalQuota > walletQuotaLimit {
+			return ErrWalletQuotaLimitExceeded
 		}
 		return nil
 	})
@@ -223,7 +229,7 @@ return redis.call('HGET', KEYS[1], 'quota') or 'invalid'`
 			continue
 		}
 		quota, err := strconv.Atoi(value)
-		if err != nil || quota < common.MinQuota || quota > common.MaxQuota {
+		if err != nil || quota < -walletQuotaLimit || quota > walletQuotaLimit {
 			return 0, ErrWalletUnavailable
 		}
 		return quota, nil
@@ -261,12 +267,13 @@ if not quota or not seq or not acked or seq >= 1000000000000 or redis.call('LLEN
 if seq - acked >= 4096 then return -2 end
 local delta = tonumber(ARGV[1])
 if ARGV[2] == '1' and quota + delta < 0 then return 0 end
-if quota + delta < tonumber(ARGV[4]) or quota + delta > tonumber(ARGV[5]) then return -1 end
+if quota + delta < tonumber(ARGV[4]) or quota + delta > tonumber(ARGV[5]) then return -3 end
 local event = cjson.decode(ARGV[3])
 event.sequence = seq + 1
 local encoded = cjson.encode(event)
 redis.call('RPUSH', KEYS[2], encoded)
-redis.call('HSET', KEYS[1], 'quota', quota + delta, 'sequence', seq + 1)
+redis.call('HINCRBY', KEYS[1], 'quota', ARGV[1])
+redis.call('HSET', KEYS[1], 'sequence', seq + 1)
 redis.call('SADD', KEYS[3], ARGV[6])
 redis.call('SET', KEYS[4], '1', 'EX', 600)
 return 1`
@@ -274,7 +281,7 @@ return 1`
 	if reserve {
 		reserveArg = "1"
 	}
-	result, err := common.RDB.Eval(context.Background(), apply, keys, delta, reserveArg, string(payload), common.MinQuota, common.MaxQuota, id).Int()
+	result, err := common.RDB.Eval(context.Background(), apply, keys, delta, reserveArg, string(payload), -walletQuotaLimit, walletQuotaLimit, id).Int()
 	if err != nil {
 		return false, err
 	}
@@ -284,7 +291,7 @@ return 1`
 		var applied bool
 		err := withWalletTransaction(id, func(tx *gorm.DB) error {
 			query := tx.Model(&User{}).Where("id = ?", id).
-				Where("quota >= ? AND quota <= ?", int64(common.MinQuota)-int64(delta), int64(common.MaxQuota)-int64(delta))
+				Where("quota >= ? AND quota <= ?", int64(-walletQuotaLimit)-int64(delta), int64(walletQuotaLimit)-int64(delta))
 			if reserve {
 				query = query.Where("quota >= ?", -delta)
 			}
@@ -296,12 +303,15 @@ return 1`
 				if reserve {
 					return nil
 				}
-				return errors.New("wallet quota limit exceeded")
+				return ErrWalletQuotaLimitExceeded
 			}
 			applied = true
 			return RecordQuotaCredit(tx, event.Credit)
 		})
 		return applied && err == nil, err
+	}
+	if result == -3 {
+		return false, ErrWalletQuotaLimitExceeded
 	}
 	if result < 0 {
 		return false, ErrWalletUnavailable

@@ -43,6 +43,13 @@ const SITE_SECTIONS = [
           AfterSales: settings.AfterSales,
           HomePageContent: settings.HomePageContent,
           ServerAddress: settings.ServerAddress,
+          TaskPublicAddress: settings.TaskPublicAddress,
+          general_setting: {
+            docs_link: settings['general_setting.docs_link'],
+            gallery_link: settings['general_setting.gallery_link'],
+            infinite_canvas_link:
+              settings['general_setting.infinite_canvas_link'],
+          },
           legal: {
             user_agreement: settings['legal.user_agreement'],
             privacy_policy: settings['legal.privacy_policy'],

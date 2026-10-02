@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   Box,
+  ClipboardList,
   CreditCard,
   FileText,
   FlaskConical,
@@ -26,10 +27,12 @@ import {
   LayoutDashboard,
   ListTodo,
   MessageSquare,
+  PlugZap,
   Radio,
   ReceiptText,
   ServerCog,
   Settings,
+  ShieldCheck,
   Ticket,
   User,
   Users,
@@ -92,6 +95,11 @@ export function useSidebarData(): SidebarData {
             icon: FileText,
           },
           {
+            title: t('Audit Logs'),
+            url: '/usage-logs/audit',
+            icon: ClipboardList,
+          },
+          {
             title: t('Task Logs'),
             url: '/usage-logs/task',
             activeUrls: ['/usage-logs/drawing'],
@@ -113,6 +121,11 @@ export function useSidebarData(): SidebarData {
             title: t('Profile'),
             url: '/profile',
             icon: User,
+          },
+          {
+            title: t('Security & Access'),
+            url: '/security',
+            icon: ShieldCheck,
           },
         ],
       },
@@ -154,6 +167,12 @@ export function useSidebarData(): SidebarData {
             title: t('System Info'),
             url: '/system-info',
             icon: ServerCog,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
+            title: t('Task Plugins'),
+            url: '/task-plugins',
+            icon: PlugZap,
             requiredRole: ROLE.SUPER_ADMIN,
           },
           {

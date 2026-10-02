@@ -8,8 +8,19 @@ import (
 	"github.com/tiktoken-go/tokenizer/codec"
 )
 
-// tokenEncoderMap won't grow after initialization
-var defaultTokenEncoder tokenizer.Codec
+// defaultTokenEncoder is created once on first use, so token counting never
+// sees a nil codec even when InitTokenEncoders has not run (tests, tools).
+var (
+	defaultTokenEncoder     tokenizer.Codec
+	defaultTokenEncoderOnce sync.Once
+)
+
+func getDefaultTokenEncoder() tokenizer.Codec {
+	defaultTokenEncoderOnce.Do(func() {
+		defaultTokenEncoder = codec.NewCl100kBase()
+	})
+	return defaultTokenEncoder
+}
 
 // tokenEncoderMap is used to store token encoders for different models
 var tokenEncoderMap = make(map[string]tokenizer.Codec)
@@ -19,7 +30,7 @@ var tokenEncoderMutex sync.RWMutex
 
 func InitTokenEncoders() {
 	common.SysLog("initializing token encoders")
-	defaultTokenEncoder = codec.NewCl100kBase()
+	getDefaultTokenEncoder()
 	common.SysLog("token encoders initialized")
 }
 
@@ -45,8 +56,9 @@ func getTokenEncoder(model string) tokenizer.Codec {
 	modelCodec, err := tokenizer.ForModel(tokenizer.Model(model))
 	if err != nil {
 		// Cache the default encoder for this model to avoid repeated failures
-		tokenEncoderMap[model] = defaultTokenEncoder
-		return defaultTokenEncoder
+		encoder := getDefaultTokenEncoder()
+		tokenEncoderMap[model] = encoder
+		return encoder
 	}
 
 	// Cache the new encoder

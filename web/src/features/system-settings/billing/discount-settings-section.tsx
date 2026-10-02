@@ -91,12 +91,15 @@ export function DiscountSettingsSection(props: DiscountSettingsSectionProps) {
   const { isDirty, isSubmitting } = form.formState
 
   async function onSubmit(values: DiscountSettingsValues) {
-    const response = await updateOption.mutateAsync({
-      key: 'discount_setting.schedule',
-      value: JSON.stringify(values),
-    })
-    if (response.success) {
+    try {
+      await updateOption.mutateAsync({
+        key: 'discount_setting.schedule',
+        value: JSON.stringify(values),
+      })
       form.reset(values)
+    } catch {
+      // useUpdateOption rejects on failure and already reports the error;
+      // leave the form dirty so the rejected schedule is not shown as saved.
     }
   }
 

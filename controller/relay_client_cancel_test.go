@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
@@ -29,8 +30,8 @@ func TestShouldRetryStopsAfterClientDisconnect(t *testing.T) {
 		types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 
 	c, cancel := newRetryTestContext(t)
-	assert.True(t, shouldRetry(c, apiErr, 3), "a live client still gets retries")
+	assert.True(t, service.ShouldRetryRelayError(c, apiErr, 3), "a live client still gets retries")
 
 	cancel()
-	assert.False(t, shouldRetry(c, apiErr, 3), "a disconnected client must not be retried on another channel")
+	assert.False(t, service.ShouldRetryRelayError(c, apiErr, 3), "a disconnected client must not be retried on another channel")
 }

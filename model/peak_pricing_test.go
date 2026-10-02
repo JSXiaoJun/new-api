@@ -45,3 +45,14 @@ func TestInvalidPeakPricingDoesNotOverwritePersistedOption(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, 0.0, *schedule.Default.Price)
 }
+
+func TestValidateModelPricingAcceptsSupportedBillingModes(t *testing.T) {
+	for _, mode := range []string{billing_setting.BillingModeRatio, billing_setting.BillingModePerSecond} {
+		t.Run(mode, func(t *testing.T) {
+			values := PricingValues{"ModelPrice": 0.1, "billing_setting.billing_mode": mode}
+			require.NoError(t, validateModelPricing("pricing-mode-test", values, PricingValues{}))
+		})
+	}
+	err := validateModelPricing("pricing-mode-test", PricingValues{"ModelPrice": 0.1, "billing_setting.billing_mode": "per_minute"}, PricingValues{})
+	assert.EqualError(t, err, "invalid billing mode")
+}

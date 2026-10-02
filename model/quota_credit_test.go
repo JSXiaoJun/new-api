@@ -163,22 +163,23 @@ func TestCreditAuditFailureDoesNotIncreaseDatabaseOrCache(t *testing.T) {
 
 func TestInvalidCreditsDoNotCreateEvidence(t *testing.T) {
 	setupUserUpdateTestState(t)
-	user := createReserveTestUser(t, common.MaxQuota)
+	user := createReserveTestUser(t, common.MaxWalletQuota)
 	require.Error(t, IncreaseUserQuota(user.Id, -1, true))
-	require.Error(t, IncreaseUserQuota(user.Id, 1, true))
+	require.ErrorIs(t, IncreaseUserQuota(user.Id, 1, true), ErrWalletQuotaLimitExceeded)
 	require.Error(t, IncreaseUserQuota(user.Id+1, 10, true))
+	require.Error(t, IncreaseUserQuota(user.Id, common.MaxQuota+1, true), "one credit stays a single-operation amount")
 	require.NoError(t, IncreaseUserQuota(user.Id, 0, true))
 	_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
 	require.NoError(t, err)
 	assert.Zero(t, total)
-	assert.Equal(t, common.MaxQuota, getUserQuotaFromDB(t, user.Id))
+	assert.Equal(t, common.MaxWalletQuota, getUserQuotaFromDB(t, user.Id))
 }
 
 func TestOverrideCreditAuditFailureRollsBackActualBalance(t *testing.T) {
 	setupUserUpdateTestState(t)
 	user := createReserveTestUser(t, 100)
 	rejectDirectQuotaCreditWrites(t)
-	_, err := OverrideUserQuota(user.Id, 150, QuotaCreditMeta{OperatorId: 9})
+	_, err := AdjustUserQuota(user.Id, common.RoleRootUser, "override", 150, QuotaCreditMeta{OperatorId: 9})
 	require.Error(t, err)
 	assert.Equal(t, 100, getUserQuotaFromDB(t, user.Id))
 }
@@ -189,11 +190,11 @@ func TestOverrideAuditsOnlyActualPositiveDelta(t *testing.T) {
 	user := createReserveTestUser(t, 100)
 	require.NoError(t, populateUserCache(user))
 	require.NoError(t, DecreaseUserQuota(user.Id, 20, true))
-	previous, err := OverrideUserQuota(user.Id, 110, QuotaCreditMeta{OperatorId: 9, RequestId: "override-request"})
+	adjustment, err := AdjustUserQuota(user.Id, common.RoleRootUser, "override", 110, QuotaCreditMeta{OperatorId: 9, RequestId: "override-request"})
 	require.NoError(t, err)
-	assert.Equal(t, 80, previous)
+	assert.Equal(t, 80, adjustment.Before)
 	for _, value := range []int{110, 50} {
-		_, err := OverrideUserQuota(user.Id, value, QuotaCreditMeta{OperatorId: 9})
+		_, err := AdjustUserQuota(user.Id, common.RoleRootUser, "override", value, QuotaCreditMeta{OperatorId: 9})
 		require.NoError(t, err)
 	}
 	credits, total, err := GetUserQuotaCredits(user.Id, 0, 10)

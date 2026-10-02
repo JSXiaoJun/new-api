@@ -28,12 +28,12 @@ func TestGenerateTextOtherInfoRecordsUpstreamTimingSeparately(t *testing.T) {
 
 	other := GenerateTextOtherInfo(ctx, info, 1, 1, 1, 0, 0, 0, 1)
 
-	assert.Equal(t, float64(2000), other["frt"])
-	assert.Equal(t, float64(500), other["upstream_frt"])
-	upstreamDuration, ok := other["upstream_duration"].(float64)
+	assert.Equal(t, float64(2000), other.Snapshot()["frt"])
+	assert.Equal(t, float64(500), other.Snapshot()["upstream_frt"])
+	upstreamDuration, ok := other.Snapshot()["upstream_duration"].(float64)
 	require.True(t, ok)
 	assert.InDelta(t, 3.75, upstreamDuration, 0.000001)
-	assert.Equal(t, float64(1500), other["gateway_overhead"])
+	assert.Equal(t, float64(1500), other.Snapshot()["gateway_overhead"])
 }
 
 func TestGenerateTextOtherInfoOmitsInvalidUpstreamTiming(t *testing.T) {
@@ -53,7 +53,7 @@ func TestGenerateTextOtherInfoOmitsInvalidUpstreamTiming(t *testing.T) {
 
 	other := GenerateTextOtherInfo(ctx, info, 1, 1, 1, 0, 0, 0, 1)
 
-	assert.NotContains(t, other, "upstream_frt")
-	assert.NotContains(t, other, "upstream_duration")
-	assert.Equal(t, float64(2000), other["gateway_overhead"])
+	assert.NotContains(t, other.Snapshot(), "upstream_frt")
+	assert.NotContains(t, other.Snapshot(), "upstream_duration")
+	assert.Equal(t, float64(2000), other.Snapshot()["gateway_overhead"])
 }

@@ -24,6 +24,7 @@ import {
   ENDPOINT_TYPES,
 } from '../constants'
 import type { PricingModel } from '../types'
+import { hasTaskUsageSchema } from './dynamic-price'
 import { isPerSecondPricingModel } from './model-helpers'
 
 // ----------------------------------------------------------------------------
@@ -79,17 +80,26 @@ export function filterByQuotaType(
   quotaType: string
 ): PricingModel[] {
   if (quotaType === QUOTA_TYPES.ALL) return models
-  if (quotaType === QUOTA_TYPES.SECOND) {
-    return models.filter(isPerSecondPricingModel)
+  // Task-usage models form their own bucket, disjoint from token/request.
+  if (quotaType === QUOTA_TYPES.TASK) {
+    return models.filter((m) => hasTaskUsageSchema(m))
   }
-  if (quotaType === QUOTA_TYPES.REQUEST) {
+  // Per-second models form their own bucket, disjoint from per-request.
+  if (quotaType === QUOTA_TYPES.SECOND) {
     return models.filter(
-      (model) =>
-        model.quota_type === QUOTA_TYPE_VALUES.REQUEST &&
-        !isPerSecondPricingModel(model)
+      (m) => isPerSecondPricingModel(m) && !hasTaskUsageSchema(m)
     )
   }
-  return models.filter((model) => model.quota_type === QUOTA_TYPE_VALUES.TOKEN)
+  const targetType =
+    quotaType === QUOTA_TYPES.TOKEN
+      ? QUOTA_TYPE_VALUES.TOKEN
+      : QUOTA_TYPE_VALUES.REQUEST
+  return models.filter(
+    (m) =>
+      m.quota_type === targetType &&
+      !hasTaskUsageSchema(m) &&
+      !isPerSecondPricingModel(m)
+  )
 }
 
 /**
