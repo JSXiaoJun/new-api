@@ -62,6 +62,33 @@ export function formatCurrency(amount: number | string): string {
 }
 
 /**
+ * Bonus percentage of the highest tier whose threshold the amount reaches.
+ * Mirrors operation_setting.TopUpBonusPercent so the wallet shows the bonus
+ * the server will fix on the order.
+ */
+export function getTopUpBonusPercent(
+  amount: number,
+  tiers: Record<number, number> | undefined
+): number {
+  let bestThreshold = -1
+  let bestPercent = 0
+  for (const [rawThreshold, rawPercent] of Object.entries(tiers ?? {})) {
+    const threshold = Number(rawThreshold)
+    const percent = Number(rawPercent)
+    const valid =
+      Number.isInteger(threshold) &&
+      threshold > 0 &&
+      Number.isFinite(percent) &&
+      percent > 0 &&
+      percent <= 1000
+    if (!valid || amount < threshold || threshold <= bestThreshold) continue
+    bestThreshold = threshold
+    bestPercent = percent
+  }
+  return bestPercent
+}
+
+/**
  * Get discount label for display (e.g., "20% OFF")
  */
 export function getDiscountLabel(discount: number): string {

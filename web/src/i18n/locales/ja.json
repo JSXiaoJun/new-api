@@ -6976,6 +6976,26 @@
     "This site does not provide invoices or reimbursement receipts of any kind.": "当サイトではいかなる形式の請求書・経費精算用の証憑も発行しません。",
     "Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.": "チャージ残高は本アカウントでのみ利用でき、出金・譲渡・現金への交換はできません。",
     "Review again": "もう一度確認する",
-    "Agree and top up": "同意してチャージへ進む"
+    "Agree and top up": "同意してチャージへ進む",
+    "Add bonus tier": "ボーナス段階を追加",
+    "Edit bonus tier": "ボーナス段階を編集",
+    "Grant extra balance as a percentage of the paid top-up once the amount reaches this threshold.": "チャージ額がこのしきい値に達すると、支払ったチャージ額の割合で残高を追加付与します。",
+    "Minimum recharge amount": "最低チャージ額",
+    "Top-ups at or above this amount receive the bonus. The highest reached tier applies.": "この金額以上のチャージにボーナスが付与されます。到達した最も高い段階が適用されます。",
+    "Bonus percentage (%)": "ボーナス率 (%)",
+    "For example, 10 means a 100 top-up receives an extra 10 in balance.": "例：10 の場合、100 チャージすると残高が 10 追加されます。",
+    "Bonus percentage must be greater than 0": "ボーナス率は 0 より大きくする必要があります",
+    "Bonus percentage must be at most 1000": "ボーナス率は 1000 以下にする必要があります",
+    "Give extra balance when a top-up reaches an amount": "チャージが指定額に達すると残高を追加付与",
+    "No bonus tiers configured. Click \"Add bonus tier\" to get started.": "ボーナス段階が設定されていません。「ボーナス段階を追加」をクリックして開始してください。",
+    "Bonus": "ボーナス",
+    "+{{percent}}%": "+{{percent}}%",
+    "Top-up bonus": "チャージボーナス",
+    "Minimum recharge amount to bonus percentage (JSON object). The bonus is fixed when the order is created and credited together with the paid balance.": "最低チャージ額からボーナス率へのマップ（JSON オブジェクト）。ボーナスは注文作成時に確定し、支払額と一緒に付与されます。",
+    "Top-up bonus must be a JSON object": "チャージボーナスは JSON オブジェクトである必要があります",
+    "Each bonus tier needs a whole amount above 0 and a percentage between 0 and 1000": "各ボーナス段階には 0 より大きい整数の金額と、0〜1000 の割合が必要です",
+    "e.g., 10": "例：10",
+    "Bonus {{percent}}%": "ボーナス {{percent}}%",
+    "This top-up earns a {{percent}}% bonus, credited with your balance after payment.": "このチャージには {{percent}}% のボーナスが付き、支払い後に残高と一緒に付与されます。"
   }
 }

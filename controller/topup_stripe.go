@@ -100,9 +100,17 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		return
 	}
 	chargedMoney := GetChargedAmount(float64(req.Amount), *user)
-	if rejectInvalidCreditedQuota(c, id,
-		decimal.NewFromFloat(chargedMoney).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
-	) {
+	// model.Recharge credits Money * QuotaPerUnit, so the bonus uses that base.
+	paidQuota, err := validateCreditedQuota(decimal.NewFromFloat(chargedMoney).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+	if err == nil {
+		err = model.ValidateTopUpQuotaCapacity(id, paidQuota)
+	}
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
+		return
+	}
+	bonusQuota, ok := resolveTopUpBonusQuota(c, id, req.Amount, paidQuota)
+	if !ok {
 		return
 	}
 
@@ -125,6 +133,7 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		PaymentProvider: model.PaymentProviderStripe,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
+		BonusQuota:      bonusQuota,
 	}
 	err = topUp.Insert()
 	if err != nil {

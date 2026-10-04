@@ -6976,6 +6976,26 @@
     "This site does not provide invoices or reimbursement receipts of any kind.": "Trang web này không cung cấp bất kỳ hình thức hóa đơn hay chứng từ hoàn ứng nào.",
     "Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.": "Số dư nạp chỉ được sử dụng cho tài khoản này, không thể rút, chuyển nhượng hoặc đổi thành tiền mặt.",
     "Review again": "Xem lại",
-    "Agree and top up": "Đồng ý và nạp tiền"
+    "Agree and top up": "Đồng ý và nạp tiền",
+    "Add bonus tier": "Thêm mức thưởng",
+    "Edit bonus tier": "Sửa mức thưởng",
+    "Grant extra balance as a percentage of the paid top-up once the amount reaches this threshold.": "Tặng thêm số dư theo phần trăm của khoản nạp đã thanh toán khi số tiền đạt ngưỡng này.",
+    "Minimum recharge amount": "Số tiền nạp tối thiểu",
+    "Top-ups at or above this amount receive the bonus. The highest reached tier applies.": "Các lần nạp bằng hoặc lớn hơn số tiền này sẽ nhận thưởng. Áp dụng mức cao nhất đạt được.",
+    "Bonus percentage (%)": "Phần trăm thưởng (%)",
+    "For example, 10 means a 100 top-up receives an extra 10 in balance.": "Ví dụ, 10 nghĩa là nạp 100 sẽ được tặng thêm 10 số dư.",
+    "Bonus percentage must be greater than 0": "Phần trăm thưởng phải lớn hơn 0",
+    "Bonus percentage must be at most 1000": "Phần trăm thưởng không được vượt quá 1000",
+    "Give extra balance when a top-up reaches an amount": "Tặng thêm số dư khi lần nạp đạt một số tiền",
+    "No bonus tiers configured. Click \"Add bonus tier\" to get started.": "Chưa cấu hình mức thưởng. Nhấn \"Thêm mức thưởng\" để bắt đầu.",
+    "Bonus": "Thưởng",
+    "+{{percent}}%": "+{{percent}}%",
+    "Top-up bonus": "Thưởng nạp tiền",
+    "Minimum recharge amount to bonus percentage (JSON object). The bonus is fixed when the order is created and credited together with the paid balance.": "Ánh xạ số tiền nạp tối thiểu sang phần trăm thưởng (đối tượng JSON). Khoản thưởng được cố định khi tạo đơn và cộng cùng số dư đã thanh toán.",
+    "Top-up bonus must be a JSON object": "Thưởng nạp tiền phải là đối tượng JSON",
+    "Each bonus tier needs a whole amount above 0 and a percentage between 0 and 1000": "Mỗi mức thưởng cần số tiền nguyên lớn hơn 0 và phần trăm từ 0 đến 1000",
+    "e.g., 10": "ví dụ: 10",
+    "Bonus {{percent}}%": "Thưởng {{percent}}%",
+    "This top-up earns a {{percent}}% bonus, credited with your balance after payment.": "Lần nạp này được thưởng {{percent}}%, cộng cùng số dư sau khi thanh toán."
   }
 }

@@ -6976,6 +6976,26 @@
     "This site does not provide invoices or reimbursement receipts of any kind.": "Ce site ne fournit aucune facture ni justificatif de remboursement, sous quelque forme que ce soit.",
     "Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.": "Le solde rechargé ne peut être utilisé que par ce compte et ne peut être ni retiré, ni transféré, ni converti en espèces.",
     "Review again": "Revoir",
-    "Agree and top up": "Accepter et recharger"
+    "Agree and top up": "Accepter et recharger",
+    "Add bonus tier": "Ajouter un palier de bonus",
+    "Edit bonus tier": "Modifier le palier de bonus",
+    "Grant extra balance as a percentage of the paid top-up once the amount reaches this threshold.": "Accorde un solde supplémentaire, en pourcentage de la recharge payée, dès que le montant atteint ce seuil.",
+    "Minimum recharge amount": "Montant minimum de recharge",
+    "Top-ups at or above this amount receive the bonus. The highest reached tier applies.": "Les recharges égales ou supérieures à ce montant reçoivent le bonus. Le palier le plus élevé atteint s'applique.",
+    "Bonus percentage (%)": "Pourcentage de bonus (%)",
+    "For example, 10 means a 100 top-up receives an extra 10 in balance.": "Par exemple, 10 signifie qu'une recharge de 100 reçoit 10 de solde supplémentaire.",
+    "Bonus percentage must be greater than 0": "Le pourcentage de bonus doit être supérieur à 0",
+    "Bonus percentage must be at most 1000": "Le pourcentage de bonus ne peut pas dépasser 1000",
+    "Give extra balance when a top-up reaches an amount": "Offrir un solde supplémentaire lorsqu'une recharge atteint un montant",
+    "No bonus tiers configured. Click \"Add bonus tier\" to get started.": "Aucun palier de bonus configuré. Cliquez sur « Ajouter un palier de bonus » pour commencer.",
+    "Bonus": "Bonus",
+    "+{{percent}}%": "+{{percent}} %",
+    "Top-up bonus": "Bonus de recharge",
+    "Minimum recharge amount to bonus percentage (JSON object). The bonus is fixed when the order is created and credited together with the paid balance.": "Correspondance entre montant minimum de recharge et pourcentage de bonus (objet JSON). Le bonus est fixé à la création de la commande et crédité avec le solde payé.",
+    "Top-up bonus must be a JSON object": "Le bonus de recharge doit être un objet JSON",
+    "Each bonus tier needs a whole amount above 0 and a percentage between 0 and 1000": "Chaque palier de bonus nécessite un montant entier supérieur à 0 et un pourcentage entre 0 et 1000",
+    "e.g., 10": "ex. : 10",
+    "Bonus {{percent}}%": "Bonus {{percent}} %",
+    "This top-up earns a {{percent}}% bonus, credited with your balance after payment.": "Cette recharge donne un bonus de {{percent}} %, crédité avec votre solde après le paiement."
   }
 }

@@ -147,6 +147,8 @@ export interface TopupInfo {
   amount_options: number[]
   /** Discount rates by amount */
   discount: Record<number, number>
+  /** Bonus percentage by minimum top-up amount */
+  bonus?: Record<number, number>
   /** Optional topup link for purchasing codes */
   topup_link?: string
   /** Whether Creem topup is enabled */
@@ -298,6 +300,8 @@ export interface TopupRecord {
   trade_no: string
   /** Payment method type */
   payment_method: string
+  /** Payment provider (epay, stripe, ...) */
+  payment_provider?: string
   /** Creation timestamp */
   create_time: number
   /** Completion timestamp */

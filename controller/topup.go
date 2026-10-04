@@ -123,6 +123,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
+		"bonus":                   operation_setting.GetPaymentSetting().AmountBonus,
 		"topup_link":              common.TopUpLink,
 	}
 	common.ApiSuccess(c, data)
@@ -472,6 +473,44 @@ func rejectInvalidCreditedQuota(c *gin.Context, userId int, quota decimal.Decima
 	return false
 }
 
+// topUpBonusQuota is the promotional quota an order earns under the current
+// bonus tiers. tierAmount is the user-facing amount the tiers are keyed by,
+// matching how preset discounts are looked up.
+func topUpBonusQuota(tierAmount int64, paidQuota int) (int64, error) {
+	percent := operation_setting.TopUpBonusPercent(tierAmount)
+	if percent <= 0 || paidQuota <= 0 {
+		return 0, nil
+	}
+	bonus, err := common.WalletQuotaFromDecimalStrict(
+		decimal.NewFromInt(int64(paidQuota)).
+			Mul(decimal.NewFromFloat(percent)).
+			Div(decimal.NewFromInt(100)).
+			Floor(),
+	)
+	if err != nil {
+		return 0, errors.New("充值赠送额度超出系统可表示范围")
+	}
+	return int64(bonus), nil
+}
+
+// resolveTopUpBonusQuota fixes an order's bonus at checkout and rejects the
+// checkout when paid plus bonus quota could not be credited at settlement.
+func resolveTopUpBonusQuota(c *gin.Context, userId int, tierAmount int64, paidQuota int) (int64, bool) {
+	bonus, err := topUpBonusQuota(tierAmount, paidQuota)
+	if err == nil && bonus > 0 {
+		var total int
+		total, err = validateCreditedQuota(decimal.NewFromInt(int64(paidQuota)).Add(decimal.NewFromInt(bonus)))
+		if err == nil {
+			err = model.ValidateTopUpQuotaCapacity(userId, total)
+		}
+	}
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
+		return 0, false
+	}
+	return bonus, true
+}
+
 func rejectInvalidTopUpQuota(c *gin.Context, userId int, amount int64) bool {
 	creditedQuota, err := validateTopUpQuota(amount)
 	if err == nil {
@@ -527,6 +566,17 @@ func RequestEpay(c *gin.Context) {
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		orderAmount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
+	// RechargeEpay credits orderAmount * QuotaPerUnit, so the bonus is derived
+	// from that same paid quota.
+	paidQuota, err := validateCreditedQuota(decimal.NewFromInt(orderAmount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
+		return
+	}
+	bonusQuota, ok := resolveTopUpBonusQuota(c, id, req.Amount, paidQuota)
+	if !ok {
+		return
+	}
 	client := GetEpayClient()
 	if client == nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "当前管理员未配置支付信息"})
@@ -545,6 +595,7 @@ func RequestEpay(c *gin.Context) {
 			PaymentProvider: model.PaymentProviderEpay,
 			CreateTime:      time.Now().Unix(),
 			Status:          common.TopUpStatusPending,
+			BonusQuota:      bonusQuota,
 		}
 		if err := model.CreatePendingEpayWxPayTopUp(topUp); err != nil {
 			if errors.Is(err, model.ErrPendingEpayWxPayOrder) {
@@ -583,7 +634,7 @@ func RequestEpay(c *gin.Context) {
 				"message": "二维码创建失败，请取消当前订单后重试",
 				"data": gin.H{
 					"trade_no":   tradeNo,
-					"expires_at": model.EpayWxPayOrderExpiresAt(topUp.CreateTime),
+					"expires_at": model.EpayOrderExpiresAt(topUp.CreateTime),
 				},
 			})
 			return
@@ -595,12 +646,12 @@ func RequestEpay(c *gin.Context) {
 				"message": "二维码保存失败，请取消当前订单后重试",
 				"data": gin.H{
 					"trade_no":   tradeNo,
-					"expires_at": model.EpayWxPayOrderExpiresAt(topUp.CreateTime),
+					"expires_at": model.EpayOrderExpiresAt(topUp.CreateTime),
 				},
 			})
 			return
 		}
-		if time.Now().Unix() >= model.EpayWxPayOrderExpiresAt(topUp.CreateTime) {
+		if time.Now().Unix() >= model.EpayOrderExpiresAt(topUp.CreateTime) {
 			_ = model.ExpirePendingEpayWxPayTopUp(id, tradeNo)
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "订单已过期，请重新创建"})
 			return
@@ -612,7 +663,7 @@ func RequestEpay(c *gin.Context) {
 			"data": gin.H{
 				"qrcode":     qrCode,
 				"trade_no":   tradeNo,
-				"expires_at": model.EpayWxPayOrderExpiresAt(topUp.CreateTime),
+				"expires_at": model.EpayOrderExpiresAt(topUp.CreateTime),
 			},
 		})
 		return
@@ -640,6 +691,7 @@ func RequestEpay(c *gin.Context) {
 		PaymentProvider: model.PaymentProviderEpay,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
+		BonusQuota:      bonusQuota,
 	}
 	err = topUp.Insert()
 	if err != nil {
@@ -855,7 +907,7 @@ func GetUserTopUpStatus(c *gin.Context) {
 	}
 
 	if topUp.Status == common.TopUpStatusPending && topUp.PaymentMethod == "wxpay" {
-		if model.EpayWxPayOrderExpiresAt(topUp.CreateTime) <= time.Now().Unix() {
+		if model.EpayOrderExpiresAt(topUp.CreateTime) <= time.Now().Unix() {
 			if err := model.ExpirePendingEpayWxPayTopUp(topUp.UserId, tradeNo); err != nil {
 				logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付微信订单过期失败 trade_no=%s error=%q", tradeNo, err.Error()))
 			}
@@ -878,7 +930,7 @@ func GetUserTopUpStatus(c *gin.Context) {
 		"trade_no":      topUp.TradeNo,
 		"status":        topUp.Status,
 		"complete_time": topUp.CompleteTime,
-		"expires_at":    model.EpayWxPayOrderExpiresAt(topUp.CreateTime),
+		"expires_at":    model.EpayOrderExpiresAt(topUp.CreateTime),
 	})
 }
 
@@ -919,7 +971,7 @@ func GetPendingWechatTopUp(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"qrcode":     topUp.QRCode,
 		"trade_no":   topUp.TradeNo,
-		"expires_at": model.EpayWxPayOrderExpiresAt(topUp.CreateTime),
+		"expires_at": model.EpayOrderExpiresAt(topUp.CreateTime),
 	})
 }
 

@@ -311,6 +311,11 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "payment_setting.amount_bonus":
+		if err = operation_setting.ValidateAmountBonusJSON(option.Value.(string)); err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
 	case "claude.default_max_tokens":
 		err = model_setting.ValidateClaudeDefaultMaxTokens(option.Value.(string))
 		if err != nil {

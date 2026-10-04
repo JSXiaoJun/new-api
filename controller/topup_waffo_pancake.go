@@ -377,10 +377,23 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		return
 	}
 
+	orderAmount := normalizeWaffoPancakeTopUpAmount(req.Amount)
+	// model.RechargeWaffoPancake credits Amount * QuotaPerUnit, so the bonus uses that base.
+	paidQuota, err := validateCreditedQuota(decimal.NewFromInt(orderAmount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
+		return
+	}
+	bonusQuota, ok := resolveTopUpBonusQuota(c, id, req.Amount, paidQuota)
+	if !ok {
+		return
+	}
+
 	tradeNo := fmt.Sprintf("WAFFO_PANCAKE-%d-%d-%s", id, time.Now().UnixMilli(), randstr.String(6))
 	topUp := &model.TopUp{
 		UserId:          id,
-		Amount:          normalizeWaffoPancakeTopUpAmount(req.Amount),
+		BonusQuota:      bonusQuota,
+		Amount:          orderAmount,
 		Money:           payMoney,
 		TradeNo:         tradeNo,
 		PaymentMethod:   model.PaymentMethodWaffoPancake,

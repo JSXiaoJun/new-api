@@ -6976,6 +6976,26 @@
     "This site does not provide invoices or reimbursement receipts of any kind.": "本站不提供任何形式的发票或报销凭证。",
     "Top-up balance can only be used by this account and cannot be withdrawn, transferred, or exchanged for cash.": "充值额度仅限本账户使用，不可提现、转让或兑换为现金。",
     "Review again": "再看看",
-    "Agree and top up": "确认同意，进入充值"
+    "Agree and top up": "确认同意，进入充值",
+    "Add bonus tier": "添加赠送档位",
+    "Edit bonus tier": "编辑赠送档位",
+    "Grant extra balance as a percentage of the paid top-up once the amount reaches this threshold.": "充值数量达到该门槛后，按实付充值额度的百分比额外赠送余额。",
+    "Minimum recharge amount": "最低充值数量",
+    "Top-ups at or above this amount receive the bonus. The highest reached tier applies.": "充值数量大于或等于该值即可获得赠送，按达到的最高一档计算。",
+    "Bonus percentage (%)": "赠送百分比 (%)",
+    "For example, 10 means a 100 top-up receives an extra 10 in balance.": "例如填 10，充值 100 将额外赠送 10 的余额。",
+    "Bonus percentage must be greater than 0": "赠送百分比必须大于 0",
+    "Bonus percentage must be at most 1000": "赠送百分比不能超过 1000",
+    "Give extra balance when a top-up reaches an amount": "充值达到指定数量时额外赠送余额",
+    "No bonus tiers configured. Click \"Add bonus tier\" to get started.": "尚未配置赠送档位。点击“添加赠送档位”开始设置。",
+    "Bonus": "赠送",
+    "+{{percent}}%": "+{{percent}}%",
+    "Top-up bonus": "充值赠送",
+    "Minimum recharge amount to bonus percentage (JSON object). The bonus is fixed when the order is created and credited together with the paid balance.": "最低充值数量到赠送百分比的映射（JSON 对象）。赠送额度在下单时确定，并与实付额度一起到账。",
+    "Top-up bonus must be a JSON object": "充值赠送必须是 JSON 对象",
+    "Each bonus tier needs a whole amount above 0 and a percentage between 0 and 1000": "每个赠送档位的数量必须是大于 0 的整数，百分比必须在 0 到 1000 之间",
+    "e.g., 10": "例如：10",
+    "Bonus {{percent}}%": "赠送 {{percent}}%",
+    "This top-up earns a {{percent}}% bonus, credited with your balance after payment.": "本次充值可获赠 {{percent}}%，支付完成后与充值额度一起到账。"
   }
 }

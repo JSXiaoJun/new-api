@@ -50,6 +50,7 @@ import {
   getDiscountLabel,
   getPaymentIcon,
   getMinTopupAmount,
+  getTopUpBonusPercent,
   calculatePresetPricing,
 } from '../lib'
 import type {
@@ -154,6 +155,7 @@ export function RechargeFormCard({
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
   const redemptionEnabled = topupInfo?.enable_redemption !== false
+  const topUpBonusPercent = getTopUpBonusPercent(topupAmount, topupInfo?.bonus)
 
   if (loading) {
     return (
@@ -282,6 +284,10 @@ export function RechargeFormCard({
                         discount,
                         usdExchangeRate
                       )
+                      const presetBonusPercent = getTopUpBonusPercent(
+                        preset.value,
+                        topupInfo?.bonus
+                      )
                       return (
                         <Button
                           key={preset.value}
@@ -294,15 +300,22 @@ export function RechargeFormCard({
                           )}
                           onClick={() => onSelectPreset(preset)}
                         >
-                          <div className='flex w-full items-center justify-between'>
+                          <div className='flex w-full items-center justify-between gap-1'>
                             <div className='text-base font-semibold sm:text-lg'>
                               {formatNumber(displayValue)}
                             </div>
-                            {hasDiscount && (
-                              <div className='text-xs font-medium text-green-600'>
-                                {getDiscountLabel(discount)}
-                              </div>
-                            )}
+                            <div className='flex flex-col items-end text-xs font-medium text-green-600'>
+                              {hasDiscount && (
+                                <span>{getDiscountLabel(discount)}</span>
+                              )}
+                              {presetBonusPercent > 0 && (
+                                <span>
+                                  {t('Bonus {{percent}}%', {
+                                    percent: presetBonusPercent,
+                                  })}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
                             Pay {formatCurrency(actualPrice)}
@@ -350,6 +363,14 @@ export function RechargeFormCard({
                     )}
                   </div>
                 </div>
+                {topUpBonusPercent > 0 && (
+                  <p className='text-xs font-medium text-green-600'>
+                    {t(
+                      'This top-up earns a {{percent}}% bonus, credited with your balance after payment.',
+                      { percent: topUpBonusPercent }
+                    )}
+                  </p>
+                )}
               </div>
 
               <div className='space-y-2.5 sm:space-y-3'>
