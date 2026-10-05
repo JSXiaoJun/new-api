@@ -365,9 +365,18 @@ func SearchUsers(c *gin.Context) {
 			status = &parsed
 		}
 	}
+	inviterId := 0
+	if inviterStr := strings.TrimSpace(c.Query("inviter_id")); inviterStr != "" {
+		parsed, err := strconv.Atoi(inviterStr)
+		if err != nil || parsed <= 0 {
+			common.ApiErrorMsg(c, "邀请人 ID 无效")
+			return
+		}
+		inviterId = parsed
+	}
 	pageInfo := common.GetPageQuery(c)
 	sortOptions := model.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
-	users, total, err := model.SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
+	users, total, err := model.SearchUsers(keyword, group, role, status, inviterId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
 	if err != nil {
 		common.ApiError(c, err)
 		return

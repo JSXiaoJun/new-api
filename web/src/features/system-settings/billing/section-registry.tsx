@@ -63,7 +63,7 @@ const BILLING_SECTIONS = [
       <QuotaSettingsSection
         defaultValues={{
           QuotaForNewUser: settings.QuotaForNewUser,
-          QuotaForInviter: settings.QuotaForInviter,
+          InviterTopUpRewardPercent: settings.InviterTopUpRewardPercent,
           QuotaForInvitee: settings.QuotaForInvitee,
           TopUpLink: settings.TopUpLink,
           quota_setting: {

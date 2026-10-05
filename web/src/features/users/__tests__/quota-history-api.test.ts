@@ -22,7 +22,7 @@ import { expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 
-import { getUserQuotaLogs } from '../api'
+import { getUserQuotaLogs, searchUsers } from '../api'
 
 test('quota history defaults to credit records and requests legacy logs only explicitly', async () => {
   const get = vi
@@ -86,5 +86,23 @@ test('reopening quota history does not reuse a canceled request or show a cancel
     expect(toastError).not.toHaveBeenCalled()
   } finally {
     api.defaults.adapter = originalAdapter
+  }
+})
+
+test('user search sends the inviter id only when one is provided', async () => {
+  const get = vi
+    .spyOn(api, 'get')
+    .mockResolvedValue({ data: { success: true } })
+  try {
+    await searchUsers({ inviter_id: 7, p: 1, page_size: 20 })
+    expect(get).toHaveBeenLastCalledWith(
+      expect.stringContaining('inviter_id=7')
+    )
+    await searchUsers({ keyword: 'alice', p: 1, page_size: 20 })
+    expect(get).toHaveBeenLastCalledWith(
+      expect.not.stringContaining('inviter_id')
+    )
+  } finally {
+    get.mockRestore()
   }
 })

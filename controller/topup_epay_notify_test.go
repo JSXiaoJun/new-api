@@ -301,3 +301,101 @@ func TestEpayNotifyRejectsWxPayOrderSettledAsAlipay(t *testing.T) {
 	require.Equal(t, "success", postEpayNotify(t, signedEpayNotifyParams(order.TradeNo, "wxpay", "5.00", epayNotifyTestKey)))
 	require.Equal(t, 5*500000, userQuotaForEpayNotifyTest(t, user.Id))
 }
+
+func setInviterTopUpRewardPercentForTest(t *testing.T, percent float64) {
+	t.Helper()
+	original := common.InviterTopUpRewardPercent
+	common.InviterTopUpRewardPercent = percent
+	t.Cleanup(func() { common.InviterTopUpRewardPercent = original })
+}
+
+func affQuotaForEpayNotifyTest(t *testing.T, userID int) (int, int) {
+	t.Helper()
+	var user model.User
+	require.NoError(t, model.DB.Select("aff_quota", "aff_history").First(&user, userID).Error)
+	return user.AffQuota, user.AffHistoryQuota
+}
+
+func TestEpayNotifyRewardsInviterWithShareOfActualPaymentOnce(t *testing.T) {
+	setupEpayNotifyTest(t)
+	setInviterTopUpRewardPercentForTest(t, 10)
+	setTopUpBonusTiersForTest(t, map[int]float64{10: 50})
+	oldPrice := operation_setting.Price
+	operation_setting.Price = 7
+	t.Cleanup(func() { operation_setting.Price = oldPrice })
+
+	inviter := model.User{Username: "epay_inviter", AffCode: "epay_inviter", Password: "password123", Status: common.UserStatusEnabled}
+	require.NoError(t, model.DB.Create(&inviter).Error)
+	invitee := model.User{Username: "epay_invitee", AffCode: "epay_invitee", Password: "password123", Status: common.UserStatusEnabled, InviterId: inviter.Id}
+	require.NoError(t, model.DB.Create(&invitee).Error)
+	stranger := model.User{Username: "epay_stranger", AffCode: "epay_stranger", Password: "password123", Status: common.UserStatusEnabled}
+	require.NoError(t, model.DB.Create(&stranger).Error)
+
+	// Amount 10 at a 20% discount: the user actually paid 56 (8 units of 7).
+	// The promotional bonus is not money paid, so it never earns a reward.
+	invited := model.TopUp{
+		UserId: invitee.Id, Amount: 10, Money: 56, TradeNo: "USR5NOEPAYINV1",
+		PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay,
+		CreateTime: common.GetTimestamp(), Status: common.TopUpStatusPending, BonusQuota: 5 * 500000,
+	}
+	uninvited := model.TopUp{
+		UserId: stranger.Id, Amount: 10, Money: 70, TradeNo: "USR6NOEPAYINV2",
+		PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay,
+		CreateTime: common.GetTimestamp(), Status: common.TopUpStatusPending,
+	}
+	require.NoError(t, model.DB.Create(&invited).Error)
+	require.NoError(t, model.DB.Create(&uninvited).Error)
+
+	wantReward := 8 * 500000 / 10
+	paid := signedEpayNotifyParams(invited.TradeNo, "alipay", "56.00", epayNotifyTestKey)
+	require.Equal(t, "success", postEpayNotify(t, paid))
+	affQuota, affHistory := affQuotaForEpayNotifyTest(t, inviter.Id)
+	assert.Equal(t, wantReward, affQuota)
+	assert.Equal(t, wantReward, affHistory)
+	assert.Equal(t, 0, userQuotaForEpayNotifyTest(t, inviter.Id), "the reward goes to the referral balance, not the wallet")
+
+	require.Equal(t, "success", postEpayNotify(t, paid), "gateway retries must not reward twice")
+	affQuota, _ = affQuotaForEpayNotifyTest(t, inviter.Id)
+	assert.Equal(t, wantReward, affQuota)
+
+	require.Equal(t, "success", postEpayNotify(t, signedEpayNotifyParams(uninvited.TradeNo, "alipay", "70.00", epayNotifyTestKey)))
+	affQuota, _ = affQuotaForEpayNotifyTest(t, inviter.Id)
+	assert.Equal(t, wantReward, affQuota, "a user who registered without a code rewards nobody")
+}
+
+func TestEpayNotifySkipsInviterRewardWhenPercentIsZero(t *testing.T) {
+	setupEpayNotifyTest(t)
+	setInviterTopUpRewardPercentForTest(t, 0)
+
+	inviter := model.User{Username: "epay_inviter_off", AffCode: "epay_inviter_off", Password: "password123", Status: common.UserStatusEnabled}
+	require.NoError(t, model.DB.Create(&inviter).Error)
+	invitee := model.User{Username: "epay_invitee_off", AffCode: "epay_invitee_off", Password: "password123", Status: common.UserStatusEnabled, InviterId: inviter.Id}
+	require.NoError(t, model.DB.Create(&invitee).Error)
+	order := model.TopUp{
+		UserId: invitee.Id, Amount: 10, Money: 10, TradeNo: "USR7NOEPAYINV3",
+		PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay,
+		CreateTime: common.GetTimestamp(), Status: common.TopUpStatusPending,
+	}
+	require.NoError(t, model.DB.Create(&order).Error)
+
+	require.Equal(t, "success", postEpayNotify(t, signedEpayNotifyParams(order.TradeNo, "alipay", "10.00", epayNotifyTestKey)))
+	affQuota, affHistory := affQuotaForEpayNotifyTest(t, inviter.Id)
+	assert.Zero(t, affQuota)
+	assert.Zero(t, affHistory)
+}
+
+func TestUpdateOptionRejectsOutOfRangeInviterTopUpRewardPercent(t *testing.T) {
+	setupEpayNotifyTest(t)
+	for _, value := range []string{`-1`, `100.5`, `"abc"`, `"NaN"`} {
+		t.Run(value, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPut, "/api/option/",
+				strings.NewReader(`{"key":"InviterTopUpRewardPercent","value":`+value+`}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+			UpdateOption(c)
+			assert.Contains(t, recorder.Body.String(), `"success":false`)
+		})
+	}
+}

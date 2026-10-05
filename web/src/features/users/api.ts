@@ -66,6 +66,7 @@ export async function searchUsers(
   const {
     keyword = '',
     group = '',
+    inviter_id,
     role = '',
     status = '',
     p = 1,
@@ -76,6 +77,7 @@ export async function searchUsers(
   const queryParams = new URLSearchParams()
   queryParams.set('keyword', keyword)
   queryParams.set('group', group)
+  if (inviter_id) queryParams.set('inviter_id', String(inviter_id))
   if (role) queryParams.set('role', role)
   if (status) queryParams.set('status', status)
   queryParams.set('p', String(p))

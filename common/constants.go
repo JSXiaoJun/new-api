@@ -2,6 +2,7 @@ package common
 
 import (
 	"crypto/tls"
+	"math"
 	//"os"
 	//"strconv"
 	"sync"
@@ -123,8 +124,16 @@ var TelegramBotToken = ""
 var TelegramBotName = ""
 
 var QuotaForNewUser = 0
-var QuotaForInviter = 0
+
+// InviterTopUpRewardPercent is the share (0-100) of an invited user's actual
+// top-up payment credited to the inviter's referral balance.
+var InviterTopUpRewardPercent = 0.0
 var QuotaForInvitee = 0
+
+func IsValidInviterTopUpRewardPercent(percent float64) bool {
+	return !math.IsNaN(percent) && percent >= 0 && percent <= 100
+}
+
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

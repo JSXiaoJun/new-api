@@ -2026,7 +2026,6 @@
     "Each tier supports 0~2 conditions (over len, p, c); the last tier is the catch-all without conditions. Use len (full input length, including cache hits) for tier conditions to avoid mis-routing when cache hits reduce p.": "Chaque palier accepte 0 à 2 conditions (sur len, p, c) ; le dernier palier est le filet de sécurité sans condition. Utilisez len (longueur d'entrée complète, y compris les cache hits) pour les conditions de palier afin d'éviter les routages erronés lorsque les cache hits réduisent p.",
     "Each tier supports up to 2 conditions; the last tier is the catch-all without conditions. Use full input length for tier conditions to avoid mis-routing when cache hits reduce billable input tokens.": "Chaque palier accepte jusqu’à 2 conditions ; le dernier palier sert de repli sans condition. Utilisez la longueur complète de l’entrée pour éviter un mauvais aiguillage lorsque les lectures de cache réduisent les tokens d’entrée facturables.",
     "Each tier supports up to 2 conditions. The last tier without conditions is the fallback.": "Chaque palier prend en charge jusqu’à 2 conditions. Le dernier palier sans condition sert de repli.",
-    "Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.": "Gagnez des récompenses quand des utilisateurs rejoignent via votre lien de parrainage. Transférez-les vers votre solde à tout moment.",
     "Earnings": "Gains",
     "Edit": "Modifier",
     "Edit {{title}}": "Modifier {{title}}",
@@ -3130,7 +3129,6 @@
     "Invitee reward": "Bonus du filleul",
     "Invitee Reward": "Récompense de l'invité",
     "Inviter": "Inviteur",
-    "Inviter Reward": "Récompense de l'inviteur",
     "Invites": "Invitations",
     "Invoke developer-defined functions with structured arguments": "Appeler des fonctions définies par le développeur avec des arguments structurés",
     "io.net API Key": "Clé API io.net",
@@ -4710,7 +4708,6 @@
     "Quota given to invited users": "Quota attribué aux utilisateurs invités",
     "Quota given to invited users ({{formattedQuota}})": "Quota attribué aux utilisateurs invités ({{formattedQuota}})",
     "Quota given to users who invite others": "Quota attribué aux utilisateurs qui invitent d'autres personnes",
-    "Quota given to users who invite others ({{formattedQuota}})": "Quota attribué aux utilisateurs qui invitent d'autres personnes ({{formattedQuota}})",
     "Quota History": "Historique du quota",
     "Quota must be a positive number": "Le quota doit être un nombre positif",
     "Quota must be zero or greater": "Le quota ne peut pas être négatif",
@@ -6996,6 +6993,12 @@
     "Each bonus tier needs a whole amount above 0 and a percentage between 0 and 1000": "Chaque palier de bonus nécessite un montant entier supérieur à 0 et un pourcentage entre 0 et 1000",
     "e.g., 10": "ex. : 10",
     "Bonus {{percent}}%": "Bonus {{percent}} %",
-    "This top-up earns a {{percent}}% bonus, credited with your balance after payment.": "Cette recharge donne un bonus de {{percent}} %, crédité avec votre solde après le paiement."
+    "This top-up earns a {{percent}}% bonus, credited with your balance after payment.": "Cette recharge donne un bonus de {{percent}} %, crédité avec votre solde après le paiement.",
+    "Inviter Reward (%)": "Récompense du parrain (%)",
+    "When a user registers with an invitation code and tops up, the inviter earns this percentage of the actual amount paid": "Lorsqu'un utilisateur s'inscrit avec un code d'invitation et recharge, le parrain reçoit ce pourcentage du montant réellement payé",
+    "Must be less than or equal to 100": "Doit être inférieur ou égal à 100",
+    "Earn rewards when users register through your referral link and top up. Transfer accumulated rewards to your balance anytime.": "Gagnez des récompenses quand des utilisateurs s'inscrivent via votre lien de parrainage et rechargent. Transférez vos récompenses accumulées vers votre solde à tout moment.",
+    "Inviter user ID": "ID de l'utilisateur parrain",
+    "Search users invited by user ID...": "Rechercher les utilisateurs invités par l'ID..."
   }
 }

@@ -27,7 +27,9 @@ import {
   DISABLED_ROW_MOBILE,
   DataTablePage,
   useDataTable,
+  useDebouncedColumnFilter,
 } from '@/components/data-table'
+import { Input } from '@/components/ui/input'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { createServerError } from '@/lib/server-error-message'
@@ -83,8 +85,30 @@ export function UsersTable() {
       { columnId: 'status', searchKey: 'status', type: 'array' },
       { columnId: 'role', searchKey: 'role', type: 'array' },
       { columnId: 'group', searchKey: 'group', type: 'string' },
+      { columnId: '_inviterSearch', searchKey: 'inviter', type: 'string' },
     ],
   })
+  const {
+    value: inviterFilter,
+    inputValue: inviterFilterInput,
+    setInputValue: setInviterFilterInput,
+  } = useDebouncedColumnFilter({
+    columnFilters,
+    columnId: '_inviterSearch',
+    onColumnFiltersChange,
+  })
+  const inviterId = inviterFilter.trim()
+  const inviterInput = inviterFilterInput.trim()
+  const isInviterInputValid =
+    inviterInput === '' ||
+    (/^\d+$/.test(inviterInput) &&
+      Number.isSafeInteger(Number(inviterInput)) &&
+      Number(inviterInput) > 0)
+  const isInviterIdValid =
+    inviterId === '' ||
+    (/^\d+$/.test(inviterId) &&
+      Number.isSafeInteger(Number(inviterId)) &&
+      Number(inviterId) > 0)
   const statusFilter =
     (columnFilters.find((filter) => filter.id === 'status')?.value as
       | string[]
@@ -129,13 +153,18 @@ export function UsersTable() {
       statusFilter,
       roleFilter,
       groupFilter,
+      inviterId,
       sortParams,
       refreshTrigger,
     ],
+    enabled: isInviterIdValid,
     queryFn: async () => {
       const hasFilter = globalFilter?.trim()
       const hasColumnFilter =
-        statusFilter.length > 0 || roleFilter.length > 0 || Boolean(groupFilter)
+        statusFilter.length > 0 ||
+        roleFilter.length > 0 ||
+        Boolean(groupFilter) ||
+        Boolean(inviterId)
       const params = {
         p: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
@@ -150,6 +179,7 @@ export function UsersTable() {
               status: statusFilter[0] ?? '',
               role: roleFilter[0] ?? '',
               group: groupFilter,
+              inviter_id: inviterId === '' ? undefined : Number(inviterId),
             })
           : await getUsers(params)
 
@@ -215,10 +245,33 @@ export function UsersTable() {
       skeletonKeyPrefix='users-skeleton'
       applyHeaderSize
       toolbarProps={{
-        searchPlaceholder: t(
-          'Filter by username, name, email or API key...'
-        ),
+        searchPlaceholder: t('Filter by username, name, email or API key...'),
         searchDebounceMs: 500,
+        additionalSearch: (
+          <div className='w-full sm:w-[180px]'>
+            <Input
+              aria-label={t('Inviter user ID')}
+              aria-invalid={!isInviterInputValid}
+              aria-describedby={
+                isInviterInputValid ? undefined : 'users-inviter-id-error'
+              }
+              inputMode='numeric'
+              placeholder={t('Search users invited by user ID...')}
+              value={inviterFilterInput}
+              onChange={(event) => setInviterFilterInput(event.target.value)}
+              className='w-full'
+            />
+            {!isInviterInputValid && (
+              <p
+                id='users-inviter-id-error'
+                role='alert'
+                className='text-destructive mt-1 text-xs'
+              >
+                {t('Enter a valid user ID')}
+              </p>
+            )}
+          </div>
+        ),
         filters: [
           {
             columnId: 'status',

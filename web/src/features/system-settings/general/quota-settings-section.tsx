@@ -53,7 +53,10 @@ import { useUpdateOption } from '../hooks/use-update-option'
 
 const quotaSchema = z.object({
   QuotaForNewUser: z.coerce.number().min(0),
-  QuotaForInviter: z.coerce.number().min(0),
+  InviterTopUpRewardPercent: z.coerce
+    .number({ error: () => i18next.t('Please enter a valid number') })
+    .min(0, { error: () => i18next.t('Must be greater than or equal to 0') })
+    .max(100, { error: () => i18next.t('Must be less than or equal to 100') }),
   QuotaForInvitee: z.coerce.number().min(0),
   TopUpLink: z.string(),
   quota_setting: z.object({
@@ -226,13 +229,16 @@ export function QuotaSettingsSection({
 
             <FormField
               control={form.control}
-              name='QuotaForInviter'
+              name='InviterTopUpRewardPercent'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Inviter Reward')}</FormLabel>
+                  <FormLabel>{t('Inviter Reward (%)')}</FormLabel>
                   <FormControl>
                     <Input
                       type='number'
+                      min={0}
+                      max={100}
+                      step='any'
                       value={field.value ?? ''}
                       onChange={handleNumberChange(field.onChange)}
                       name={field.name}
@@ -242,10 +248,7 @@ export function QuotaSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'Quota given to users who invite others ({{formattedQuota}})',
-                      {
-                        formattedQuota: formatQuotaInputValue(field.value),
-                      }
+                      'When a user registers with an invitation code and tops up, the inviter earns this percentage of the actual amount paid'
                     )}
                   </FormDescription>
                   <FormMessage />

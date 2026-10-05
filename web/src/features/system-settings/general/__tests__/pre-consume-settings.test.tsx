@@ -42,7 +42,7 @@ function Fixture() {
         <QuotaSettingsSection
           defaultValues={{
             QuotaForNewUser: 0,
-            QuotaForInviter: 0,
+            InviterTopUpRewardPercent: 0,
             QuotaForInvitee: 0,
             TopUpLink: '',
             quota_setting: {
@@ -138,6 +138,33 @@ test.each(['', '-1'])(
     await renderSettings()
     const input = screen.getByRole('spinbutton', {
       name: 'Wallet pre-consume bypass threshold (USD)',
+    })
+    fireEvent.change(input, { target: { value } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(input).toHaveAttribute('aria-invalid', 'true'))
+    expect(api.put).not.toHaveBeenCalled()
+  }
+)
+
+test('inviter reward percentage saves a decimal percentage', async () => {
+  await renderSettings()
+  const input = screen.getByRole('spinbutton', { name: 'Inviter Reward (%)' })
+  fireEvent.change(input, { target: { value: '12.5' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await waitFor(() =>
+    expect(api.put).toHaveBeenCalledWith('/api/option/', {
+      key: 'InviterTopUpRewardPercent',
+      value: 12.5,
+    })
+  )
+})
+
+test.each(['-1', '100.5'])(
+  'inviter reward percentage "%s" outside 0-100 prevents saving',
+  async (value) => {
+    await renderSettings()
+    const input = screen.getByRole('spinbutton', {
+      name: 'Inviter Reward (%)',
     })
     fireEvent.change(input, { target: { value } })
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))

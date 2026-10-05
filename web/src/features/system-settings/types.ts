@@ -277,7 +277,7 @@ export type ModelSettings = {
 export type BillingSettings = {
   'billing_setting.peak_pricing': string
   QuotaForNewUser: number
-  QuotaForInviter: number
+  InviterTopUpRewardPercent: number
   QuotaForInvitee: number
   TopUpLink: string
   'quota_setting.enable_free_model_pre_consume': boolean

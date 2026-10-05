@@ -149,6 +149,7 @@ export type UserQuotaHistoryView = 'credits' | 'legacy'
 export interface SearchUsersParams {
   keyword?: string
   group?: string
+  inviter_id?: number
   role?: string
   status?: string
   p?: number

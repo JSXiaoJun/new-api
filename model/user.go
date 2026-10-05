@@ -454,7 +454,9 @@ func GetAllUsers(pageInfo *common.PageInfo, sortOptions ...UserSortOptions) (use
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int, sortOptions ...UserSortOptions) ([]*User, int64, error) {
+// SearchUsers filters users by keyword, group, role and status. A positive
+// inviterId limits the result to users who registered with that user's code.
+func SearchUsers(keyword string, group string, role *int, status *int, inviterId int, startIdx int, num int, sortOptions ...UserSortOptions) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -497,6 +499,9 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	query = query.Where("("+likeCondition+")", likeArgs...)
 	if group != "" {
 		query = query.Where(commonGroupCol+" = ?", group)
+	}
+	if inviterId > 0 {
+		query = query.Where("inviter_id = ?", inviterId)
 	}
 	if role != nil {
 		query = query.Where("role = ?", *role)
@@ -593,12 +598,10 @@ func HardDeleteUserById(id int) error {
 	return user.HardDelete()
 }
 
+// inviteUser counts a registration made with the inviter's code. The inviter's
+// reward is earned later from the invitee's paid top-ups.
 func inviteUser(inviterId int) error {
-	result := DB.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]any{
-		"aff_count":   gorm.Expr("aff_count + ?", 1),
-		"aff_quota":   gorm.Expr("aff_quota + ?", common.QuotaForInviter),
-		"aff_history": gorm.Expr("aff_history + ?", common.QuotaForInviter),
-	})
+	result := DB.Model(&User{}).Where("id = ?", inviterId).Update("aff_count", gorm.Expr("aff_count + ?", 1))
 	if result.Error != nil {
 		return result.Error
 	}
@@ -756,10 +759,10 @@ func (user *User) finishInsert(inviterId int) {
 				RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 			}
 		}
-		if common.QuotaForInviter > 0 {
-			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
+	}
+	if inviterId != 0 {
+		if err := inviteUser(inviterId); err != nil {
+			common.SysLog("failed to count invited user: " + err.Error())
 		}
 	}
 }
@@ -819,9 +822,10 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 				RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 			}
 		}
-		if common.QuotaForInviter > 0 {
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
+	}
+	if inviterId != 0 {
+		if err := inviteUser(inviterId); err != nil {
+			common.SysLog("failed to count invited user: " + err.Error())
 		}
 	}
 }

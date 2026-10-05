@@ -2026,7 +2026,6 @@
     "Each tier supports 0~2 conditions (over len, p, c); the last tier is the catch-all without conditions. Use len (full input length, including cache hits) for tier conditions to avoid mis-routing when cache hits reduce p.": "Каждый уровень поддерживает 0–2 условия (по len, p, c); последний уровень — резервный, без условий. Используйте len (полная длина ввода, включая попадания в кэш) для условий уровня, чтобы избежать ошибочной маршрутизации, когда попадания в кэш уменьшают p.",
     "Each tier supports up to 2 conditions; the last tier is the catch-all without conditions. Use full input length for tier conditions to avoid mis-routing when cache hits reduce billable input tokens.": "Каждый уровень поддерживает до 2 условий; последний уровень является резервным и не содержит условий. Используйте полную длину входа для условий уровня, чтобы кэш-попадания не снижали оплачиваемые входные токены и не приводили к неверному маршруту.",
     "Each tier supports up to 2 conditions. The last tier without conditions is the fallback.": "Каждый уровень поддерживает до 2 условий. Последний уровень без условий используется как резервный.",
-    "Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.": "Получайте вознаграждения, когда пользователи регистрируются по вашей реферальной ссылке. Переводите накопленные вознаграждения на баланс в любое время.",
     "Earnings": "Доход",
     "Edit": "Редактировать",
     "Edit {{title}}": "Редактировать {{title}}",
@@ -3130,7 +3129,6 @@
     "Invitee reward": "Бонус приглашённому",
     "Invitee Reward": "Награда приглашенному",
     "Inviter": "Пригласивший",
-    "Inviter Reward": "Награда приглашающему",
     "Invites": "Приглашения",
     "Invoke developer-defined functions with structured arguments": "Вызывать заданные разработчиком функции со структурированными аргументами",
     "io.net API Key": "Ключ API io.net",
@@ -4710,7 +4708,6 @@
     "Quota given to invited users": "Квота, предоставляемая приглашенным пользователям",
     "Quota given to invited users ({{formattedQuota}})": "Квота, предоставляемая приглашенным пользователям ({{formattedQuota}})",
     "Quota given to users who invite others": "Квота, предоставляемая пользователям, которые приглашают других",
-    "Quota given to users who invite others ({{formattedQuota}})": "Квота, предоставляемая пользователям, которые приглашают других ({{formattedQuota}})",
     "Quota History": "История квоты",
     "Quota must be a positive number": "Квота должна быть положительным числом",
     "Quota must be zero or greater": "Квота не может быть отрицательной",
@@ -6996,6 +6993,12 @@
     "Each bonus tier needs a whole amount above 0 and a percentage between 0 and 1000": "Каждому уровню бонуса нужна целая сумма больше 0 и процент от 0 до 1000",
     "e.g., 10": "например, 10",
     "Bonus {{percent}}%": "Бонус {{percent}}%",
-    "This top-up earns a {{percent}}% bonus, credited with your balance after payment.": "Это пополнение даёт бонус {{percent}}%, который зачисляется вместе с балансом после оплаты."
+    "This top-up earns a {{percent}}% bonus, credited with your balance after payment.": "Это пополнение даёт бонус {{percent}}%, который зачисляется вместе с балансом после оплаты.",
+    "Inviter Reward (%)": "Награда пригласившему (%)",
+    "When a user registers with an invitation code and tops up, the inviter earns this percentage of the actual amount paid": "Когда пользователь регистрируется по коду приглашения и пополняет баланс, пригласивший получает этот процент от фактически оплаченной суммы",
+    "Must be less than or equal to 100": "Должно быть не больше 100",
+    "Earn rewards when users register through your referral link and top up. Transfer accumulated rewards to your balance anytime.": "Получайте вознаграждения, когда пользователи регистрируются по вашей реферальной ссылке и пополняют баланс. Переводите накопленные вознаграждения на баланс в любое время.",
+    "Inviter user ID": "ID пригласившего пользователя",
+    "Search users invited by user ID...": "Найти приглашённых пользователем с ID..."
   }
 }

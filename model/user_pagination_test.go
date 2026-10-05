@@ -59,7 +59,7 @@ func TestSearchUsersSortsBeforePagination(t *testing.T) {
 	truncateTables(t)
 	insertUsersForPaginationTest(t, 42)
 
-	users, total, err := SearchUsers("user", "", nil, nil, 20, 20, NewUserSortOptions("id", "asc"))
+	users, total, err := SearchUsers("user", "", nil, nil, 0, 20, 20, NewUserSortOptions("id", "asc"))
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), total)
 	assert.Equal(t, []int{21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}, collectUserIDs(users))
@@ -90,8 +90,30 @@ func TestSearchUsersMatchesApiKey(t *testing.T) {
 		},
 	}).Error)
 
-	users, total, err := SearchUsers("sk-user02-searchable", "", nil, nil, 0, 20)
+	users, total, err := SearchUsers("sk-user02-searchable", "", nil, nil, 0, 0, 20)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Equal(t, []int{2}, collectUserIDs(users))
+}
+
+func TestSearchUsersFiltersByInviter(t *testing.T) {
+	truncateTables(t)
+	insertUsersForPaginationTest(t, 4)
+	require.NoError(t, DB.Model(&User{}).Where("id IN ?", []int{2, 3}).Update("inviter_id", 1).Error)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", 4).Update("inviter_id", 2).Error)
+
+	users, total, err := SearchUsers("", "", nil, nil, 1, 0, 20, NewUserSortOptions("id", "asc"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	assert.Equal(t, []int{2, 3}, collectUserIDs(users))
+
+	users, total, err = SearchUsers("user03", "", nil, nil, 1, 0, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	assert.Equal(t, []int{3}, collectUserIDs(users))
+
+	users, total, err = SearchUsers("", "", nil, nil, 4, 0, 20)
+	require.NoError(t, err)
+	assert.Zero(t, total)
+	assert.Empty(t, users)
 }
