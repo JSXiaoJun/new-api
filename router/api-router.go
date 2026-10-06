@@ -116,7 +116,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/topup/pending-wechat", middleware.DisableCache(), controller.GetPendingWechatTopUp)
 				selfRoute.GET("/topup/status", middleware.DisableCache(), controller.GetUserTopUpStatus)
 				selfRoute.POST("/topup/cancel", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.CancelUserTopUp)
-				selfRoute.POST("/purchase-agreement", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.ConfirmPurchaseAgreement)
+				selfRoute.POST("/purchase-agreement", middleware.UserCriticalRateLimit("purchase-agreement"), middleware.DisableCache(), controller.ConfirmPurchaseAgreement)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), middleware.PurchaseAgreementRequired(), controller.TopUp)
 				selfRoute.POST("/pay", middleware.CriticalRateLimit(), middleware.PurchaseAgreementRequired(), controller.RequestEpay)
 				selfRoute.POST("/amount", controller.RequestAmount)
