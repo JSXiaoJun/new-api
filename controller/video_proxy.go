@@ -305,6 +305,16 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusPartialContent, http.StatusNotModified, http.StatusRequestedRangeNotSatisfiable:
+		var body io.Reader = resp.Body
+		if resp.StatusCode == http.StatusOK && clientHeaders["Range"] != "" {
+			body, err = sliceTaskMediaIgnoredRange(c.Request.Method, resp, clientHeaders)
+			if err != nil {
+				return &taskMediaProxyError{
+					status: http.StatusBadGateway, code: "artifact_upstream_error",
+					message: "Failed to fetch artifact content", err: err,
+				}
+			}
+		}
 		copyTaskMediaResponseHeaders(c.Writer.Header(), resp.Header)
 		setTaskMediaResponseSecurityHeaders(c.Writer.Header())
 		c.Status(resp.StatusCode)
@@ -312,7 +322,7 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 		if c.Request.Method == http.MethodHead || resp.StatusCode == http.StatusNotModified {
 			return nil
 		}
-		if _, err := io.Copy(c.Writer, resp.Body); err != nil {
+		if _, err := io.Copy(c.Writer, body); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream task media: %v", err))
 		}
 		return nil
@@ -584,6 +594,82 @@ func copyTaskMediaResponseHeaders(destination, source http.Header) {
 			destination.Add(name, value)
 		}
 	}
+}
+
+// sliceTaskMediaIgnoredRange serves a byte range when the upstream answered a
+// Range request with the full 200 body. Browsers must receive 206 for a range
+// request; MP4 files whose moov box sits at the end of the file otherwise fail
+// to load in <video>. It rewrites resp's status and headers and returns the
+// body to stream. Ranges it cannot serve degrade to the full 200 body without
+// Accept-Ranges so the browser stops issuing range requests.
+func sliceTaskMediaIgnoredRange(method string, resp *http.Response, clientHeaders map[string]string) (io.Reader, error) {
+	start, length, usable, satisfiable := parseTaskMediaByteRange(clientHeaders["Range"], resp.ContentLength)
+	if !usable || clientHeaders["If-Range"] != "" {
+		resp.Header.Del("Accept-Ranges")
+		return resp.Body, nil
+	}
+	size := strconv.FormatInt(resp.ContentLength, 10)
+	resp.Header.Set("Accept-Ranges", "bytes")
+	if !satisfiable {
+		resp.StatusCode = http.StatusRequestedRangeNotSatisfiable
+		resp.Header.Del("Content-Length")
+		resp.Header.Set("Content-Range", "bytes */"+size)
+		return http.NoBody, nil
+	}
+	resp.StatusCode = http.StatusPartialContent
+	resp.Header.Set("Content-Length", strconv.FormatInt(length, 10))
+	resp.Header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%s", start, start+length-1, size))
+	if method == http.MethodHead {
+		return http.NoBody, nil
+	}
+	if _, err := io.CopyN(io.Discard, resp.Body, start); err != nil {
+		return nil, err
+	}
+	return io.LimitReader(resp.Body, length), nil
+}
+
+// parseTaskMediaByteRange resolves a single "bytes=" range against a known
+// size. usable is false for unknown sizes, multiple ranges, and malformed
+// values; satisfiable is false when a well-formed range selects no bytes.
+func parseTaskMediaByteRange(header string, size int64) (start, length int64, usable, satisfiable bool) {
+	spec, ok := strings.CutPrefix(strings.TrimSpace(header), "bytes=")
+	if !ok || size < 0 || strings.Contains(spec, ",") {
+		return 0, 0, false, false
+	}
+	first, last, ok := strings.Cut(strings.TrimSpace(spec), "-")
+	if !ok {
+		return 0, 0, false, false
+	}
+	first = strings.TrimSpace(first)
+	last = strings.TrimSpace(last)
+	if first == "" {
+		suffix, err := strconv.ParseUint(last, 10, 63)
+		if err != nil {
+			return 0, 0, false, false
+		}
+		if suffix == 0 || size == 0 {
+			return 0, 0, true, false
+		}
+		length = min(int64(suffix), size)
+		return size - length, length, true, true
+	}
+	firstByte, err := strconv.ParseUint(first, 10, 63)
+	if err != nil {
+		return 0, 0, false, false
+	}
+	start = int64(firstByte)
+	end := size - 1
+	if last != "" {
+		lastByte, err := strconv.ParseUint(last, 10, 63)
+		if err != nil || int64(lastByte) < start {
+			return 0, 0, false, false
+		}
+		end = min(int64(lastByte), size-1)
+	}
+	if start >= size {
+		return 0, 0, true, false
+	}
+	return start, end - start + 1, true, true
 }
 
 func setTaskMediaResponseSecurityHeaders(header http.Header) {

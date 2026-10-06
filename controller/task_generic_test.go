@@ -491,6 +491,61 @@ func TestProxyTaskMediaPassesThroughUnsatisfiedRange(t *testing.T) {
 	assert.Equal(t, "private, no-store", recorder.Header().Get("Cache-Control"))
 }
 
+func TestProxyTaskMediaServesRangeIgnoredByUpstream(t *testing.T) {
+	task := setupGenericTaskTest(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Content-Length", "10")
+		w.Header().Set("Accept-Ranges", "bytes")
+		_, _ = w.Write([]byte("0123456789"))
+	}))
+	defer upstream.Close()
+	allowPrivateTaskMediaTest(t)
+
+	testCases := []struct {
+		name          string
+		method        string
+		rangeHeader   string
+		ifRange       string
+		status        int
+		body          string
+		contentRange  string
+		contentLength string
+		acceptRanges  string
+	}{
+		{name: "open-ended tail", method: http.MethodGet, rangeHeader: "bytes=4-", status: http.StatusPartialContent, body: "456789", contentRange: "bytes 4-9/10", contentLength: "6", acceptRanges: "bytes"},
+		{name: "suffix", method: http.MethodGet, rangeHeader: "bytes=-3", status: http.StatusPartialContent, body: "789", contentRange: "bytes 7-9/10", contentLength: "3", acceptRanges: "bytes"},
+		{name: "bounded and clamped", method: http.MethodGet, rangeHeader: "bytes=8-20", status: http.StatusPartialContent, body: "89", contentRange: "bytes 8-9/10", contentLength: "2", acceptRanges: "bytes"},
+		{name: "head", method: http.MethodHead, rangeHeader: "bytes=2-4", status: http.StatusPartialContent, body: "", contentRange: "bytes 2-4/10", contentLength: "3", acceptRanges: "bytes"},
+		{name: "beyond size", method: http.MethodGet, rangeHeader: "bytes=10-", status: http.StatusRequestedRangeNotSatisfiable, body: "", contentRange: "bytes */10", acceptRanges: "bytes"},
+		{name: "multiple ranges", method: http.MethodGet, rangeHeader: "bytes=0-1,4-5", status: http.StatusOK, body: "0123456789", contentLength: "10"},
+		{name: "malformed", method: http.MethodGet, rangeHeader: "bytes=5-2", status: http.StatusOK, body: "0123456789", contentLength: "10"},
+		{name: "if-range", method: http.MethodGet, rangeHeader: "bytes=4-", ifRange: `"etag"`, status: http.StatusOK, body: "0123456789", contentLength: "10"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(testCase.method, "/content", nil)
+			c.Request.Header.Set("Range", testCase.rangeHeader)
+			if testCase.ifRange != "" {
+				c.Request.Header.Set("If-Range", testCase.ifRange)
+			}
+
+			require.NoError(t, proxyTaskMedia(c, task, &relaychannel.TaskContentRequest{
+				URL: upstream.URL, Method: testCase.method, Credentialless: true,
+			}))
+
+			assert.Equal(t, testCase.status, recorder.Code)
+			assert.Equal(t, testCase.body, recorder.Body.String())
+			assert.Equal(t, testCase.contentRange, recorder.Header().Get("Content-Range"))
+			assert.Equal(t, testCase.contentLength, recorder.Header().Get("Content-Length"))
+			assert.Equal(t, testCase.acceptRanges, recorder.Header().Get("Accept-Ranges"))
+			assert.Equal(t, "private, no-store", recorder.Header().Get("Cache-Control"))
+		})
+	}
+}
+
 func TestTaskMediaResponseHeaderTimeoutDoesNotTruncateBody(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "video/mp4")
@@ -583,8 +638,8 @@ func TestProxyTaskMediaAllowsOnlyCredentiallessCrossOriginRedirect(t *testing.T)
 		URL: source.URL, Method: http.MethodGet, Credentialless: true,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	assert.Equal(t, "redirected", recorder.Body.String())
+	assert.Equal(t, http.StatusPartialContent, recorder.Code)
+	assert.Equal(t, "redi", recorder.Body.String())
 	assert.Empty(t, destinationAuthorization)
 	assert.Equal(t, "bytes=0-3", destinationRange)
 
