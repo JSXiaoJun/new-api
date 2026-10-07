@@ -224,10 +224,26 @@ func epayQRCodeResponseSucceeded(response epayQRCodeResponse, qrCode string) boo
 }
 
 type epayOrderQueryResponse struct {
-	Code       int    `json:"code"`
+	Code       any    `json:"code"`
 	Message    string `json:"msg"`
-	OrderState int    `json:"status"`
+	OrderState any    `json:"status"`
+	TradeNo    any    `json:"trade_no"`
+	OutTradeNo any    `json:"out_trade_no"`
+	Pid        any    `json:"pid"`
+	Money      any    `json:"money"`
 }
+
+// epayGatewayOrder is the gateway's own record of an order, as returned by
+// the act=order query. It is the authority for whether money was collected.
+type epayGatewayOrder struct {
+	Paid       bool
+	TradeNo    string
+	OutTradeNo string
+	Pid        string
+	Money      string
+}
+
+var errEpayGatewayOrderUnpaid = errors.New("易支付平台订单未支付")
 
 func GetEpayClient() *epay.Client {
 	if operation_setting.PayAddress == "" || operation_setting.EpayId == "" || operation_setting.EpayKey == "" {
@@ -318,10 +334,10 @@ func requestEpayQRCode(ctx context.Context, paymentMethod, tradeNo, name, money,
 // queryEpayOrder asks the gateway for the authoritative order state. Epay's
 // documentation recommends this as a fallback because asynchronous callbacks
 // can be delayed or blocked by the merchant's network.
-func queryEpayOrder(ctx context.Context, tradeNo string) (bool, error) {
+func queryEpayOrder(ctx context.Context, tradeNo string) (*epayGatewayOrder, error) {
 	baseURL, err := url.Parse(operation_setting.PayAddress)
 	if err != nil {
-		return false, err
+		return nil, errors.New("易支付支付地址配置错误")
 	}
 	baseURL.Path = path.Join(baseURL.Path, "/api.php")
 	query := baseURL.Query()
@@ -335,34 +351,81 @@ func queryEpayOrder(ctx context.Context, tradeNo string) (bool, error) {
 	defer cancel()
 	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, baseURL.String(), nil)
 	if err != nil {
-		return false, err
+		return nil, errors.New("易支付订单查询请求构造失败")
 	}
 
 	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
 	if err != nil {
-		return false, err
+		// url.Error embeds the request URL, which carries the merchant key.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
+		return nil, fmt.Errorf("易支付订单查询请求失败: %w", err)
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return false, fmt.Errorf("epay order query returned HTTP %d", response.StatusCode)
+		return nil, fmt.Errorf("epay order query returned HTTP %d", response.StatusCode)
 	}
 
 	var payload epayOrderQueryResponse
 	if err := common.Unmarshal(body, &payload); err != nil {
-		return false, fmt.Errorf("解析易支付订单查询响应失败: %w", err)
+		return nil, fmt.Errorf("解析易支付订单查询响应失败: %w", err)
 	}
-	if payload.Code != 1 {
+	if epayResponseValue(payload.Code) != "1" {
 		if payload.Message == "" {
 			payload.Message = "易支付订单查询失败"
 		}
-		return false, errors.New(payload.Message)
+		return nil, errors.New(payload.Message)
 	}
-	return payload.OrderState == 1, nil
+	return &epayGatewayOrder{
+		Paid:       epayResponseValue(payload.OrderState) == "1",
+		TradeNo:    epayResponseValue(payload.TradeNo),
+		OutTradeNo: epayResponseValue(payload.OutTradeNo),
+		Pid:        epayResponseValue(payload.Pid),
+		Money:      epayResponseValue(payload.Money),
+	}, nil
+}
+
+// confirmEpayGatewayPayment re-checks a payment with the gateway before any
+// credit, so a signed callback alone can never add balance. callbackTradeNo is
+// the gateway trade number claimed by the callback; pass "" when there is no
+// callback (active polling). orderMoney is the local order amount, compared
+// with the gateway amount at the two decimals sent when the order was created.
+func confirmEpayGatewayPayment(ctx context.Context, tradeNo string, callbackTradeNo string, orderMoney float64) error {
+	order, err := queryEpayOrder(ctx, tradeNo)
+	if err != nil {
+		return err
+	}
+	if !order.Paid {
+		return errEpayGatewayOrderUnpaid
+	}
+	if order.OutTradeNo != tradeNo {
+		return fmt.Errorf("易支付平台订单号不一致 gateway_out_trade_no=%q", order.OutTradeNo)
+	}
+	if order.Pid != "" && order.Pid != operation_setting.EpayId {
+		return errors.New("易支付平台订单商户号不一致")
+	}
+	if order.TradeNo == "" {
+		return errors.New("易支付平台订单缺少交易号")
+	}
+	if callbackTradeNo != "" && order.TradeNo != callbackTradeNo {
+		return fmt.Errorf("易支付平台交易号与回调不一致 gateway_trade_no=%q callback_trade_no=%q", order.TradeNo, callbackTradeNo)
+	}
+	gatewayMoney, err := decimal.NewFromString(order.Money)
+	if err != nil {
+		return fmt.Errorf("易支付平台订单金额无效 gateway_money=%q", order.Money)
+	}
+	expectedMoney := decimal.RequireFromString(strconv.FormatFloat(orderMoney, 'f', 2, 64))
+	if !gatewayMoney.Equal(expectedMoney) {
+		return fmt.Errorf("易支付平台订单金额不一致 gateway_money=%s order_money=%s", gatewayMoney.String(), expectedMoney.String())
+	}
+	return nil
 }
 
 func getPayMoney(amount int64, group string) float64 {
@@ -807,6 +870,19 @@ func EpayNotify(c *gin.Context) {
 		// 数据库行锁 + 事务内状态校验保证（多实例部署下同样安全）。
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
+		localOrder := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo)
+		if localOrder == nil || localOrder.PaymentProvider != model.PaymentProviderEpay {
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调订单不存在 trade_no=%s callback_type=%s client_ip=%s", verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP()))
+			_, _ = c.Writer.Write([]byte("fail"))
+			return
+		}
+		if localOrder.Status != common.TopUpStatusSuccess {
+			if err := confirmEpayGatewayPayment(c.Request.Context(), verifyInfo.ServiceTradeNo, verifyInfo.TradeNo, localOrder.Money); err != nil {
+				logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调二次查单未通过，拒绝入账 trade_no=%s gateway_trade_no=%s callback_money=%s client_ip=%s error=%q", verifyInfo.ServiceTradeNo, verifyInfo.TradeNo, verifyInfo.Money, c.ClientIP(), err.Error()))
+				_, _ = c.Writer.Write([]byte("fail"))
+				return
+			}
+		}
 		alreadyDone, err := model.RechargeEpay(verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP())
 		if err != nil {
 			switch {
@@ -915,10 +991,10 @@ func GetUserTopUpStatus(c *gin.Context) {
 		}
 	}
 	if (topUp.Status == common.TopUpStatusPending || topUp.Status == common.TopUpStatusCancelled || topUp.Status == common.TopUpStatusExpired) && topUp.PaymentMethod == "wxpay" {
-		paid, queryErr := queryEpayOrder(c.Request.Context(), tradeNo)
-		if queryErr != nil {
+		queryErr := confirmEpayGatewayPayment(c.Request.Context(), tradeNo, "", topUp.Money)
+		if queryErr != nil && !errors.Is(queryErr, errEpayGatewayOrderUnpaid) {
 			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付主动查单失败 trade_no=%s user_id=%d error=%q", tradeNo, topUp.UserId, queryErr.Error()))
-		} else if paid {
+		} else if queryErr == nil {
 			if _, rechargeErr := model.RechargeEpay(tradeNo, "wxpay", c.ClientIP()); rechargeErr != nil {
 				logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付主动查单确认支付但入账失败 trade_no=%s user_id=%d error=%q", tradeNo, topUp.UserId, rechargeErr.Error()))
 			}

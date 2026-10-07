@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -125,7 +126,7 @@ func TestQueryEpayOrderUsesActiveOrderEndpoint(t *testing.T) {
 		require.Equal(t, "test-key", r.URL.Query().Get("key"))
 		require.Equal(t, "WX-QUERY-1", r.URL.Query().Get("out_trade_no"))
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":1,"msg":"查询订单号成功！","status":1}`))
+		_, _ = w.Write([]byte(`{"code":1,"msg":"查询订单号成功！","status":1,"pid":"test-pid","trade_no":"GW1","out_trade_no":"WX-QUERY-1","money":"1.00"}`))
 	}))
 	defer server.Close()
 
@@ -141,9 +142,9 @@ func TestQueryEpayOrderUsesActiveOrderEndpoint(t *testing.T) {
 		operation_setting.EpayKey = oldKey
 	})
 
-	paid, err := queryEpayOrder(context.Background(), "WX-QUERY-1")
+	order, err := queryEpayOrder(context.Background(), "WX-QUERY-1")
 	require.NoError(t, err)
-	require.True(t, paid)
+	assert.Equal(t, &epayGatewayOrder{Paid: true, TradeNo: "GW1", OutTradeNo: "WX-QUERY-1", Pid: "test-pid", Money: "1.00"}, order)
 }
 
 func TestQueryEpayOrderReportsUnpaidOrder(t *testing.T) {
@@ -165,7 +166,7 @@ func TestQueryEpayOrderReportsUnpaidOrder(t *testing.T) {
 		operation_setting.EpayKey = oldKey
 	})
 
-	paid, err := queryEpayOrder(context.Background(), "WX-QUERY-0")
+	order, err := queryEpayOrder(context.Background(), "WX-QUERY-0")
 	require.NoError(t, err)
-	require.False(t, paid)
+	assert.False(t, order.Paid)
 }

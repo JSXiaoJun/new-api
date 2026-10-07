@@ -682,6 +682,19 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	return tx.Save(&topup).Error
 }
 
+// ListPendingSubscriptionOrders returns pending orders of one payment provider
+// created in [createdFrom, createdTo], newest first.
+func ListPendingSubscriptionOrders(paymentProvider string, createdFrom int64, createdTo int64, limit int) ([]SubscriptionOrder, error) {
+	var orders []SubscriptionOrder
+	err := DB.Select("id", "trade_no", "payment_method", "money", "status", "create_time").
+		Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
+			paymentProvider, common.TopUpStatusPending, createdFrom, createdTo).
+		Order("id DESC").
+		Limit(limit).
+		Find(&orders).Error
+	return orders, err
+}
+
 func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")

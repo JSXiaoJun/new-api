@@ -140,6 +140,9 @@ func main() {
 	// Expire Epay top-up orders left unpaid past their checkout lifetime
 	service.StartEpayOrderExpiryTask()
 
+	// Credit Epay orders the gateway confirms as paid when callbacks never arrive
+	controller.StartEpayReconcileTask()
+
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
 	service.StartSystemInstanceReporter()

@@ -438,6 +438,21 @@ func ExpireOverdueEpayTopUps(now int64) (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
+// ListEpayTopUpsAwaitingGateway returns unsettled Epay top-ups created in
+// [createdFrom, createdTo] that RechargeEpay would still accept: pending and
+// expired orders of any method, and cancelled WeChat orders. Newest first.
+func ListEpayTopUpsAwaitingGateway(createdFrom int64, createdTo int64, limit int) ([]TopUp, error) {
+	var topUps []TopUp
+	err := DB.Select("id", "trade_no", "payment_method", "money", "status", "create_time").
+		Where("payment_provider = ? AND create_time >= ? AND create_time <= ?", PaymentProviderEpay, createdFrom, createdTo).
+		Where(DB.Where("status IN ?", []string{common.TopUpStatusPending, common.TopUpStatusExpired}).
+			Or("status = ? AND payment_method = ?", common.TopUpStatusCancelled, "wxpay")).
+		Order("id DESC").
+		Limit(limit).
+		Find(&topUps).Error
+	return topUps, err
+}
+
 // UpdateEpayWxPayQRCode stores the QR payload without overwriting a payment
 // status that may have changed while the gateway request was in flight.
 func UpdateEpayWxPayQRCode(tradeNo, qrCode string) error {

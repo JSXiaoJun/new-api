@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -115,6 +117,20 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
 }
 
+// confirmSubscriptionEpayPayment checks a verified subscription callback against
+// the gateway before the order is completed. Already-completed orders skip the
+// query so gateway retries are acknowledged without another round trip.
+func confirmSubscriptionEpayPayment(ctx context.Context, verifyInfo *epay.VerifyRes) error {
+	order := model.GetSubscriptionOrderByTradeNo(verifyInfo.ServiceTradeNo)
+	if order == nil || order.PaymentProvider != model.PaymentProviderEpay {
+		return model.ErrSubscriptionOrderNotFound
+	}
+	if order.Status == common.TopUpStatusSuccess {
+		return nil
+	}
+	return confirmEpayGatewayPayment(ctx, verifyInfo.ServiceTradeNo, verifyInfo.TradeNo, order.Money)
+}
+
 func SubscriptionEpayNotify(c *gin.Context) {
 	var params map[string]string
 
@@ -159,6 +175,12 @@ func SubscriptionEpayNotify(c *gin.Context) {
 
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
+
+	if err := confirmSubscriptionEpayPayment(c.Request.Context(), verifyInfo); err != nil {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 订阅回调二次查单未通过，拒绝开通 trade_no=%s gateway_trade_no=%s client_ip=%s error=%q", verifyInfo.ServiceTradeNo, verifyInfo.TradeNo, c.ClientIP(), err.Error()))
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
 
 	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
 		_, _ = c.Writer.Write([]byte("fail"))
@@ -209,6 +231,11 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
+		if err := confirmSubscriptionEpayPayment(c.Request.Context(), verifyInfo); err != nil {
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 订阅跳转二次查单未通过，拒绝开通 trade_no=%s gateway_trade_no=%s client_ip=%s error=%q", verifyInfo.ServiceTradeNo, verifyInfo.TradeNo, c.ClientIP(), err.Error()))
+			c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=pending"))
+			return
+		}
 		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
 			c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
 			return

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Calcium-Ion/go-epay/epay"
@@ -29,7 +30,7 @@ func setupEpayNotifyTest(t *testing.T) {
 
 	oldAddress, oldID, oldKey := operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey
 	oldMethods, oldQuotaPerUnit := operation_setting.PayMethods, common.QuotaPerUnit
-	operation_setting.PayAddress = "https://pay.example.com"
+	operation_setting.PayAddress = newFakeEpayGateway(t)
 	operation_setting.EpayId = "1000"
 	operation_setting.EpayKey = epayNotifyTestKey
 	operation_setting.PayMethods = []map[string]string{{"type": "alipay"}, {"type": "wxpay"}}
@@ -38,6 +39,61 @@ func setupEpayNotifyTest(t *testing.T) {
 		operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey = oldAddress, oldID, oldKey
 		operation_setting.PayMethods, common.QuotaPerUnit = oldMethods, oldQuotaPerUnit
 	})
+}
+
+// fakeEpayGatewayOrders overrides the act=order answer for a merchant trade
+// number. Orders without an override are reported as paid with the local
+// order's amount and gateway trade number "GW"+tradeNo, matching
+// signedEpayNotifyParams.
+var fakeEpayGatewayOrders sync.Map
+
+func setFakeEpayGatewayOrder(t *testing.T, tradeNo string, response map[string]any) {
+	t.Helper()
+	fakeEpayGatewayOrders.Store(tradeNo, response)
+	t.Cleanup(func() { fakeEpayGatewayOrders.Delete(tradeNo) })
+}
+
+func newFakeEpayGateway(t *testing.T) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		tradeNo := query.Get("out_trade_no")
+		var response map[string]any
+		switch {
+		case r.URL.Path != "/api.php" || query.Get("act") != "order" || query.Get("key") != operation_setting.EpayKey:
+			response = map[string]any{"code": -1, "msg": "bad request"}
+		default:
+			if override, ok := fakeEpayGatewayOrders.Load(tradeNo); ok {
+				response = override.(map[string]any)
+				break
+			}
+			money, found := 0.0, false
+			if topUp := model.GetTopUpByTradeNo(tradeNo); topUp != nil {
+				money, found = topUp.Money, true
+			} else if order := model.GetSubscriptionOrderByTradeNo(tradeNo); order != nil {
+				money, found = order.Money, true
+			}
+			if !found {
+				response = map[string]any{"code": -1, "msg": "订单号不存在"}
+				break
+			}
+			// Field types follow the gateway documentation: pid, code and status
+			// are numbers, money is a two-decimal string.
+			pid, err := strconv.Atoi(operation_setting.EpayId)
+			require.NoError(t, err)
+			response = map[string]any{
+				"code": 1, "msg": "查询订单号成功！", "status": 1,
+				"pid": pid, "trade_no": "GW" + tradeNo, "out_trade_no": tradeNo,
+				"money": strconv.FormatFloat(money, 'f', 2, 64),
+			}
+		}
+		body, err := common.Marshal(response)
+		require.NoError(t, err)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
 }
 
 func signedEpayNotifyParams(tradeNo, payType, money, key string) url.Values {
@@ -398,4 +454,121 @@ func TestUpdateOptionRejectsOutOfRangeInviterTopUpRewardPercent(t *testing.T) {
 			assert.Contains(t, recorder.Body.String(), `"success":false`)
 		})
 	}
+}
+
+func TestEpayNotifyRequiresGatewayConfirmationBeforeCrediting(t *testing.T) {
+	setupEpayNotifyTest(t)
+
+	paidOrder := func(tradeNo string) map[string]any {
+		return map[string]any{
+			"code": 1, "status": 1, "pid": operation_setting.EpayId,
+			"trade_no": "GW" + tradeNo, "out_trade_no": tradeNo, "money": "10.00",
+		}
+	}
+	testCases := []struct {
+		name   string
+		mutate func(response map[string]any)
+	}{
+		{name: "gateway reports unpaid", mutate: func(r map[string]any) { r["status"] = 0 }},
+		{name: "gateway amount differs", mutate: func(r map[string]any) { r["money"] = "0.01" }},
+		{name: "gateway trade number differs from callback", mutate: func(r map[string]any) { r["trade_no"] = "GW-OTHER" }},
+		{name: "gateway trade number missing", mutate: func(r map[string]any) { delete(r, "trade_no") }},
+		{name: "gateway merchant differs", mutate: func(r map[string]any) { r["pid"] = "9999" }},
+		{name: "gateway answers for another order", mutate: func(r map[string]any) { r["out_trade_no"] = "USR0NOOTHER" }},
+		{name: "gateway query fails", mutate: func(r map[string]any) { r["code"] = -1; r["msg"] = "订单号不存在" }},
+	}
+	for i, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			user := model.User{Username: "epay_confirm_" + strconv.Itoa(i), AffCode: "epay_confirm_" + strconv.Itoa(i), Password: "password123", Status: common.UserStatusEnabled}
+			require.NoError(t, model.DB.Create(&user).Error)
+			order := model.TopUp{
+				UserId: user.Id, Amount: 10, Money: 10, TradeNo: "USR" + strconv.Itoa(user.Id) + "NOCONFIRM" + strconv.Itoa(i),
+				PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay,
+				CreateTime: common.GetTimestamp(), Status: common.TopUpStatusPending,
+			}
+			require.NoError(t, model.DB.Create(&order).Error)
+
+			response := paidOrder(order.TradeNo)
+			tc.mutate(response)
+			setFakeEpayGatewayOrder(t, order.TradeNo, response)
+
+			signed := signedEpayNotifyParams(order.TradeNo, "alipay", "10.00", epayNotifyTestKey)
+			require.Equal(t, "fail", postEpayNotify(t, signed))
+			assert.Zero(t, userQuotaForEpayNotifyTest(t, user.Id))
+			assert.Equal(t, common.TopUpStatusPending, model.GetTopUpByTradeNo(order.TradeNo).Status)
+
+			// The gateway retries the callback; once it confirms the payment the
+			// order is credited exactly as it would have been.
+			setFakeEpayGatewayOrder(t, order.TradeNo, paidOrder(order.TradeNo))
+			require.Equal(t, "success", postEpayNotify(t, signed))
+			assert.Equal(t, 10*500000, userQuotaForEpayNotifyTest(t, user.Id))
+		})
+	}
+}
+
+func TestEpayNotifyAcceptsGatewayStringFields(t *testing.T) {
+	setupEpayNotifyTest(t)
+
+	user := model.User{Username: "epay_string_fields", Password: "password123", Status: common.UserStatusEnabled}
+	require.NoError(t, model.DB.Create(&user).Error)
+	order := model.TopUp{
+		UserId: user.Id, Amount: 3, Money: 2.5, TradeNo: "USR9NOSTRINGS1",
+		PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay,
+		CreateTime: common.GetTimestamp(), Status: common.TopUpStatusPending,
+	}
+	require.NoError(t, model.DB.Create(&order).Error)
+	setFakeEpayGatewayOrder(t, order.TradeNo, map[string]any{
+		"code": "1", "status": "1", "pid": operation_setting.EpayId,
+		"trade_no": "GW" + order.TradeNo, "out_trade_no": order.TradeNo, "money": "2.5",
+	})
+
+	require.Equal(t, "success", postEpayNotify(t, signedEpayNotifyParams(order.TradeNo, "alipay", "2.50", epayNotifyTestKey)))
+	assert.Equal(t, 3*500000, userQuotaForEpayNotifyTest(t, user.Id))
+}
+
+func TestSubscriptionEpayNotifyRequiresGatewayConfirmation(t *testing.T) {
+	setupEpayNotifyTest(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.SubscriptionPlan{}, &model.SubscriptionOrder{}, &model.UserSubscription{}))
+
+	user := model.User{Username: "epay_sub_buyer", Password: "password123", Status: common.UserStatusEnabled}
+	require.NoError(t, model.DB.Create(&user).Error)
+	plan := model.SubscriptionPlan{
+		Title: "Epay Sub", PriceAmount: 9.99, Currency: "CNY",
+		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, Enabled: true, TotalAmount: 1000,
+	}
+	require.NoError(t, model.DB.Create(&plan).Error)
+	order := model.SubscriptionOrder{
+		UserId: user.Id, PlanId: plan.Id, Money: 9.99, TradeNo: "SUBUSR1NOEPAYSUB1",
+		PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending,
+	}
+	require.NoError(t, order.Insert())
+
+	postSubscriptionNotify := func(form url.Values) string {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/subscription/epay/notify", strings.NewReader(form.Encode()))
+		c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		SubscriptionEpayNotify(c)
+		return recorder.Body.String()
+	}
+	countSubscriptions := func() int64 {
+		var count int64
+		require.NoError(t, model.DB.Model(&model.UserSubscription{}).Where("user_id = ?", user.Id).Count(&count).Error)
+		return count
+	}
+
+	signed := signedEpayNotifyParams(order.TradeNo, "alipay", "9.99", epayNotifyTestKey)
+	setFakeEpayGatewayOrder(t, order.TradeNo, map[string]any{
+		"code": 1, "status": 0, "pid": operation_setting.EpayId,
+		"trade_no": "GW" + order.TradeNo, "out_trade_no": order.TradeNo, "money": "9.99",
+	})
+	require.Equal(t, "fail", postSubscriptionNotify(signed))
+	assert.Zero(t, countSubscriptions())
+	assert.Equal(t, common.TopUpStatusPending, model.GetSubscriptionOrderByTradeNo(order.TradeNo).Status)
+
+	fakeEpayGatewayOrders.Delete(order.TradeNo)
+	require.Equal(t, "success", postSubscriptionNotify(signed))
+	assert.EqualValues(t, 1, countSubscriptions())
+	require.Equal(t, "success", postSubscriptionNotify(signed), "gateway retries must be acknowledged")
+	assert.EqualValues(t, 1, countSubscriptions())
 }
