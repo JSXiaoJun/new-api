@@ -1,14 +1,128 @@
 package service
 
 import (
+	"context"
+	"net/http"
+	"sync/atomic"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
 )
 
+const detachedClientWriterKey = "detached_client_writer"
+
+// detachedClientWriter keeps a relay running after Cloudflare truncated the
+// connection: once the client is gone, writes are discarded and reported as
+// successful so handlers keep reading upstream until the real usage arrives.
+type detachedClientWriter struct {
+	gin.ResponseWriter
+	clientCtx       context.Context
+	writeFailed     atomic.Bool
+	truncated       atomic.Bool
+	lastWriteUnixNs atomic.Int64
+}
+
+func (w *detachedClientWriter) clientGone() bool {
+	return w.writeFailed.Load() || w.clientCtx.Err() != nil
+}
+
+func (w *detachedClientWriter) Write(data []byte) (int, error) {
+	if w.clientGone() {
+		return len(data), nil
+	}
+	if _, err := w.ResponseWriter.Write(data); err != nil {
+		w.writeFailed.Store(true)
+		return len(data), nil
+	}
+	w.lastWriteUnixNs.Store(time.Now().UnixNano())
+	return len(data), nil
+}
+
+func (w *detachedClientWriter) WriteString(data string) (int, error) {
+	return w.Write([]byte(data))
+}
+
+func (w *detachedClientWriter) Flush() {
+	if w.clientGone() {
+		return
+	}
+	w.ResponseWriter.Flush()
+}
+
+func (w *detachedClientWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+// DetachProxiedClientCancellation decouples the relay from the inbound
+// connection for requests arriving through Cloudflare. Cloudflare drops the
+// origin connection after about 100 seconds without response bytes, while the
+// upstream keeps generating and bills the full output. Detaching lets the
+// relay finish and settle the real usage instead of only the prompt estimate.
+//
+// Only a disconnect after CloudflareDisconnectBillingMinIdleSeconds without
+// response bytes counts as a Cloudflare truncation; an earlier disconnect is a
+// user abort and cancels the relay as before. A truncated relay may run at
+// most CloudflareDisconnectBillingMaxSeconds before it is cancelled.
+//
+// The returned release func must be called when the request ends.
+func DetachProxiedClientCancellation(c *gin.Context) func() {
+	if !common.CloudflareDisconnectBillingEnabled || c == nil || c.Request == nil || c.Writer == nil ||
+		c.GetHeader("Cf-Ray") == "" {
+		return func() {}
+	}
+	clientCtx := c.Request.Context()
+	detachedCtx, cancel := context.WithCancel(context.WithoutCancel(clientCtx))
+	maxRun := time.Duration(common.CloudflareDisconnectBillingMaxSeconds) * time.Second
+	if maxRun <= 0 {
+		maxRun = 30 * time.Minute
+	}
+	minIdle := time.Duration(common.CloudflareDisconnectBillingMinIdleSeconds) * time.Second
+	writer := &detachedClientWriter{ResponseWriter: c.Writer, clientCtx: clientCtx}
+	writer.lastWriteUnixNs.Store(time.Now().UnixNano())
+	stopWatch := context.AfterFunc(clientCtx, func() {
+		if time.Since(time.Unix(0, writer.lastWriteUnixNs.Load())) < minIdle {
+			cancel()
+			return
+		}
+		writer.truncated.Store(true)
+		timer := time.NewTimer(maxRun)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			cancel()
+		case <-detachedCtx.Done():
+		}
+	})
+
+	c.Writer = writer
+	c.Set(detachedClientWriterKey, writer)
+	c.Request = c.Request.WithContext(detachedCtx)
+	return func() {
+		stopWatch()
+		cancel()
+	}
+}
+
+// ProxiedClientGone reports whether Cloudflare truncated a detached request
+// while the relay kept running.
+func ProxiedClientGone(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	value, ok := c.Get(detachedClientWriterKey)
+	if !ok {
+		return false
+	}
+	writer, ok := value.(*detachedClientWriter)
+	return ok && writer.truncated.Load()
+}
+
 // ClientRequestCanceled reports whether the inbound client connection is gone.
 func ClientRequestCanceled(c *gin.Context) bool {
-	return c != nil && c.Request != nil && c.Request.Context().Err() != nil
+	return c != nil && c.Request != nil && (c.Request.Context().Err() != nil || ProxiedClientGone(c))
 }
 
 // SettleClientDisconnectBilling handles a relay that failed because the client

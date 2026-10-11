@@ -418,6 +418,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if usage == nil {
 		extraContent = append(extraContent, "上游无计费信息")
 	}
+	if ProxiedClientGone(ctx) {
+		extraContent = append(extraContent, "客户端经 Cloudflare 断开，上游已完成，按实际用量计费")
+	}
 	if originUsage != nil {
 		ObserveChannelAffinityUsageCacheByRelayFormat(ctx, billingUsage, relayInfo.GetFinalRequestRelayFormat())
 	}

@@ -188,6 +188,20 @@ var RelayResponseHeaderTimeout int // unit is second
 var RelayMaxIdleConns int
 var RelayMaxIdleConnsPerHost int
 
+// CloudflareDisconnectBillingEnabled keeps a relay that arrived through
+// Cloudflare (Cf-Ray header) running after Cloudflare drops the connection,
+// so the real upstream usage is billed instead of only the prompt estimate.
+var CloudflareDisconnectBillingEnabled bool
+
+// CloudflareDisconnectBillingMaxSeconds bounds how long such a relay may keep
+// running after the client is gone.
+var CloudflareDisconnectBillingMaxSeconds int
+
+// CloudflareDisconnectBillingMinIdleSeconds is how long the response must have
+// been idle for a disconnect to count as a Cloudflare truncation (Cloudflare
+// times out after 100 seconds); earlier disconnects are user aborts.
+var CloudflareDisconnectBillingMinIdleSeconds int
+
 var GeminiSafetySetting string
 
 // https://docs.cohere.com/docs/safety-modes Type; NONE/CONTEXTUAL/STRICT

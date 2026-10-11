@@ -88,6 +88,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if common.LogConsumeEnabled && relayFormat != types.RelayFormatOpenAIRealtime {
 		common.CaptureResponseBody(c)
 	}
+	if relayFormat != types.RelayFormatOpenAIRealtime {
+		defer service.DetachProxiedClientCancellation(c)()
+	}
 
 	defer func() {
 		if newAPIError != nil {
