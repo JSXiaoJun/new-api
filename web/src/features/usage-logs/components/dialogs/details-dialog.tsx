@@ -691,10 +691,15 @@ export function DetailsDialog(props: DetailsDialogProps) {
     conversionChain.length <= 1
       ? t('Native format')
       : conversionChain.join(' -> ')
+  // Users see their own inbound path; the conversion chain reveals the
+  // upstream protocol and stays admin-only.
   const showConversion =
-    props.isAdmin &&
     props.log.type !== 6 &&
-    (other?.request_path || conversionChain.length > 0)
+    (Boolean(other?.request_path) ||
+      (props.isAdmin && conversionChain.length > 0))
+  const conversionCopyText = props.isAdmin
+    ? conversionLabel
+    : (other?.request_path ?? '')
 
   const useChannel = other?.admin_info?.use_channel
   const channelChain =
@@ -830,19 +835,21 @@ export function DetailsDialog(props: DetailsDialogProps) {
           )}
         </div>
 
-        {/* Request conversion (admin only, not for refund) */}
+        {/* Inbound path for everyone, conversion chain for admins (not for refund) */}
         {showConversion && (
-          <DetailSection label={t('Request Conversion')}>
+          <DetailSection
+            label={props.isAdmin ? t('Request Conversion') : t('Request Path')}
+          >
             <div className='relative min-w-0'>
               <Button
                 variant='ghost'
                 size='sm'
                 className='absolute top-0 right-0 h-5 w-5 p-0'
-                onClick={() => copyToClipboard(conversionLabel)}
+                onClick={() => copyToClipboard(conversionCopyText)}
                 title={t('Copy to clipboard')}
                 aria-label={t('Copy to clipboard')}
               >
-                {copiedText === conversionLabel ? (
+                {copiedText === conversionCopyText ? (
                   <Check className='size-3 text-green-600' />
                 ) : (
                   <Copy className='size-3' />
@@ -856,15 +863,17 @@ export function DetailsDialog(props: DetailsDialogProps) {
                     mono
                   />
                 )}
-                <div className='flex min-w-0 items-center gap-1.5 text-xs'>
-                  <Route
-                    className='text-muted-foreground size-3'
-                    aria-hidden='true'
-                  />
-                  <span className='min-w-0 break-all sm:wrap-break-word'>
-                    {conversionLabel}
-                  </span>
-                </div>
+                {props.isAdmin && (
+                  <div className='flex min-w-0 items-center gap-1.5 text-xs'>
+                    <Route
+                      className='text-muted-foreground size-3'
+                      aria-hidden='true'
+                    />
+                    <span className='min-w-0 break-all sm:wrap-break-word'>
+                      {conversionLabel}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </DetailSection>
