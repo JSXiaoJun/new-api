@@ -20,6 +20,7 @@ const detachedClientWriterKey = "detached_client_writer"
 type detachedClientWriter struct {
 	gin.ResponseWriter
 	clientCtx       context.Context
+	relayCtx        context.Context
 	writeFailed     atomic.Bool
 	truncated       atomic.Bool
 	lastWriteUnixNs atomic.Int64
@@ -52,6 +53,14 @@ func (w *detachedClientWriter) Flush() {
 	w.ResponseWriter.Flush()
 }
 
+// CloseNotify follows the relay context rather than the client connection so
+// handlers built on gin's c.Stream keep reading upstream after a truncation.
+func (w *detachedClientWriter) CloseNotify() <-chan bool {
+	notify := make(chan bool, 1)
+	context.AfterFunc(w.relayCtx, func() { notify <- true })
+	return notify
+}
+
 func (w *detachedClientWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
@@ -80,7 +89,7 @@ func DetachProxiedClientCancellation(c *gin.Context) func() {
 		maxRun = 30 * time.Minute
 	}
 	minIdle := time.Duration(common.CloudflareDisconnectBillingMinIdleSeconds) * time.Second
-	writer := &detachedClientWriter{ResponseWriter: c.Writer, clientCtx: clientCtx}
+	writer := &detachedClientWriter{ResponseWriter: c.Writer, clientCtx: clientCtx, relayCtx: detachedCtx}
 	writer.lastWriteUnixNs.Store(time.Now().UnixNano())
 	stopWatch := context.AfterFunc(clientCtx, func() {
 		if time.Since(time.Unix(0, writer.lastWriteUnixNs.Load())) < minIdle {

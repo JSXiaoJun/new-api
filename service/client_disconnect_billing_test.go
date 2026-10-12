@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -135,8 +136,22 @@ func TestCloudflareTruncationKeepsRelayRunning(t *testing.T) {
 	assert.Equal(t, len("after"), n)
 	assert.Equal(t, "before", recorder.Body.String(), "writes after the disconnect are discarded")
 
+	streamSteps := 0
+	clientGone := ctx.Stream(func(w io.Writer) bool {
+		streamSteps++
+		return streamSteps < 3
+	})
+	assert.False(t, clientGone, "c.Stream handlers must keep reading upstream after a truncation")
+	assert.Equal(t, 3, streamSteps)
+	closeNotify := ctx.Writer.CloseNotify()
+
 	release()
 	assert.Error(t, ctx.Request.Context().Err(), "release must cancel the detached relay")
+	select {
+	case <-closeNotify:
+	case <-time.After(time.Second):
+		t.Fatal("CloseNotify must fire once the relay ends")
+	}
 }
 
 func TestDisconnectWithoutCloudflareTruncationCancelsRelay(t *testing.T) {
