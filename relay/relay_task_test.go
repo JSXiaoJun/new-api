@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
@@ -132,6 +133,7 @@ func pinMappingOrderPlugin(t *testing.T, c *gin.Context, source string) {
 
 func newTaskSubmitContext(t *testing.T, originalModel, mapping string) (*gin.Context, *relaycommon.RelayInfo) {
 	t.Helper()
+	require.NoError(t, i18n.Init())
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -466,4 +468,27 @@ export function parseTaskResult() { return {status:"SUCCESS"}; }
 			assert.JSONEq(t, `{"status":`+strconv.Itoa(tc.status)+`}`, string(result.TaskData))
 		})
 	}
+}
+
+func TestTaskRequestHasAutoDurationFindsVendorPickedLength(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name    string
+		request any
+		want    bool
+	}{
+		{"submit struct", relaycommon.TaskSubmitReq{Prompt: "p", Duration: -1}, true},
+		{"metadata string", map[string]any{"prompt": "p", "metadata": map[string]any{"duration": "-1"}}, true},
+		{"parameters seconds", map[string]any{"parameters": map[string]any{"seconds": float64(-1)}}, true},
+		{"explicit length", relaycommon.TaskSubmitReq{Prompt: "p", Duration: 5}, false},
+		{"no duration", map[string]any{"prompt": "p"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Set("task_request", tc.request)
+			assert.Equal(t, tc.want, taskRequestHasAutoDuration(c))
+		})
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	assert.False(t, taskRequestHasAutoDuration(c), "no request in context")
 }

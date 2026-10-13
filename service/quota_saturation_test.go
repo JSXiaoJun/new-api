@@ -3,6 +3,7 @@ package service
 import (
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -21,7 +22,8 @@ import (
 // log formatter strips admin_info for non-admin viewers).
 func TestAttachQuotaSaturationNestsUnderAdminInfo(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 
 	relayInfo := &relaycommon.RelayInfo{
 		UserId:          7,
@@ -75,7 +77,8 @@ func TestCalcOpenRouterCacheCreateTokensDoesNotWrap(t *testing.T) {
 // merged into a pre-existing admin_info map without clobbering it.
 func TestAttachQuotaSaturationPreservesExistingAdminInfo(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 
 	relayInfo := &relaycommon.RelayInfo{
 		QuotaClamp: &common.QuotaClamp{Op: "QuotaFromFloat", Kind: common.QuotaClampUnderflow, Clamped: common.MinQuota},
@@ -93,7 +96,8 @@ func TestAttachQuotaSaturationPreservesExistingAdminInfo(t *testing.T) {
 // saturation) leaves the log untouched.
 func TestAttachQuotaSaturationNoClampNoMarker(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 
 	relayInfo := &relaycommon.RelayInfo{QuotaClamp: nil}
 	other := model.NewLogOther()
@@ -106,7 +110,8 @@ func TestAttachQuotaSaturationNoClampNoMarker(t *testing.T) {
 
 func TestPreConsumeBillingRejectsSaturatedQuotaBeforeDeduction(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(nil)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	info := &relaycommon.RelayInfo{
 		QuotaClamp: &common.QuotaClamp{
 			Op:       "QuotaFromFloat",
@@ -130,7 +135,8 @@ func TestPreConsumeBillingRejectsSaturatedQuotaBeforeDeduction(t *testing.T) {
 
 func TestPreConsumeBillingRejectsNegativeQuotaBeforeDeduction(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(nil)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	info := &relaycommon.RelayInfo{}
 
 	apiErr := PreConsumeBilling(c, -1, info)

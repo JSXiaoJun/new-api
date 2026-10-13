@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -20,7 +19,7 @@ func PurchaseAgreementRequired() gin.HandlerFunc {
 			return
 		}
 		if !signed {
-			common.ApiErrorI18n(c, i18n.MsgPurchaseAgreementRequired)
+			common.ApiErrorT(c, "Please complete the pre-purchase confirmation in your wallet before topping up, redeeming codes, or purchasing subscriptions.")
 			c.Abort()
 			return
 		}

@@ -321,6 +321,15 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			}
 		}
 	}
+	// A per-second charge is final at submit, so a vendor-picked length (-1)
+	// would be billed at the reserved maximum instead of the delivered length.
+	if service.IsTaskPerSecondBilling(info) && taskRequestHasAutoDuration(c) {
+		return nil, service.TaskErrorWrapperLocal(
+			errors.New("per-second billing requires an explicit duration; duration -1 is not supported for this model"),
+			"billing_seconds_unavailable",
+			http.StatusBadRequest,
+		)
+	}
 	if service.IsTaskPerSecondBilling(info) && !info.PriceData.HasOtherRatio("seconds") {
 		return nil, service.TaskErrorWrapperLocal(
 			errors.New("per-second billing requires a positive duration from the task adaptor"),
@@ -384,7 +393,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		if parsed.Immediate != nil && parsed.Immediate.Status == model.TaskStatusSuccess && len(parsed.Immediate.UsageFacts) > 0 {
 			settlement, facts, err := service.EvaluateTaskCompletionUsage(snap, parsed.Immediate.UsageFacts)
 			if err != nil {
-				logger.LogWarn(c, fmt.Sprintf("task immediate usage settlement failed; retaining reserved quota: %v", err))
+				logger.LogWarn(c, common.LogText("task immediate usage settlement failed; retaining reserved quota: %v", err))
 			} else {
 				finalQuota = settlement.ActualQuotaAfterGroup
 				snap.UsageFacts = facts
@@ -426,6 +435,56 @@ func recalcQuotaFromRatios(info *relaycommon.RelayInfo, ratios map[string]float6
 	quota, clamp := calculateTaskQuota(priceData)
 	noteTaskQuotaClamp(info, clamp)
 	return quota, true
+}
+
+// taskRequestHasAutoDuration reports whether the submitted task asks the vendor
+// to pick the video length with a duration of -1, at any depth of the request
+// (top level or metadata), the same places the plugin host accepts it.
+func taskRequestHasAutoDuration(c *gin.Context) bool {
+	request, ok := c.Get("task_request")
+	if !ok {
+		return false
+	}
+	data, err := common.Marshal(request)
+	if err != nil {
+		return false
+	}
+	var decoded any
+	if err := common.Unmarshal(data, &decoded); err != nil {
+		return false
+	}
+	return containsAutoDuration(decoded)
+}
+
+func containsAutoDuration(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, item := range typed {
+			switch strings.ToLower(strings.NewReplacer("_", "", "-", "").Replace(key)) {
+			case "duration", "durationseconds", "second", "seconds":
+				switch number := item.(type) {
+				case float64:
+					if number == -1 {
+						return true
+					}
+				case string:
+					if parsed, err := strconv.ParseFloat(strings.TrimSpace(number), 64); err == nil && parsed == -1 {
+						return true
+					}
+				}
+			}
+			if containsAutoDuration(item) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			if containsAutoDuration(item) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func calculateTaskQuota(priceData types.PriceData) (int, *common.QuotaClamp) {

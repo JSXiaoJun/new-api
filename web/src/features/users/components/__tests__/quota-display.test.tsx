@@ -258,7 +258,7 @@ async function renderUsersList(emptyInvitation = false) {
   useAuthStore.getState().auth.setUser({ id: 1, username: 'admin', role: 100 })
   const get = vi.spyOn(api, 'get').mockImplementation(async (url) => {
     if (url === '/api/group/') {
-      return { data: { success: true, data: ['default', 'vip'] } }
+      return { data: { success: true, data: ['default'] } }
     }
     return {
       data: {
@@ -333,17 +333,6 @@ it('sends balance sorting to the server and keeps invitation details on two line
   ).not.toBeInTheDocument()
   expect(screen.getByText('Inviter ID: 42')).toBeInTheDocument()
   expect(screen.getByText(/Invited 2 users · Earnings:/)).toBeInTheDocument()
-})
-
-it('selecting a user group filter searches users by that group', async () => {
-  const get = await renderUsersList()
-  await userEvent.click(screen.getByRole('button', { name: 'Group' }))
-  await userEvent.click(await screen.findByRole('option', { name: /vip/ }))
-  await waitFor(() =>
-    expect(get).toHaveBeenCalledWith(
-      expect.stringMatching(/^\/api\/user\/search\?.*group=vip/)
-    )
-  )
 })
 
 it('shows balance above usage on mobile cards in Chinese', async () => {

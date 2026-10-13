@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Calcium-Ion/go-epay/epay"
@@ -30,7 +31,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 
 	var req SubscriptionEpayPayRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
 
@@ -40,15 +41,15 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 	if !plan.Enabled {
-		common.ApiErrorMsg(c, "套餐未启用")
+		common.ApiErrorT(c, "Subscription plan is not enabled")
 		return
 	}
 	if plan.PriceAmount < 0.01 {
-		common.ApiErrorMsg(c, "套餐金额过低")
+		common.ApiErrorT(c, "Plan amount is too low")
 		return
 	}
 	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
-		common.ApiErrorMsg(c, "支付方式不存在")
+		common.ApiErrorT(c, "Payment method does not exist")
 		return
 	}
 
@@ -60,7 +61,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 			return
 		}
 		if count >= int64(plan.MaxPurchasePerUser) {
-			common.ApiErrorMsg(c, "已达到该套餐购买上限")
+			common.ApiErrorT(c, "Purchase limit for this plan has been reached")
 			return
 		}
 	}
@@ -68,12 +69,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	callBackAddress := service.GetCallbackAddress()
 	returnUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/return")
 	if err != nil {
-		common.ApiErrorMsg(c, "回调地址配置错误")
+		common.ApiErrorT(c, "Callback URL configuration error")
 		return
 	}
 	notifyUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/notify")
 	if err != nil {
-		common.ApiErrorMsg(c, "回调地址配置错误")
+		common.ApiErrorT(c, "Callback URL configuration error")
 		return
 	}
 
@@ -82,7 +83,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 
 	client := GetEpayClient()
 	if client == nil {
-		common.ApiErrorMsg(c, "当前管理员未配置支付信息")
+		common.ApiErrorT(c, "Payment information has not been configured by administrator")
 		return
 	}
 
@@ -97,13 +98,13 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Status:          common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
-		common.ApiErrorMsg(c, "创建订单失败")
+		common.ApiErrorT(c, "Failed to create order")
 		return
 	}
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
-		Name:           fmt.Sprintf("SUB:%s", plan.Title),
+		Name:           subscriptionEpayOrderName(plan.Title),
 		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
@@ -111,10 +112,16 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	})
 	if err != nil {
 		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
-		common.ApiErrorMsg(c, "拉起支付失败")
+		common.ApiErrorT(c, "Failed to start payment")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
+}
+
+// subscriptionEpayOrderName is the item name sent to the Epay gateway. Epay
+// signs unescaped values, so go-epay rejects '&' anywhere in a value.
+func subscriptionEpayOrderName(planTitle string) string {
+	return "SUB:" + strings.ReplaceAll(planTitle, "&", "+")
 }
 
 // confirmSubscriptionEpayPayment checks a verified subscription callback against

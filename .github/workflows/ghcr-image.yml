@@ -27,9 +27,13 @@ jobs:
       - name: Check out
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      # VERSION names the upstream release this fork is merged up to, e.g.
+      # v1.0.0-rc.44-main; bump it with each upstream merge.
       - name: Write image version
         shell: bash
-        run: echo "main-${GITHUB_SHA::7}" > VERSION
+        run: |
+          base="$(tr -d '[:space:]' < VERSION)"
+          echo "${base:-main}+${GITHUB_SHA::7}" > VERSION
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0

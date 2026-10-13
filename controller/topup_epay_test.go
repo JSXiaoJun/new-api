@@ -4,8 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
+	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -169,4 +171,22 @@ func TestQueryEpayOrderReportsUnpaidOrder(t *testing.T) {
 	order, err := queryEpayOrder(context.Background(), "WX-QUERY-0")
 	require.NoError(t, err)
 	assert.False(t, order.Paid)
+}
+
+func TestSubscriptionEpayOrderNameSignsPlanTitlesWithAmpersand(t *testing.T) {
+	name := subscriptionEpayOrderName("GPT & Claude")
+	assert.Equal(t, "SUB:GPT + Claude", name)
+
+	client := &epay.Client{Config: &epay.Config{PartnerID: "test-pid", Key: "test-key"}, BaseUrl: &url.URL{Scheme: "https", Host: "pay.example"}}
+	_, params, err := client.Purchase(&epay.PurchaseArgs{
+		Type:           "alipay",
+		ServiceTradeNo: "SUBUSR1NOAMP",
+		Name:           name,
+		Money:          "1.00",
+		Device:         epay.PC,
+		NotifyUrl:      &url.URL{Scheme: "https", Host: "merchant.example", Path: "/notify"},
+		ReturnUrl:      &url.URL{Scheme: "https", Host: "merchant.example", Path: "/return"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, name, params["name"])
 }

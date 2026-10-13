@@ -2,6 +2,8 @@ package service
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 
@@ -24,7 +26,8 @@ func TestTrustedWalletChargesUsageDespiteTokenExhaustionOrDeletion(t *testing.T)
 			t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
 			seedUser(t, 601, 20_000_000)
 			seedToken(t, 602, 601, "trusted-wallet-integrity", 6_000_000)
-			ctx, _ := gin.CreateTestContext(nil)
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 			ctx.Set("token_quota", 6_000_000)
 			info := &relaycommon.RelayInfo{UserId: 601, TokenId: 602, TokenKey: "trusted-wallet-integrity",
 				RequestId: mode, UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
@@ -81,7 +84,8 @@ func TestZeroEstimatedWalletStillChargesActualUsage(t *testing.T) {
 	truncate(t)
 	seedUser(t, 603, 100)
 	seedToken(t, 604, 603, "empty-estimate-wallet", 0)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	info := &relaycommon.RelayInfo{UserId: 603, TokenId: 604, TokenKey: "empty-estimate-wallet",
 		UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
 	session, apiErr := NewBillingSession(ctx, info, 0)
@@ -95,7 +99,8 @@ func TestWalletSettlementRetryAfterFundingFailureChargesOnlyOnce(t *testing.T) {
 	truncate(t)
 	seedUser(t, 605, 100)
 	seedToken(t, 606, 605, "wallet-retry", 100)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	info := &relaycommon.RelayInfo{UserId: 605, TokenId: 606, TokenKey: "wallet-retry",
 		UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
 	session, apiErr := NewBillingSession(ctx, info, 20)

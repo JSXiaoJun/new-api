@@ -5,7 +5,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/tokenkit"
 	"github.com/gin-gonic/gin"
 )
 
@@ -110,7 +110,7 @@ func ensureOpenAIUsageCompletion(_ *gin.Context, usage *dto.Usage, outputText, m
 		// input-token snapshot behind a whole-request "local" billing path.
 		// Match the shared Responses accumulator: tokenize OpenAI text models and
 		// estimate only for providers without a local tokenizer.
-		completionTokens = service.CountTextToken(outputText, model)
+		completionTokens = tokenkit.Count(model, outputText)
 		if completionTokens > 0 {
 			estimated = true
 		}
