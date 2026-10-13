@@ -1585,7 +1585,6 @@
     "Credentials verification failed": "Échec de la vérification des identifiants",
     "Credentials verification failed — double-check Merchant ID and API private key.": "Échec de la vérification des identifiants — vérifiez l’ID marchand et la clé privée API.",
     "credit": "credit",
-    "Credit (raw quota)": "Crédit brut",
     "Credit records": "Entrées de crédit",
     "Credit remaining": "Crédit restant",
     "Creem API key (leave blank unless updating)": "Clé API Creem (laissez vide sauf si mise à jour)",
@@ -6999,6 +6998,8 @@
     "Must be less than or equal to 100": "Doit être inférieur ou égal à 100",
     "Earn rewards when users register through your referral link and top up. Transfer accumulated rewards to your balance anytime.": "Gagnez des récompenses quand des utilisateurs s'inscrivent via votre lien de parrainage et rechargent. Transférez vos récompenses accumulées vers votre solde à tout moment.",
     "Inviter user ID": "ID de l'utilisateur parrain",
-    "Search users invited by user ID...": "Rechercher les utilisateurs invités par l'ID..."
+    "Search users invited by user ID...": "Rechercher les utilisateurs invités par l'ID...",
+    "Credit amount": "Montant crédité",
+    "Raw quota": "Quota brut"
   }
 }

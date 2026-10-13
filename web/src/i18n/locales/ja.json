@@ -1585,7 +1585,6 @@
     "Credentials verification failed": "認証情報の検証に失敗しました",
     "Credentials verification failed — double-check Merchant ID and API private key.": "認証情報の検証に失敗しました。Merchant ID と API 秘密鍵を再確認してください。",
     "credit": "credit",
-    "Credit (raw quota)": "入金（生クォータ）",
     "Credit records": "入金履歴",
     "Credit remaining": "残りクレジット",
     "Creem API key (leave blank unless updating)": "Creem API キー (更新しない限り空白のまま)",
@@ -6999,6 +6998,8 @@
     "Must be less than or equal to 100": "100 以下である必要があります",
     "Earn rewards when users register through your referral link and top up. Transfer accumulated rewards to your balance anytime.": "ユーザーがあなたの紹介リンクから登録してチャージすると報酬を獲得できます。貯まった報酬はいつでも残高へ振り替えられます。",
     "Inviter user ID": "招待者のユーザー ID",
-    "Search users invited by user ID...": "ユーザー ID で招待したユーザーを検索..."
+    "Search users invited by user ID...": "ユーザー ID で招待したユーザーを検索...",
+    "Credit amount": "入金額",
+    "Raw quota": "生クォータ"
   }
 }

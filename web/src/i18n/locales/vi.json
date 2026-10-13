@@ -1585,7 +1585,6 @@
     "Credentials verification failed": "Xác minh thông tin xác thực thất bại",
     "Credentials verification failed — double-check Merchant ID and API private key.": "Xác minh thông tin xác thực thất bại — hãy kiểm tra lại Merchant ID và khóa riêng API.",
     "credit": "credit",
-    "Credit (raw quota)": "Cộng (hạn mức gốc)",
     "Credit records": "Lịch sử cộng tiền",
     "Credit remaining": "Tín dụng còn lại",
     "Creem API key (leave blank unless updating)": "Khóa API Creem (để trống trừ khi cập nhật)",
@@ -6999,6 +6998,8 @@
     "Must be less than or equal to 100": "Phải nhỏ hơn hoặc bằng 100",
     "Earn rewards when users register through your referral link and top up. Transfer accumulated rewards to your balance anytime.": "Nhận phần thưởng khi người dùng đăng ký qua liên kết giới thiệu của bạn và nạp tiền. Chuyển phần thưởng tích lũy vào số dư bất cứ lúc nào.",
     "Inviter user ID": "ID người mời",
-    "Search users invited by user ID...": "Tìm người dùng được mời theo ID..."
+    "Search users invited by user ID...": "Tìm người dùng được mời theo ID...",
+    "Credit amount": "Số tiền cộng",
+    "Raw quota": "Hạn mức gốc"
   }
 }

@@ -25,7 +25,9 @@ import {
   parseLogOther,
   renderAuditContent,
 } from '@/features/usage-logs/lib/format'
+import { formatQuotaWithCurrency } from '@/lib/currency'
 import { formatTimestampToDate } from '@/lib/format'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import type { UserQuotaCredit, UserQuotaLog } from '../../types'
 
@@ -85,6 +87,7 @@ export function UserQuotaCreditsTable(props: {
   busy: boolean
 }) {
   const { t } = useTranslation()
+  useSystemConfigStore((state) => state.config.currency)
   return (
     <StaticDataTable<UserQuotaCredit>
       className='rounded-none border-0'
@@ -105,10 +108,14 @@ export function UserQuotaCreditsTable(props: {
         },
         {
           id: 'delta',
-          header: t('Credit (raw quota)'),
+          header: t('Credit amount'),
           className: 'w-36',
           cellClassName: 'font-mono tabular-nums whitespace-normal break-all',
-          cell: (record) => `+${record.delta}`,
+          cell: (record) => (
+            <span title={`${t('Raw quota')}: ${record.delta}`}>
+              +{formatQuotaWithCurrency(record.delta)}
+            </span>
+          ),
         },
         {
           id: 'source',

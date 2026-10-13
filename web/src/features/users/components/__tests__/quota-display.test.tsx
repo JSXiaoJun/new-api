@@ -256,31 +256,36 @@ function UsersPage() {
 
 async function renderUsersList(emptyInvitation = false) {
   useAuthStore.getState().auth.setUser({ id: 1, username: 'admin', role: 100 })
-  const get = vi.spyOn(api, 'get').mockResolvedValue({
-    data: {
-      success: true,
+  const get = vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/api/group/') {
+      return { data: { success: true, data: ['default', 'vip'] } }
+    }
+    return {
       data: {
-        items: [
-          {
-            id: 2,
-            username: 'long-user-name-for-table-layout',
-            display_name: 'A display name',
-            role: 1,
-            status: 1,
-            quota: 1900,
-            used_quota: 1100,
-            request_count: 0,
-            created_at: Math.floor(Date.now() / 1000) - 86400,
-            last_login_at: Math.floor(Date.now() / 1000) - 20,
-            group: 'default',
-            aff_count: emptyInvitation ? 0 : 2,
-            aff_history_quota: emptyInvitation ? 0 : 500000,
-            inviter_id: emptyInvitation ? 0 : 42,
-          },
-        ],
-        total: 1,
+        success: true,
+        data: {
+          items: [
+            {
+              id: 2,
+              username: 'long-user-name-for-table-layout',
+              display_name: 'A display name',
+              role: 1,
+              status: 1,
+              quota: 1900,
+              used_quota: 1100,
+              request_count: 0,
+              created_at: Math.floor(Date.now() / 1000) - 86400,
+              last_login_at: Math.floor(Date.now() / 1000) - 20,
+              group: 'default',
+              aff_count: emptyInvitation ? 0 : 2,
+              aff_history_quota: emptyInvitation ? 0 : 500000,
+              inviter_id: emptyInvitation ? 0 : 42,
+            },
+          ],
+          total: 1,
+        },
       },
-    },
+    }
   })
   const root = createRootRoute()
   const auth = createRoute({ getParentRoute: () => root, id: '_authenticated' })
@@ -328,6 +333,17 @@ it('sends balance sorting to the server and keeps invitation details on two line
   ).not.toBeInTheDocument()
   expect(screen.getByText('Inviter ID: 42')).toBeInTheDocument()
   expect(screen.getByText(/Invited 2 users · Earnings:/)).toBeInTheDocument()
+})
+
+it('selecting a user group filter searches users by that group', async () => {
+  const get = await renderUsersList()
+  await userEvent.click(screen.getByRole('button', { name: 'Group' }))
+  await userEvent.click(await screen.findByRole('option', { name: /vip/ }))
+  await waitFor(() =>
+    expect(get).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/api\/user\/search\?.*group=vip/)
+    )
+  )
 })
 
 it('shows balance above usage on mobile cards in Chinese', async () => {

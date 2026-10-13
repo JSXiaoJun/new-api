@@ -1585,7 +1585,6 @@
     "Credentials verification failed": "憑證驗證失敗",
     "Credentials verification failed — double-check Merchant ID and API private key.": "憑證驗證失敗，請檢查 Merchant ID 和 API 私鑰。",
     "credit": "credit",
-    "Credit (raw quota)": "入帳原始額度",
     "Credit records": "入帳紀錄",
     "Credit remaining": "剩餘額度",
     "Creem API key (leave blank unless updating)": "Creem API 金鑰（除非更新，否則留空）",
@@ -6999,6 +6998,8 @@
     "Must be less than or equal to 100": "必須小於或等於 100",
     "Earn rewards when users register through your referral link and top up. Transfer accumulated rewards to your balance anytime.": "使用者透過您的推薦連結註冊並儲值後，您即可獲得獎勵。可隨時將累計獎勵轉入餘額。",
     "Inviter user ID": "邀請人使用者 ID",
-    "Search users invited by user ID...": "輸入使用者 ID 查找其邀請的使用者..."
+    "Search users invited by user ID...": "輸入使用者 ID 查找其邀請的使用者...",
+    "Credit amount": "入帳金額",
+    "Raw quota": "原始額度"
   }
 }

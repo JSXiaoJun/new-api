@@ -1585,7 +1585,6 @@
     "Credentials verification failed": "Credentials verification failed",
     "Credentials verification failed — double-check Merchant ID and API private key.": "Credentials verification failed — double-check Merchant ID and API private key.",
     "credit": "credit",
-    "Credit (raw quota)": "Credit (raw quota)",
     "Credit records": "Credit records",
     "Credit remaining": "Credit remaining",
     "Creem API key (leave blank unless updating)": "Creem API key (leave blank unless updating)",
@@ -6999,6 +6998,8 @@
     "Must be less than or equal to 100": "Must be less than or equal to 100",
     "Earn rewards when users register through your referral link and top up. Transfer accumulated rewards to your balance anytime.": "Earn rewards when users register through your referral link and top up. Transfer accumulated rewards to your balance anytime.",
     "Inviter user ID": "Inviter user ID",
-    "Search users invited by user ID...": "Search users invited by user ID..."
+    "Search users invited by user ID...": "Search users invited by user ID...",
+    "Credit amount": "Credit amount",
+    "Raw quota": "Raw quota"
   }
 }

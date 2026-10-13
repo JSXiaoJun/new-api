@@ -100,7 +100,8 @@ describe('User quota history dialog', () => {
     view.rerender(
       <UserQuotaHistoryDialog open onOpenChange={vi.fn()} user={targetUser} />
     )
-    expect(await screen.findByRole('cell', { name: '+25000000' })).toBeVisible()
+    expect(await screen.findByRole('cell', { name: '+$50' })).toBeVisible()
+    expect(screen.getByTitle('Raw quota: 25000000')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Credit records' })).toHaveAttribute(
       'aria-selected',
       'true'
@@ -479,7 +480,7 @@ describe('User quota history dialog', () => {
     await act(async () =>
       complete(creditResponse([{ ...creditRecord, delta: 30000000 }], 15, 2))
     )
-    expect(await screen.findByRole('cell', { name: '+30000000' })).toBeVisible()
+    expect(await screen.findByRole('cell', { name: '+$60' })).toBeVisible()
     expect(
       screen.getByRole('table', { name: 'Credit records' })
     ).toHaveAttribute('aria-busy', 'false')

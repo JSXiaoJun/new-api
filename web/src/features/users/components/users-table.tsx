@@ -32,9 +32,12 @@ import {
 import { Input } from '@/components/ui/input'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
-import { createServerError } from '@/lib/server-error-message'
+import {
+  createServerError,
+  requireServerSuccess,
+} from '@/lib/server-error-message'
 
-import { getUsers, searchUsers } from '../api'
+import { getGroups, getUsers, searchUsers } from '../api'
 import {
   USER_STATUS,
   getUserStatusOptions,
@@ -84,7 +87,7 @@ export function UsersTable() {
     columnFilters: [
       { columnId: 'status', searchKey: 'status', type: 'array' },
       { columnId: 'role', searchKey: 'role', type: 'array' },
-      { columnId: 'group', searchKey: 'group', type: 'string' },
+      { columnId: 'group', searchKey: 'group', type: 'array' },
       { columnId: '_inviterSearch', searchKey: 'inviter', type: 'string' },
     ],
   })
@@ -118,8 +121,25 @@ export function UsersTable() {
       | string[]
       | undefined) ?? []
   const groupFilter =
-    (columnFilters.find((filter) => filter.id === 'group')?.value as string) ??
-    ''
+    (
+      columnFilters.find((filter) => filter.id === 'group')?.value as
+        | string[]
+        | undefined
+    )?.[0] ?? ''
+
+  const { data: groupsData } = useQuery({
+    queryKey: ['groups'],
+    queryFn: async () => requireServerSuccess(await getGroups()),
+    staleTime: 5 * 60 * 1000,
+  })
+  const groupOptions = useMemo(
+    () =>
+      (groupsData?.data || []).map((group) => ({
+        label: group,
+        value: group,
+      })),
+    [groupsData]
+  )
 
   const sortParams = useMemo(() => {
     const activeSort = sorting[0]
@@ -283,6 +303,12 @@ export function UsersTable() {
             columnId: 'role',
             title: t('Role'),
             options: getUserRoleOptions(t),
+            singleSelect: true,
+          },
+          {
+            columnId: 'group',
+            title: t('Group'),
+            options: groupOptions,
             singleSelect: true,
           },
         ],
