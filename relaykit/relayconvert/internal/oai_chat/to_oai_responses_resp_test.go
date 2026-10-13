@@ -604,10 +604,3 @@ func TestChatCompletionsStreamToResponsesHoldsNamelessToolUntilNameArrives(t *te
 		}
 	})
 }
-
-func mustResponsesEventsFromChatChunk(t *testing.T, state *ChatToResponsesStreamState, chunk *dto.ChatCompletionsStreamResponse) []ChatToResponsesStreamEvent {
-	t.Helper()
-	events, err := ChatCompletionsStreamChunkToResponsesEvents(chunk, state)
-	require.NoError(t, err)
-	return events
-}
