@@ -63,24 +63,25 @@ func seedHardcodedToolPrices(prices map[string]float64) {
 	prices["google_search_grounded_prompt:gemini-2.0*"] = 35
 	prices["google_search_grounded_prompt:gemini-1.5*"] = 35
 
-	// Vendor search tiers, verbatim in the vendor's list currency per 1K
-	// calls. CNY: Zhipu search engines, 0.01/0.03/0.05 CNY per call
-	// (https://docs.bigmodel.cn/cn/guide/tools/web-search), and Alibaba Model
-	// Studio search strategies at Beijing prices
-	// (https://help.aliyun.com/zh/model-studio/web-search); the Singapore
-	// agent price (73.392381 CNY) is set by the operator. USD: Azure
+	// Vendor search tiers per 1K calls. Tool prices are USD like every other
+	// price, so CNY list prices are converted at 7.3 CNY per USD (the rate of
+	// ratio_setting.USD2RMB) and rounded up to the cent: Zhipu search engines,
+	// 10/30/50 CNY per 1K (https://docs.bigmodel.cn/cn/guide/tools/web-search),
+	// and Alibaba Model Studio search strategies, 3/4 CNY per 1K at Beijing
+	// prices (https://help.aliyun.com/zh/model-studio/web-search); the
+	// Singapore agent price is set by the operator. USD: Azure
 	// Responses web search, billed as Bing transactions at $14 per 1,000
 	// (https://www.microsoft.com/en-us/bing/apis), and xAI web search $5 per
 	// 1K calls, x_search $5 per 1K posts and $10 per 1K profiles
 	// (https://docs.x.ai/developers/pricing).
-	prices["search_std"] = 10
-	prices["search_pro"] = 30
-	prices["search_pro_sogou"] = 50
-	prices["search_pro_quark"] = 50
-	prices["search_strategy_turbo"] = 3
-	prices["search_strategy_max"] = 4
-	prices["search_strategy_agent"] = 4
-	prices["search_strategy_agent_max"] = 4
+	prices["search_std"] = 1.37
+	prices["search_pro"] = 4.11
+	prices["search_pro_sogou"] = 6.85
+	prices["search_pro_quark"] = 6.85
+	prices["search_strategy_turbo"] = 0.42
+	prices["search_strategy_max"] = 0.55
+	prices["search_strategy_agent"] = 0.55
+	prices["search_strategy_agent_max"] = 0.55
 	prices["bing_web_search"] = 14
 	prices["web_search:grok*"] = 5
 	prices["x_search_posts"] = 5
