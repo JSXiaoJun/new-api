@@ -68,15 +68,15 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	for i := range responsesResponse.Output {
 		toolCounter.Count(info, &responsesResponse.Output[i], intPtr(i))
 	}
+	info.ApplyVendorToolUsage(responseBody)
 
 	imageCounter := &relaycommon.ImageGenerationCallCounter{}
-	if !relaycommon.IsNonBillableResponsesStatus(responsesResponse.Status) {
-		for i := range responsesResponse.Output {
-			idx := i
-			imageCounter.Observe(&responsesResponse.Output[i], &idx)
-		}
-		imageCounter.EnsureAtLeast(imageToolCount)
+	// Images that completed are billable whatever the response status; Observe
+	// skips unfinished image items.
+	for i := range responsesResponse.Output {
+		imageCounter.Observe(&responsesResponse.Output[i], intPtr(i))
 	}
+	imageCounter.EnsureAtLeast(imageToolCount)
 	imageCounter.Commit(info)
 	// Some Responses-compatible gateways report only input_tokens. That is a
 	// valid partial snapshot, but it must not suppress output billing when the
@@ -95,7 +95,7 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 
 func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	if resp == nil || resp.Body == nil {
-		logger.LogError(c, "invalid response or response body")
+		logger.LogError(c, common.LogText("invalid response or response body"))
 		return nil, types.NewError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse)
 	}
 
@@ -116,7 +116,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		// 检查当前数据是否包含 completed 状态和 usage 信息
 		var streamResponse dto.ResponsesStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
-			logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
+			logger.LogError(c, common.LogText("failed to unmarshal stream response: %s", err.Error()))
 			sr.Error(err)
 			return
 		}
@@ -174,36 +174,38 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				for i := range response.Output {
 					toolCounter.Count(info, &response.Output[i], intPtr(i))
 				}
-				if relaycommon.IsNonBillableResponsesStatus(response.Status) {
-					imageCounter.Reset()
-					imageCounter.Commit(info)
-					imageCommitted = true
-				} else {
-					if !responseTextObserved {
-						responseTextObserved = appendResponsesOutputText(&responseTextBuilder, response)
+				if !responseTextObserved {
+					responseTextObserved = appendResponsesOutputText(&responseTextBuilder, response)
+				}
+				if !imageCommitted {
+					for i := range response.Output {
+						imageCounter.Observe(&response.Output[i], intPtr(i))
 					}
-					if !imageCommitted {
-						for i := range response.Output {
-							idx := i
-							imageCounter.Observe(&response.Output[i], &idx)
-						}
-						imageCounter.EnsureAtLeast(toolUsageImageCount)
-						// Keep an empty terminal response retryable. Some
-						// sub2api-compatible gateways emit response.done first and
-						// attach response.output in a following terminal event.
-						if imageCounter.Count() > 0 {
-							imageCounter.Commit(info)
-							imageCommitted = true
-						}
+					imageCounter.EnsureAtLeast(toolUsageImageCount)
+					// Keep an empty terminal response retryable. Some
+					// sub2api-compatible gateways emit response.done first and
+					// attach response.output in a following terminal event.
+					if imageCounter.Count() > 0 {
+						imageCounter.Commit(info)
+						imageCommitted = true
 					}
 				}
 			}
+			// Vendor counts are cumulative on the terminal event and replace the
+			// web_search_call items counted from output_item.done.
+			info.ApplyVendorToolUsage(common.StringToByteSlice(data))
 		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
 			// Responses providers can include authoritative usage on any terminal
-			// event, not only response.completed/response.done. Preserve it so an
-			// interrupted or cancelled stream is still billed when usage is present.
+			// event, not only response.completed/response.done; it was merged above.
+			// Images that completed before this terminal were delivered and stay
+			// billable.
+			info.ApplyVendorToolUsage(common.StringToByteSlice(data))
 			if !imageCommitted {
-				imageCounter.Reset()
+				if response != nil {
+					for i := range response.Output {
+						imageCounter.Observe(&response.Output[i], intPtr(i))
+					}
+				}
 				imageCounter.Commit(info)
 				imageCommitted = true
 			}
@@ -262,12 +264,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 	})
 
-	// A provider may end with [DONE] or EOF after emitting completed output
-	// items, without sending response.completed. Commit only on a normal stream
-	// end so abandoned or failed streams do not turn partial images into a
-	// charge.
-	if !imageCommitted && info.StreamStatus != nil &&
-		(info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone || info.StreamStatus.EndReason == relaycommon.StreamEndReasonEOF) {
+	// A provider may end with [DONE] or EOF, and a client may disconnect, after
+	// completed image items reached the client without a terminal event. Those
+	// images were delivered and stay billable; unfinished items never count.
+	if !imageCommitted {
 		imageCounter.EnsureAtLeast(toolUsageImageCount)
 		imageCounter.Commit(info)
 		imageCommitted = true

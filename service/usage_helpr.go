@@ -4,6 +4,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/tokenkit"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,7 +24,7 @@ func ResponseText2Usage(c *gin.Context, responseText string, modeName string, pr
 	common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
 	usage := &dto.Usage{}
 	usage.PromptTokens = promptTokens
-	usage.CompletionTokens = EstimateTokenByModel(modeName, responseText)
+	usage.CompletionTokens = tokenkit.Estimate(modeName, responseText)
 	usage.TotalTokens = addUsageInts(usage.PromptTokens, usage.CompletionTokens)
 	return usage
 }
@@ -62,7 +63,7 @@ func EnsureUsageCompletion(c *gin.Context, usage *dto.Usage, responseText, model
 		completionTokens = usage.TotalTokens - promptTokens
 	}
 	if completionTokens == 0 {
-		completionTokens = EstimateTokenByModel(model, responseText)
+		completionTokens = tokenkit.Count(model, responseText)
 	}
 	if completionTokens <= 0 {
 		return false

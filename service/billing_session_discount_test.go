@@ -1,6 +1,8 @@
 package service
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -38,7 +40,8 @@ func seedBillingSubscription(t *testing.T, userID, subscriptionID int) {
 func TestZeroEstimatedSubscriptionChargeDoesNotCreateMinimumDeduction(t *testing.T) {
 	truncate(t)
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	const userID, tokenID, subscriptionID = 91, 92, 93
 	seedUser(t, userID, 1_000)
 	seedToken(t, tokenID, userID, "zero-subscription-token", 1_000)
@@ -76,7 +79,8 @@ func TestZeroEstimatedSubscriptionChargeDoesNotCreateMinimumDeduction(t *testing
 func TestZeroEstimatedSubscriptionChargeSettlesActualCharge(t *testing.T) {
 	truncate(t)
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	const userID, tokenID, subscriptionID = 94, 95, 96
 	seedUser(t, userID, 1_000)
 	seedToken(t, tokenID, userID, "zero-estimate-settlement-token", 1_000)
@@ -105,7 +109,8 @@ func TestZeroEstimatedSubscriptionChargeSettlesActualCharge(t *testing.T) {
 func TestZeroEstimatedSubscriptionChargeDoesNotChargeWithoutTokenQuota(t *testing.T) {
 	truncate(t)
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	const userID, tokenID, subscriptionID = 97, 98, 99
 	seedUser(t, userID, 1_000)
 	seedToken(t, tokenID, userID, "zero-estimate-empty-token", 0)
@@ -132,7 +137,8 @@ func TestZeroEstimatedSubscriptionChargeDoesNotChargeWithoutTokenQuota(t *testin
 func TestSubscriptionDiscountFallsBackToBaseChargeInsteadOfZero(t *testing.T) {
 	truncate(t)
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	const userID, tokenID, subscriptionID = 101, 102, 103
 	seedUser(t, userID, 1_000)
 	seedToken(t, tokenID, userID, "nonzero-discount-token", 1_000)

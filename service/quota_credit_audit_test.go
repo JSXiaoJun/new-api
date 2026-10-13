@@ -1,6 +1,8 @@
 package service
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
@@ -14,7 +16,8 @@ import (
 func TestWalletSettlementRefundAudit(t *testing.T) {
 	truncate(t)
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	const userID = 201
 	seedUser(t, userID, 100)
 	info := &relaycommon.RelayInfo{
@@ -56,7 +59,8 @@ func TestWalletFundingRefundAudit(t *testing.T) {
 func TestWalletReserveRollbackAudit(t *testing.T) {
 	truncate(t)
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(nil)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	const userID, tokenID = 203, 203
 	seedUser(t, userID, 100)
 	seedToken(t, tokenID, userID, "wallet-reserve-token", 40)

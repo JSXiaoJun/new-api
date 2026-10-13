@@ -4,7 +4,6 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -12,7 +11,7 @@ import (
 func GetUserQuotaLogs(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
 	user, err := model.GetUserById(id, false)
@@ -21,24 +20,24 @@ func GetUserQuotaLogs(c *gin.Context) {
 		return
 	}
 	if !canManageTargetRole(c.GetInt("role"), user.Role) {
-		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
+		common.ApiErrorT(c, "No permission to access users of same or higher level")
 		return
 	}
 	pageInfo := common.GetPageQuery(c)
 	if pageInfo.GetPage() < 1 || pageInfo.GetPageSize() < 1 || pageInfo.GetPage()-1 > int(^uint(0)>>1)/pageInfo.GetPageSize() {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
 	view := c.Query("view")
 	if len(c.QueryArray("view")) > 1 {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
 	if view == "" {
 		view = "legacy"
 	}
 	if view != "legacy" && view != "credits" {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
 	if view == "credits" {

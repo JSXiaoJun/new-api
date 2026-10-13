@@ -6,7 +6,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 
@@ -28,7 +27,7 @@ type PurchaseAgreementRequest struct {
 func ConfirmPurchaseAgreement(c *gin.Context) {
 	var req PurchaseAgreementRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
 	statement := strings.TrimSpace(req.Statement)
@@ -37,7 +36,7 @@ func ConfirmPurchaseAgreement(c *gin.Context) {
 		!req.ConfirmNoInvoice ||
 		statement == "" ||
 		utf8.RuneCountInString(statement) > purchaseAgreementStatementMaxLength {
-		common.ApiErrorI18n(c, i18n.MsgPurchaseAgreementInvalid)
+		common.ApiErrorT(c, "Please check all confirmation items and enter the confirmation text.")
 		return
 	}
 

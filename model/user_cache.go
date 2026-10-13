@@ -40,7 +40,7 @@ func (user *UserBase) GetSetting() dto.UserSetting {
 	if user.Setting != "" {
 		err := common.Unmarshal([]byte(user.Setting), &setting)
 		if err != nil {
-			common.SysLog("failed to unmarshal setting: " + err.Error())
+			common.SysLog(common.LogText("failed to unmarshal setting: %s", err.Error()))
 		}
 	}
 	return setting
@@ -86,22 +86,20 @@ func updateUserCache(user User) error {
 
 // GetUserCache gets complete user cache from hash
 func GetUserCache(userId int) (base *UserBase, resultErr error) {
-	defer func() {
-		if resultErr == nil && base != nil {
-			quota, err := getWalletQuota(userId)
-			if err == nil {
-				base.Quota = quota
-			}
-			// Authentication may remain available during a wallet outage.
-			// Billing always reads getWalletQuota independently and fails closed.
-			if err != nil {
-				base.Quota = 0
-			}
+	// Authentication may remain available during a wallet outage, so an
+	// unreadable wallet shows a zero balance here. Billing always reads
+	// getWalletQuota independently and fails closed.
+	applyWalletQuota := func(cache *UserBase) {
+		quota, err := getWalletQuota(userId)
+		if err != nil {
+			quota = 0
 		}
-	}()
+		cache.Quota = quota
+	}
 	// Try getting from Redis first
 	userCache, err := cacheGetUserBase(userId)
 	if err == nil {
+		applyWalletQuota(userCache)
 		return userCache, nil
 	}
 
@@ -121,10 +119,19 @@ func GetUserCache(userId int) (base *UserBase, resultErr error) {
 			if errors.Is(err, ErrUserAuthCachePending) {
 				return nil, err
 			}
-			common.SysLog("failed to synchronously populate user cache: " + err.Error())
+			common.SysLog(common.LogText("failed to synchronously populate user cache: %s", err.Error()))
 		}
+		cache := user.ToBaseUser()
+		applyWalletQuota(cache)
+		return cache, nil
 	}
-	return user.ToBaseUser(), nil
+	// Without Redis the row just read is the wallet; a journaled wallet
+	// (non-empty epoch) cannot be read from SQL alone.
+	cache := user.ToBaseUser()
+	if user.WalletEpoch != "" {
+		cache.Quota = 0
+	}
+	return cache, nil
 }
 
 func cacheGetUserBase(userId int) (*UserBase, error) {

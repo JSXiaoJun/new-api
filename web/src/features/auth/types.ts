@@ -186,6 +186,8 @@ export interface SystemStatus {
   mainland_web_block_enabled?: boolean
   custom_oauth_providers?: CustomOAuthProviderInfo[]
   first_token_display_rules?: string
+  log_export_enabled?: boolean
+  log_max_range_days?: number
   [key: string]: unknown
 }
 

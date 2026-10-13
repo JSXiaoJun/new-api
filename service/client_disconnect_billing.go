@@ -167,6 +167,6 @@ func SettleClientDisconnectBilling(c *gin.Context, info *relaycommon.RelayInfo) 
 		InputTokens:  promptTokens,
 		TotalTokens:  promptTokens,
 	}
-	PostTextConsumeQuota(c, info, usage, []string{"客户端断开连接，但已发送到上游，按使用计费"})
+	PostTextConsumeQuota(c, info, usage, []*common.Message{common.NewMessage("Client disconnected after the request reached the upstream, billed by usage")})
 	return true
 }

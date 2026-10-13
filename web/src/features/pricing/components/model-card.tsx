@@ -113,6 +113,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     ? t('second')
     : t('request')
   let priceSummary: ReactNode
+  const cacheReadEntries =
+    dynamicSummary?.secondaryEntries.filter(
+      (entry) => entry.field === 'cacheReadPrice' && entry.unit === 'token'
+    ) ?? []
   if (props.model.peak_pricing) {
     priceSummary = (
       <span className='col-span-full'>
@@ -131,11 +135,20 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           </code>
         </div>
       )
-    } else if (dynamicSummary.primaryEntries.length > 0) {
+    } else if (
+      dynamicSummary.primaryEntries.length > 0 ||
+      cacheReadEntries.length > 0
+    ) {
       priceSummary = (
         <>
-          {dynamicSummary.primaryEntries
-            .slice(0, dynamicSummary.providerCount ? 2 : undefined)
+          {[
+            dynamicSummary.primaryEntries.slice(
+              0,
+              dynamicSummary.providerCount ? 2 : undefined
+            ),
+            cacheReadEntries,
+          ]
+            .flat()
             .map((entry) => {
               const unitLabelKey = getDynamicPriceUnitLabelKey(entry)
               const unitLabel = taskUsageUnitLabel(
