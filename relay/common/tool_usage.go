@@ -255,6 +255,25 @@ func (c *ImageGenerationCallCounter) Observe(item *dto.ResponsesOutput, outputIn
 	c.count++
 }
 
+// IsUnfinishedResponsesStatus reports a Responses status that did not
+// complete. Completed image items stay billable under it, but a provider
+// image count does not prove that any image was delivered.
+func IsUnfinishedResponsesStatus(status []byte) bool {
+	if len(status) == 0 {
+		return false
+	}
+	var s string
+	if err := common.Unmarshal(status, &s); err != nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "failed", "cancelled", "canceled", "incomplete":
+		return true
+	default:
+		return false
+	}
+}
+
 // Reset clears pending observations (used when a terminal response fails).
 func (c *ImageGenerationCallCounter) Reset() {
 	if c == nil {

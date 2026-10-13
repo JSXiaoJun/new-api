@@ -197,6 +197,30 @@ func TestOaiResponsesHandlerCountsImageGenerationOnIncompleteStatus(t *testing.T
 	assert.Equal(t, 1, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
 }
 
+func TestOaiResponsesHandlerIgnoresProviderImageCountOnIncompleteStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"status":"incomplete","tool_usage":{"image_gen":{"images":2}},"output":[` +
+		`{"type":"image_generation_call","id":"img_1","status":"completed","result":"base64-a"},` +
+		`{"type":"image_generation_call","id":"img_2","status":"in_progress"}],` +
+		`"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	info := &relaycommon.RelayInfo{OriginModelName: "gpt-5.1"}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewReader(body)),
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+	}
+
+	_, apiErr := OaiResponsesHandler(c, info, resp)
+	require.Nil(t, apiErr)
+	// Only the completed image item reached the client; the provider count of
+	// an unfinished response proves nothing.
+	assert.Equal(t, 1, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
+}
+
 func runResponsesImageBillingStream(t *testing.T, events ...string) *relaycommon.RelayInfo {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -257,6 +281,27 @@ func TestOaiResponsesStreamHandlerCountsImageOutputOnIncomplete(t *testing.T) {
 	)
 
 	assert.Equal(t, 1, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
+}
+
+func TestOaiResponsesStreamHandlerProviderImageCountOnlyOnCompletedResponse(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		terminal string
+		want     int
+	}{
+		{"completed", `{"type":"response.completed","response":{"status":"completed","tool_usage":{"image_gen":{"images":2}}}}`, 2},
+		{"done with incomplete status", `{"type":"response.done","response":{"status":"incomplete","tool_usage":{"image_gen":{"images":2}}}}`, 1},
+		{"incomplete", `{"type":"response.incomplete","response":{"status":"incomplete","tool_usage":{"image_gen":{"images":2}}}}`, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := runResponsesImageBillingStream(
+				t,
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"image_generation_call","id":"img_1","status":"completed","result":"base64-a"}}`,
+				tc.terminal,
+			)
+			assert.Equal(t, tc.want, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
+		})
+	}
 }
 
 func TestOaiResponsesStreamHandlerUsesUsageOnIncomplete(t *testing.T) {

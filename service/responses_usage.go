@@ -61,7 +61,8 @@ func (a *ResponsesUsageAccumulator) Observe(event *dto.ResponsesStreamResponse, 
 				a.outputText.WriteString(relayconvert.ExtractOutputTextFromResponses(event.Response))
 			}
 		}
-		completed := event.Type == "response.completed" || event.Type == "response.done"
+		completed := (event.Type == "response.completed" || event.Type == "response.done") &&
+			(event.Response == nil || !relaycommon.IsUnfinishedResponsesStatus(event.Response.Status))
 		if completed && event.Response != nil {
 			// A terminal response can carry tool calls that never arrived as
 			// output_item.done; the counter deduplicates repeated items.

@@ -174,6 +174,44 @@ func TestOaiResponsesToChatBufferedStreamHandlerReturnsJSONFromSSE(t *testing.T)
 	require.Contains(t, got, `"finish_reason":"tool_calls"`)
 }
 
+func TestOaiResponsesToChatProviderImageCountOnlyOnCompletedResponse(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	imageDone := `data: {"type":"response.output_item.done","output_index":0,"item":{"type":"image_generation_call","id":"img_1","status":"completed","result":"base64-a"}}`
+	usage := `"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3},"tool_usage":{"image_gen":{"images":2}}`
+	for _, tc := range []struct {
+		name     string
+		terminal string
+		want     int
+	}{
+		{"completed", `data: {"type":"response.completed","response":{"status":"completed",` + usage + `}}`, 2},
+		{"incomplete", `data: {"type":"response.incomplete","response":{"status":"incomplete",` + usage + `}}`, 1},
+	} {
+		body := strings.Join([]string{imageDone, tc.terminal, `data: [DONE]`, ``}, "\n")
+		for _, handler := range []struct {
+			name     string
+			isStream bool
+			run      func(*gin.Context, *relaycommon.RelayInfo, *http.Response) (*dto.Usage, *types.NewAPIError)
+		}{
+			{"stream", true, OaiResponsesToChatStreamHandler},
+			{"buffered", false, OaiResponsesToChatBufferedStreamHandler},
+		} {
+			t.Run(tc.name+" "+handler.name, func(t *testing.T) {
+				c, _, resp, info := newResponsesChatTestContext(t, body, handler.isStream)
+				_, err := handler.run(c, info, resp)
+				require.Nil(t, err)
+				require.NotNil(t, info.ResponsesUsageInfo)
+				assert.Equal(t, tc.want, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
+			})
+		}
+	}
+}
+
 func TestOaiResponsesToChatBufferedStreamHandlerPreservesInterleavedClaudeContent(t *testing.T) {
 	oldMode := gin.Mode()
 	gin.SetMode(gin.TestMode)

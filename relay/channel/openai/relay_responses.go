@@ -72,11 +72,14 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 
 	imageCounter := &relaycommon.ImageGenerationCallCounter{}
 	// Images that completed are billable whatever the response status; Observe
-	// skips unfinished image items.
+	// skips unfinished image items. A provider image count proves delivery only
+	// on a completed response.
 	for i := range responsesResponse.Output {
 		imageCounter.Observe(&responsesResponse.Output[i], intPtr(i))
 	}
-	imageCounter.EnsureAtLeast(imageToolCount)
+	if !relaycommon.IsUnfinishedResponsesStatus(responsesResponse.Status) {
+		imageCounter.EnsureAtLeast(imageToolCount)
+	}
 	imageCounter.Commit(info)
 	// Some Responses-compatible gateways report only input_tokens. That is a
 	// valid partial snapshot, but it must not suppress output billing when the
@@ -181,7 +184,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 					for i := range response.Output {
 						imageCounter.Observe(&response.Output[i], intPtr(i))
 					}
-					imageCounter.EnsureAtLeast(toolUsageImageCount)
+					if !relaycommon.IsUnfinishedResponsesStatus(response.Status) {
+						imageCounter.EnsureAtLeast(toolUsageImageCount)
+					}
 					// Keep an empty terminal response retryable. Some
 					// sub2api-compatible gateways emit response.done first and
 					// attach response.output in a following terminal event.
@@ -266,9 +271,13 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	// A provider may end with [DONE] or EOF, and a client may disconnect, after
 	// completed image items reached the client without a terminal event. Those
-	// images were delivered and stay billable; unfinished items never count.
+	// images were delivered and stay billable; unfinished items never count. A
+	// provider image count is trusted only when upstream ended the stream.
 	if !imageCommitted {
-		imageCounter.EnsureAtLeast(toolUsageImageCount)
+		if info.StreamStatus != nil &&
+			(info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone || info.StreamStatus.EndReason == relaycommon.StreamEndReasonEOF) {
+			imageCounter.EnsureAtLeast(toolUsageImageCount)
+		}
 		imageCounter.Commit(info)
 		imageCommitted = true
 	}

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -8,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/tokenkit"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -419,5 +422,16 @@ func TestResponsesUsageAccumulatorMatchesHTTPAccounting(t *testing.T) {
 			}
 			assert.Equal(t, tc.wantTools, billed)
 		})
+	}
+}
+
+func TestResponseText2UsageCountsGPTOutputExactly(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	text := "The quick brown fox jumps over the lazy dog. Billing must not undercount delivered output."
+	for _, model := range []string{"gpt-4o", "gpt-5", "claude-sonnet-4-5", "gemini-2.5-pro", "deepseek-chat"} {
+		usage := ResponseText2Usage(c, text, model, 7)
+		assert.Equal(t, tokenkit.Count(model, text), usage.CompletionTokens, model)
+		assert.Equal(t, 7+usage.CompletionTokens, usage.TotalTokens, model)
 	}
 }

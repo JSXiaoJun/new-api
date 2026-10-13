@@ -421,11 +421,13 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 // protocol is being converted to Chat Completions. The same output can appear
 // in item.done and in a terminal response, so the shared counters deduplicate
 // those observations before the request is settled. Completed images reached
-// the client and stay billable whatever terminal follows them.
+// the client and stay billable whatever terminal follows them; a provider
+// image count is billed only when the response completed.
 type responsesChatBillingTracker struct {
 	tools          relaycommon.ResponsesToolCallCounter
 	images         relaycommon.ImageGenerationCallCounter
 	imageToolCount int
+	unfinished     bool
 }
 
 func newResponsesChatBillingTracker() *responsesChatBillingTracker {
@@ -435,6 +437,10 @@ func newResponsesChatBillingTracker() *responsesChatBillingTracker {
 func (t *responsesChatBillingTracker) observeEvent(info *relaycommon.RelayInfo, event *dto.ResponsesStreamResponse) {
 	if t == nil || event == nil {
 		return
+	}
+	switch event.Type {
+	case "response.failed", "response.error", "response.incomplete", "response.cancelled", "response.canceled":
+		t.unfinished = true
 	}
 	if event.ToolUsage != nil {
 		t.imageToolCount = maxResponsesInt(t.imageToolCount, responsesImageToolCount(event.ToolUsage))
@@ -467,6 +473,9 @@ func (t *responsesChatBillingTracker) observeResponse(info *relaycommon.RelayInf
 	if t == nil || response == nil {
 		return
 	}
+	if relaycommon.IsUnfinishedResponsesStatus(response.Status) {
+		t.unfinished = true
+	}
 	if response.ToolUsage != nil {
 		t.imageToolCount = maxResponsesInt(t.imageToolCount, responsesImageToolCount(response.ToolUsage))
 	}
@@ -489,7 +498,9 @@ func (t *responsesChatBillingTracker) commit(info *relaycommon.RelayInfo) {
 	if t == nil {
 		return
 	}
-	t.images.EnsureAtLeast(t.imageToolCount)
+	if !t.unfinished {
+		t.images.EnsureAtLeast(t.imageToolCount)
+	}
 	t.images.Commit(info)
 }
 

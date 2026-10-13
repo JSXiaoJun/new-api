@@ -24,7 +24,8 @@ func ResponseText2Usage(c *gin.Context, responseText string, modeName string, pr
 	common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
 	usage := &dto.Usage{}
 	usage.PromptTokens = promptTokens
-	usage.CompletionTokens = tokenkit.Estimate(modeName, responseText)
+	// Count is exact for GPT models and equals Estimate for every other family.
+	usage.CompletionTokens = tokenkit.Count(modeName, responseText)
 	usage.TotalTokens = addUsageInts(usage.PromptTokens, usage.CompletionTokens)
 	return usage
 }

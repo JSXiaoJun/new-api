@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Calcium-Ion/go-epay/epay"
@@ -103,7 +104,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
-		Name:           fmt.Sprintf("SUB:%s", plan.Title),
+		Name:           subscriptionEpayOrderName(plan.Title),
 		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
@@ -115,6 +116,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
+}
+
+// subscriptionEpayOrderName is the item name sent to the Epay gateway. Epay
+// signs unescaped values, so go-epay rejects '&' anywhere in a value.
+func subscriptionEpayOrderName(planTitle string) string {
+	return "SUB:" + strings.ReplaceAll(planTitle, "&", "+")
 }
 
 // confirmSubscriptionEpayPayment checks a verified subscription callback against
