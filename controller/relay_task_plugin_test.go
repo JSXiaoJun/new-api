@@ -426,6 +426,109 @@ func TestExecuteTaskSubmissionDisconnectAfterDurableInsertDoesNotRefund(t *testi
 	assert.False(t, c.Writer.Written())
 }
 
+// A native submit already sent upstream may have created a billed job, so a
+// caller that stops waiting must not cancel it: the task is persisted and
+// charged. A failed attempt after the caller left is neither retried nor sent
+// again, and a caller still waiting is never cut off by the detach timeout.
+func TestDetachedTaskSubmissionLifecycle(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		disconnect   bool
+		attemptFails bool
+		wantCode     string
+		wantEvents   []string
+		wantTasks    int64
+		wantAttempts int
+	}{
+		{"disconnect during submit persists and settles", true, false, "", []string{"reserve", "insert", "settle"}, 1, 1},
+		{"failed attempt after disconnect is not retried", true, true, "request_cancelled", []string{"refund"}, 0, 1},
+		{"connected caller outlives the detach timeout", false, false, "", []string{"reserve", "insert", "settle"}, 1, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			events := make([]string, 0, 3)
+			database := setupTaskSubmissionDatabase(t, true, &events)
+			previousLogConsumeEnabled := common.LogConsumeEnabled
+			previousRetryTimes := common.RetryTimes
+			previousTimeout := constant.TaskSubmitTimeoutSeconds
+			common.LogConsumeEnabled = false
+			common.RetryTimes = 2
+			constant.TaskSubmitTimeoutSeconds = 1
+			t.Cleanup(func() {
+				common.LogConsumeEnabled = previousLogConsumeEnabled
+				common.RetryTimes = previousRetryTimes
+				constant.TaskSubmitTimeoutSeconds = previousTimeout
+			})
+			billing := &taskSubmissionTestBilling{events: &events}
+			c := taskSubmissionTestContext()
+			clientContext, disconnect := context.WithCancel(c.Request.Context())
+			defer disconnect()
+			c.Request = c.Request.WithContext(clientContext)
+			clientRequest := c.Request
+			attempts := 0
+
+			restore := service.DetachTaskSubmission(c)
+			outcome, taskErr := executeTaskSubmissionWith(c, taskSubmissionRelayInfo(billing), func(c *gin.Context, _ *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
+				attempts++
+				if tc.disconnect {
+					disconnect()
+				} else {
+					time.Sleep(1500 * time.Millisecond)
+				}
+				if err := c.Request.Context().Err(); err != nil {
+					return nil, service.TaskErrorWrapperLocal(err, "do_request_failed", http.StatusInternalServerError)
+				}
+				if tc.attemptFails {
+					return nil, &dto.TaskError{Code: "upstream_error", Message: "bad gateway", StatusCode: http.StatusBadGateway}
+				}
+				return &relay.TaskSubmitResult{UpstreamTaskID: "upstream_private", Platform: constant.TaskPlatform("plugin")}, nil
+			})
+			restore()
+
+			assert.Same(t, clientRequest, c.Request)
+			assert.Equal(t, tc.wantAttempts, attempts)
+			assert.Equal(t, tc.wantEvents, events)
+			if tc.wantCode == "" {
+				require.Nil(t, taskErr)
+				require.NotNil(t, outcome)
+			} else {
+				assert.Nil(t, outcome)
+				require.NotNil(t, taskErr)
+				assert.Equal(t, tc.wantCode, taskErr.Code)
+			}
+			var count int64
+			require.NoError(t, database.Model(&model.Task{}).Where("task_id = ?", "task_public").Count(&count).Error)
+			assert.Equal(t, tc.wantTasks, count)
+		})
+	}
+}
+
+// The detached submission keeps running when the caller leaves, reports the
+// caller as gone (doRequest then refuses to send a new attempt), and is
+// bounded by TASK_SUBMIT_TIMEOUT_SECONDS from that moment on.
+func TestDetachTaskSubmissionBoundsOnlyAbandonedSubmissions(t *testing.T) {
+	previousTimeout := constant.TaskSubmitTimeoutSeconds
+	constant.TaskSubmitTimeoutSeconds = 1
+	t.Cleanup(func() { constant.TaskSubmitTimeoutSeconds = previousTimeout })
+	c := taskSubmissionTestContext()
+	clientContext, disconnect := context.WithCancel(c.Request.Context())
+	defer disconnect()
+	c.Request = c.Request.WithContext(clientContext)
+
+	restore := service.DetachTaskSubmission(c)
+	defer restore()
+	submitContext := c.Request.Context()
+	assert.False(t, service.TaskCallerGone(c))
+
+	disconnect()
+	assert.True(t, service.TaskCallerGone(c))
+	assert.NoError(t, submitContext.Err(), "an attempt in flight keeps running after the caller leaves")
+	select {
+	case <-submitContext.Done():
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "abandoned submission was not bounded by TASK_SUBMIT_TIMEOUT_SECONDS")
+	}
+}
+
 // setupTaskSubmissionDatabase opens the dialect selected by
 // TEST_TASK_DB_DIALECT (SQLite in memory by default) and records every task
 // INSERT in events so tests can assert the reserve → insert → settle order.

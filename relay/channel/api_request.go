@@ -590,9 +590,9 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
-	// A detached Cloudflare request keeps its context alive after the client
-	// leaves; only work already sent upstream should continue.
-	if service.ProxiedClientGone(c) {
+	// A detached Cloudflare request or task submission keeps its context alive
+	// after the client leaves; only work already sent upstream should continue.
+	if service.ProxiedClientGone(c) || service.TaskCallerGone(c) {
 		return nil, types.NewError(errors.New("client disconnected before upstream request"), types.ErrorCodeDoRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 	info.MarkUpstreamStart()

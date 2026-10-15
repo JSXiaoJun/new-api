@@ -19,6 +19,7 @@ var ErrorLogEnabled bool
 var TaskQueryLimit int
 var TaskTimeoutMinutes int
 var TaskPollMaxFailures = 20
+var TaskSubmitTimeoutSeconds int
 var TaskPluginProtocolTimeoutSeconds int
 var TaskPluginProtocolTickMilliseconds int
 var TaskPluginProtocolTickJitterMilliseconds int

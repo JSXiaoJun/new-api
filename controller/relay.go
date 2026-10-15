@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -464,7 +465,10 @@ func RelayTask(c *gin.Context) {
 		return
 	}
 
-	outcome, taskErr := executeTaskSubmission(c, relayInfo)
+	outcome, taskErr := func() (*taskSubmissionOutcome, *taskdto.TaskError) {
+		defer service.DetachTaskSubmission(c)()
+		return executeTaskSubmission(c, relayInfo)
+	}()
 	if taskErr != nil {
 		respondTaskSubmissionError(c, taskErr)
 		return
@@ -475,8 +479,8 @@ func RelayTask(c *gin.Context) {
 // executeTaskSubmission owns the retry, billing, and persistence lifecycle.
 // It deliberately performs no client response writes so JSON and protocol
 // presenters share the same durable task barrier. Its cancellation semantics
-// come from c.Request.Context: native task endpoints use the client context,
-// while the Responses bridge supplies an independently bounded context.
+// come from c.Request.Context, which RelayTask and the Responses bridge both
+// bound independently of the client connection.
 func executeTaskSubmission(c *gin.Context, relayInfo *relaycommon.RelayInfo) (*taskSubmissionOutcome, *taskdto.TaskError) {
 	return executeTaskSubmissionWith(c, relayInfo, relay.RelayTaskSubmit)
 }
@@ -566,6 +570,14 @@ func executeTaskSubmissionWith(
 		}
 		if taskErr == nil {
 			diagnostics.attemptSucceeded(retryParam.GetRetry()+1, result)
+			break
+		}
+		// The caller left and this attempt failed: neither retry nor blame the
+		// channel for a request nobody waits for.
+		if service.TaskCallerGone(c) {
+			diagnostics.cancelled("after_submit", retryParam.GetRetry()+1)
+			logger.LogWarn(c, common.LogText("task submit failed after the caller disconnected: %s", taskErr.Message))
+			taskErr = service.TaskErrorWrapperLocal(context.Canceled, "request_cancelled", http.StatusRequestTimeout)
 			break
 		}
 
