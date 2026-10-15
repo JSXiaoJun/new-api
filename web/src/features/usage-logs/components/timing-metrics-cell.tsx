@@ -20,11 +20,6 @@ import { CircleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
-  dotColorMap,
-  textColorMap,
-  type StatusVariant,
-} from '@/components/status-badge'
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -38,27 +33,17 @@ import {
   adjustFirstTokenDisplaySeconds,
   parseFirstTokenDisplayConfig,
 } from '../lib/first-token-display'
-import { getFirstResponseTimeColor, getResponseTimeColor } from '../lib/format'
+import {
+  durationSeverity,
+  firstTokenSeverity,
+  latencyBarClasses,
+  latencyTextClasses,
+} from '../lib/latency'
 import type { LogOtherData } from '../types'
 import { useShowRawTiming } from './usage-logs-provider'
 
-/**
- * Softened fills for the full-height timing bar. The bar sits directly beside
- * dense numeric text, so the saturated `dotColorMap` tones (tuned for small
- * dots and badges) read as too high-contrast at that size; a translucent fill
- * keeps the status legible while matching the page's muted palette.
- */
-const barColorMap: Record<StatusVariant, string> = {
-  ...dotColorMap,
-  success: 'bg-success/90',
-  warning: 'bg-warning/80',
-  danger: 'bg-destructive/80',
-  neutral: 'bg-neutral/80',
-}
-
 interface TimingMetricsCellProps {
   useTimeSec: number
-  completionTokens: number
   frtMs?: number
   isStream: boolean
   className?: string
@@ -92,14 +77,16 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
       )
     }
   }
-  const firstTokenVariant: StatusVariant =
-    firstTokenSeconds == null
-      ? 'neutral'
-      : getFirstResponseTimeColor(firstTokenSeconds)
-  const totalTimeVariant = getResponseTimeColor(
-    props.useTimeSec,
-    props.completionTokens
-  )
+  const firstTokenLevel =
+    firstTokenSeconds == null ? null : firstTokenSeverity(firstTokenSeconds)
+  const firstTokenTextClass =
+    firstTokenLevel == null
+      ? 'text-muted-foreground'
+      : latencyTextClasses[firstTokenLevel]
+  const firstTokenDotClass =
+    firstTokenLevel == null ? 'bg-neutral' : latencyBarClasses[firstTokenLevel]
+  const totalTimeLevel = durationSeverity(props.useTimeSec)
+  const splitBar = showFirstToken && firstTokenLevel != null
   const firstTokenLabel =
     firstTokenSeconds == null ? t('N/A') : formatUseTime(firstTokenSeconds)
   const totalTimeLabel = formatUseTime(props.useTimeSec)
@@ -119,14 +106,14 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
               aria-hidden
               className={cn(
                 'size-1.5 shrink-0 rounded-full',
-                dotColorMap[firstTokenVariant]
+                firstTokenDotClass
               )}
             />
           )}
           <span className='text-muted-foreground shrink-0'>
             {t('First token')}
           </span>
-          <span className={cn('tabular-nums', textColorMap[firstTokenVariant])}>
+          <span className={cn('font-medium tabular-nums', firstTokenTextClass)}>
             {firstTokenLabel}
           </span>
         </div>
@@ -137,12 +124,17 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
             aria-hidden
             className={cn(
               'size-1.5 shrink-0 rounded-full',
-              dotColorMap[totalTimeVariant]
+              latencyBarClasses[totalTimeLevel]
             )}
           />
         )}
         <span className='text-muted-foreground shrink-0'>{t('Duration')}</span>
-        <span className={cn('tabular-nums', textColorMap[totalTimeVariant])}>
+        <span
+          className={cn(
+            'font-medium tabular-nums',
+            latencyTextClasses[totalTimeLevel]
+          )}
+        >
           {totalTimeLabel}
         </span>
       </div>
@@ -161,13 +153,13 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
         aria-hidden
         className={cn(
           'flex w-1 shrink-0 flex-col overflow-hidden rounded-full',
-          !showFirstToken && barColorMap[totalTimeVariant]
+          !splitBar && latencyBarClasses[totalTimeLevel]
         )}
       >
-        {showFirstToken && (
+        {splitBar && (
           <>
-            <span className={cn('flex-1', barColorMap[firstTokenVariant])} />
-            <span className={cn('flex-1', barColorMap[totalTimeVariant])} />
+            <span className={cn('flex-1', firstTokenDotClass)} />
+            <span className={cn('flex-1', latencyBarClasses[totalTimeLevel])} />
           </>
         )}
       </span>

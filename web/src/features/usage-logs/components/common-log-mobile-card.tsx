@@ -212,7 +212,6 @@ export function CommonLogMobileCard<TData>(props: {
               {props.cells.has('use_time') && (
                 <TimingMetricsCell
                   useTimeSec={resolvedTiming.durationSec}
-                  completionTokens={log.completion_tokens}
                   frtMs={resolvedTiming.frtMs}
                   isStream={log.is_stream}
                   indicator='dot'

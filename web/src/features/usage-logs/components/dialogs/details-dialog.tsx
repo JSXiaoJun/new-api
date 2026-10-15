@@ -89,14 +89,17 @@ import {
   buildBillingFormulaText,
   hasAnyCacheTokens,
   isViolationFeeLog,
-  getFirstResponseTimeColor,
-  getResponseTimeColor,
   getReasoningEffortVariant,
   logTokenName,
   renderAuditContent,
   resolveLogTiming,
   renderLogContent,
 } from '../../lib/format'
+import {
+  durationSeverity,
+  firstTokenSeverity,
+  latencyTextClasses,
+} from '../../lib/latency'
 import { buildQuotaAuditOperation } from '../../lib/quota-audit-operation'
 import {
   getLogTypeConfig,
@@ -118,14 +121,6 @@ const CHANNEL_FIELD_LABELS: Record<string, string> = {
   type: 'Type',
   base_url: 'Base URL',
   key: 'Key',
-}
-
-function timingTextColorClass(
-  variant: 'success' | 'warning' | 'danger'
-): string {
-  if (variant === 'success') return 'text-emerald-600'
-  if (variant === 'warning') return 'text-amber-600'
-  return 'text-rose-600'
 }
 
 function formatRatio(ratio: number | undefined): string {
@@ -818,12 +813,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 <span
                   className={cn(
                     'font-medium',
-                    timingTextColorClass(
-                      getResponseTimeColor(
-                        timing.durationSec,
-                        props.log.completion_tokens
-                      )
-                    )
+                    latencyTextClasses[durationSeverity(timing.durationSec)]
                   )}
                 >
                   {formatUseTime(timing.durationSec)}
@@ -831,9 +821,9 @@ export function DetailsDialog(props: DetailsDialogProps) {
                     <span
                       className={cn(
                         'font-normal',
-                        timingTextColorClass(
-                          getFirstResponseTimeColor(firstTokenDisplaySeconds)
-                        )
+                        latencyTextClasses[
+                          firstTokenSeverity(firstTokenDisplaySeconds)
+                        ]
                       )}
                     >
                       {' '}
