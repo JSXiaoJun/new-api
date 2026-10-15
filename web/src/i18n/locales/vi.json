@@ -7497,6 +7497,13 @@
     "Client disconnected after the request reached the upstream, billed by usage": "Máy khách ngắt kết nối sau khi yêu cầu đã tới upstream, tính phí theo mức sử dụng",
     "Client disconnected through Cloudflare after the upstream finished, billed by actual usage": "Máy khách ngắt kết nối qua Cloudflare sau khi upstream hoàn tất, tính phí theo mức sử dụng thực tế",
     "Please complete the pre-purchase confirmation in your wallet before topping up, redeeming codes, or purchasing subscriptions.": "Vui lòng hoàn tất xác nhận trước khi mua trong ví trước khi nạp tiền, đổi mã hoặc mua gói đăng ký.",
-    "Please check all confirmation items and enter the confirmation text.": "Vui lòng đánh dấu tất cả mục xác nhận và nhập văn bản xác nhận."
+    "Please check all confirmation items and enter the confirmation text.": "Vui lòng đánh dấu tất cả mục xác nhận và nhập văn bản xác nhận.",
+    "Reference images": "Hình ảnh tham chiếu",
+    "Reference videos": "Video tham chiếu",
+    "Reference audios": "Âm thanh tham chiếu",
+    "Reference image {{index}}": "Hình ảnh tham chiếu {{index}}",
+    "View original": "Xem bản gốc",
+    "Not recorded for this task": "Không được lưu cho tác vụ này",
+    "Submitted prompt": "Prompt"
   }
 }

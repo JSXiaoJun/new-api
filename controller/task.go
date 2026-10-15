@@ -125,6 +125,9 @@ func writeTaskArtifacts(c *gin.Context, task *model.Task, dashboard bool) {
 		response["legacy_content_url"] = legacyContentURL
 	}
 	if dashboard {
+		if snapshot := task.PrivateData.Request; snapshot != nil {
+			response["request"] = snapshot
+		}
 		common.ApiSuccess(c, response)
 		return
 	}

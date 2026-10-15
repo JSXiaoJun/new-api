@@ -445,6 +445,14 @@ export interface TaskArtifactProjection {
   artifacts: TaskArtifact[]
   legacyContentUrl?: string
   legacyAudioClips?: AudioClip[]
+  request?: TaskRequestSnapshot
+}
+
+export interface TaskRequestSnapshot {
+  prompt: string
+  images: string[]
+  videos: string[]
+  audios: string[]
 }
 
 export interface TaskArtifactsResponse {
@@ -455,6 +463,7 @@ export interface TaskArtifactsResponse {
     artifacts?: unknown
     legacy_content_url?: unknown
     legacy_audio_clips?: unknown
+    request?: unknown
   }
 }
 

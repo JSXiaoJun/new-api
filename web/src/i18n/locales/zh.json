@@ -7497,6 +7497,13 @@
     "Client disconnected after the request reached the upstream, billed by usage": "客户端断开连接，但已发送到上游，按使用计费",
     "Client disconnected through Cloudflare after the upstream finished, billed by actual usage": "客户端经 Cloudflare 断开，上游已完成，按实际用量计费",
     "Please complete the pre-purchase confirmation in your wallet before topping up, redeeming codes, or purchasing subscriptions.": "请先在钱包页面完成购前确认，确认后才能充值、兑换或购买订阅。",
-    "Please check all confirmation items and enter the confirmation text.": "请勾选全部确认项并输入确认文字。"
+    "Please check all confirmation items and enter the confirmation text.": "请勾选全部确认项并输入确认文字。",
+    "Reference images": "参考图片",
+    "Reference videos": "参考视频",
+    "Reference audios": "参考音频",
+    "Reference image {{index}}": "参考图片 {{index}}",
+    "View original": "查看原图",
+    "Not recorded for this task": "该任务未保存",
+    "Submitted prompt": "提示词"
   }
 }

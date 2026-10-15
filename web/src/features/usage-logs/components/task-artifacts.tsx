@@ -71,6 +71,7 @@ import {
 } from '../lib/task-artifacts'
 import type { TaskArtifact, TaskArtifactType, TaskLog } from '../types'
 import { AudioPreviewDialog } from './dialogs/audio-preview-dialog'
+import { TaskRequestDetails } from './task-request-details'
 
 function artifactIcon(type: TaskArtifactType) {
   switch (type) {
@@ -353,15 +354,7 @@ function TaskArtifacts(props: TaskArtifactsProps) {
     )
   }
 
-  if (artifactsQuery.data.artifacts.length === 0) {
-    return (
-      props.emptyContent?.(artifactsQuery.data.legacyContentUrl) ?? (
-        <EmptyTaskArtifacts />
-      )
-    )
-  }
-
-  return (
+  let artifactsContent: React.ReactNode = (
     <div
       className={cn(
         'grid gap-3',
@@ -371,6 +364,20 @@ function TaskArtifacts(props: TaskArtifactsProps) {
       {artifactsQuery.data.artifacts.map((artifact) => (
         <TaskArtifactCard key={artifact.key} artifact={artifact} />
       ))}
+    </div>
+  )
+  if (artifactsQuery.data.artifacts.length === 0) {
+    artifactsContent = props.emptyContent?.(
+      artifactsQuery.data.legacyContentUrl
+    ) ?? <EmptyTaskArtifacts />
+  }
+
+  return (
+    <div className='flex flex-col gap-5'>
+      {artifactsContent}
+      {artifactsQuery.data.request ? (
+        <TaskRequestDetails request={artifactsQuery.data.request} />
+      ) : null}
     </div>
   )
 }
@@ -475,7 +482,7 @@ export function TaskArtifactsCell(props: { log: TaskLog }) {
         contentClassName={
           previewMode === 'legacy-video' ? 'sm:max-w-xl' : 'sm:max-w-4xl'
         }
-        contentHeight='auto'
+        contentHeight='min(72vh, 760px)'
         bodyClassName='pr-2 sm:pr-4'
       >
         <TaskArtifacts

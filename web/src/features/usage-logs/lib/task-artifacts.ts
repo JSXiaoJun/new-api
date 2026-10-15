@@ -24,6 +24,7 @@ import type {
   TaskArtifactsResponse,
   TaskLog,
   TaskPluginAuthor,
+  TaskRequestSnapshot,
 } from '../types'
 
 const taskArtifactTypes = new Set(['image', 'video', 'audio', 'file'])
@@ -198,7 +199,47 @@ export function parseTaskArtifactsResponse(
       response.data.legacy_audio_clips
     )
   }
+  const request = parseTaskRequestSnapshot(response.data?.request)
+  if (request) projection.request = request
   return projection
+}
+
+function parseRequestMediaUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => {
+      if (typeof item !== 'string') return false
+      try {
+        const url = new URL(item)
+        return url.protocol === 'https:' || url.protocol === 'http:'
+      } catch {
+        return false
+      }
+    })
+    .slice(0, maxTaskArtifacts)
+}
+
+// The submitted prompt and reference media are echoed back for display only;
+// anything malformed is dropped instead of failing the artifact preview.
+export function parseTaskRequestSnapshot(
+  value: unknown
+): TaskRequestSnapshot | undefined {
+  if (!isRecord(value)) return undefined
+  const snapshot: TaskRequestSnapshot = {
+    prompt: typeof value.prompt === 'string' ? value.prompt : '',
+    images: parseRequestMediaUrls(value.images),
+    videos: parseRequestMediaUrls(value.videos),
+    audios: parseRequestMediaUrls(value.audios),
+  }
+  if (
+    !snapshot.prompt &&
+    snapshot.images.length === 0 &&
+    snapshot.videos.length === 0 &&
+    snapshot.audios.length === 0
+  ) {
+    return undefined
+  }
+  return snapshot
 }
 
 export function shouldLoadTaskArtifacts(

@@ -185,6 +185,33 @@ func TestDashboardTaskArtifactsReturnsLegacyCapabilityWithoutUpstreamURL(t *test
 	assert.NotContains(t, recorder.Body.String(), "signature=secret")
 }
 
+func TestDashboardTaskArtifactsEchoesSubmittedRequest(t *testing.T) {
+	task := setupGenericTaskTest(t)
+	task.PrivateData.Request = &model.TaskRequestSnapshot{
+		Prompt: "two people at a sink",
+		Images: []string{"https://cdn.example/1.png", "https://cdn.example/2.png"},
+	}
+	require.NoError(t, model.DB.Save(task).Error)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("id", task.UserId)
+	c.Set("role", common.RoleCommonUser)
+	c.Params = gin.Params{{Key: "task_id", Value: task.TaskID}}
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/task/"+task.TaskID+"/artifacts", nil)
+
+	GetDashboardTaskArtifacts(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Data struct {
+			Request model.TaskRequestSnapshot `json:"request"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.Equal(t, *task.PrivateData.Request, response.Data.Request)
+}
+
 // Task lists no longer carry the persisted snapshot, so the dashboard reads a
 // legacy Suno task's playable clips from the artifacts endpoint instead.
 func TestDashboardTaskArtifactsProjectsLegacySunoAudioClips(t *testing.T) {

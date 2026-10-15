@@ -7497,6 +7497,13 @@
     "Client disconnected after the request reached the upstream, billed by usage": "Client déconnecté après l'envoi de la requête en amont, facturé à l'usage",
     "Client disconnected through Cloudflare after the upstream finished, billed by actual usage": "Client déconnecté via Cloudflare après la fin de l'amont, facturé à l'usage réel",
     "Please complete the pre-purchase confirmation in your wallet before topping up, redeeming codes, or purchasing subscriptions.": "Veuillez effectuer la confirmation préalable à l'achat dans votre portefeuille avant de recharger, d'utiliser un code ou d'acheter un abonnement.",
-    "Please check all confirmation items and enter the confirmation text.": "Veuillez cocher tous les éléments de confirmation et saisir le texte de confirmation."
+    "Please check all confirmation items and enter the confirmation text.": "Veuillez cocher tous les éléments de confirmation et saisir le texte de confirmation.",
+    "Reference images": "Images de référence",
+    "Reference videos": "Vidéos de référence",
+    "Reference audios": "Audios de référence",
+    "Reference image {{index}}": "Image de référence {{index}}",
+    "View original": "Voir l'original",
+    "Not recorded for this task": "Non enregistré pour cette tâche",
+    "Submitted prompt": "Prompt"
   }
 }

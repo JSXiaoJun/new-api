@@ -7497,6 +7497,13 @@
     "Client disconnected after the request reached the upstream, billed by usage": "Клиент отключился после отправки запроса в upstream, списано по использованию",
     "Client disconnected through Cloudflare after the upstream finished, billed by actual usage": "Клиент отключился через Cloudflare после завершения upstream, списано по фактическому использованию",
     "Please complete the pre-purchase confirmation in your wallet before topping up, redeeming codes, or purchasing subscriptions.": "Пожалуйста, подтвердите условия покупки в кошельке, прежде чем пополнять баланс, активировать коды или покупать подписки.",
-    "Please check all confirmation items and enter the confirmation text.": "Отметьте все пункты подтверждения и введите текст подтверждения."
+    "Please check all confirmation items and enter the confirmation text.": "Отметьте все пункты подтверждения и введите текст подтверждения.",
+    "Reference images": "Референсные изображения",
+    "Reference videos": "Референсные видео",
+    "Reference audios": "Референсное аудио",
+    "Reference image {{index}}": "Референсное изображение {{index}}",
+    "View original": "Открыть оригинал",
+    "Not recorded for this task": "Не сохранено для этой задачи",
+    "Submitted prompt": "Промпт"
   }
 }

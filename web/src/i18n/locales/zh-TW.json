@@ -7497,6 +7497,13 @@
     "Client disconnected after the request reached the upstream, billed by usage": "用戶端已中斷連線，但請求已送達上游，依用量計費",
     "Client disconnected through Cloudflare after the upstream finished, billed by actual usage": "用戶端經 Cloudflare 中斷連線，上游已完成，依實際用量計費",
     "Please complete the pre-purchase confirmation in your wallet before topping up, redeeming codes, or purchasing subscriptions.": "請先在錢包頁面完成購前確認，確認後才能儲值、兌換或購買訂閱。",
-    "Please check all confirmation items and enter the confirmation text.": "請勾選全部確認項並輸入確認文字。"
+    "Please check all confirmation items and enter the confirmation text.": "請勾選全部確認項並輸入確認文字。",
+    "Reference images": "參考圖片",
+    "Reference videos": "參考影片",
+    "Reference audios": "參考音訊",
+    "Reference image {{index}}": "參考圖片 {{index}}",
+    "View original": "查看原圖",
+    "Not recorded for this task": "該任務未保存",
+    "Submitted prompt": "提示詞"
   }
 }

@@ -7497,6 +7497,13 @@
     "Client disconnected after the request reached the upstream, billed by usage": "リクエストが上流に送信された後にクライアントが切断しました。使用量に応じて課金します",
     "Client disconnected through Cloudflare after the upstream finished, billed by actual usage": "上流の完了後に Cloudflare 経由でクライアントが切断しました。実際の使用量で課金します",
     "Please complete the pre-purchase confirmation in your wallet before topping up, redeeming codes, or purchasing subscriptions.": "チャージ、コードの引き換え、サブスクリプションの購入の前に、ウォレットで購入前確認を完了してください。",
-    "Please check all confirmation items and enter the confirmation text.": "すべての確認項目にチェックを入れ、確認テキストを入力してください。"
+    "Please check all confirmation items and enter the confirmation text.": "すべての確認項目にチェックを入れ、確認テキストを入力してください。",
+    "Reference images": "参照画像",
+    "Reference videos": "参照動画",
+    "Reference audios": "参照音声",
+    "Reference image {{index}}": "参照画像 {{index}}",
+    "View original": "元のファイルを表示",
+    "Not recorded for this task": "このタスクには保存されていません",
+    "Submitted prompt": "プロンプト"
   }
 }

@@ -137,6 +137,17 @@ type TaskPrivateData struct {
 	// and every retrieval surface treats the task as not found. The zero
 	// value keeps historical rows retained and retrievable.
 	ResultDiscarded bool `json:"result_discarded,omitempty"`
+	// Request keeps the submitted prompt and public reference media URLs so the
+	// dashboard can show what produced the artifacts. Inline file content is
+	// never stored here.
+	Request *TaskRequestSnapshot `json:"request,omitempty"`
+}
+
+type TaskRequestSnapshot struct {
+	Prompt string   `json:"prompt,omitempty"`
+	Images []string `json:"images,omitempty"`
+	Videos []string `json:"videos,omitempty"`
+	Audios []string `json:"audios,omitempty"`
 }
 
 type TaskExecutionSnapshot struct {
@@ -222,7 +233,7 @@ func (p TaskPrivateData) Value() (driver.Value, error) {
 		p.Execution == nil && p.BillingSource == "" && p.SubscriptionId == 0 &&
 		p.TokenId == 0 && p.NodeName == "" && p.BillingContext == nil &&
 		!p.ResponsesBackground && len(p.PluginState) == 0 && p.PollFailures == 0 &&
-		!p.ResultDiscarded {
+		!p.ResultDiscarded && p.Request == nil {
 		return nil, nil
 	}
 	// 同 Properties.Value:string 避免 PG simple protocol 的 bytea 编码。

@@ -18,10 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, test } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, test, vi } from 'vitest'
 
 import type { TaskLog } from '../../types'
 import { TaskArtifactsCell } from '../task-artifacts'
+
+vi.mock('../../api', () => ({
+  getTaskArtifacts: vi.fn(async () => ({ artifacts: [] })),
+}))
 
 function taskLog(overrides: Partial<TaskLog> = {}): TaskLog {
   return {
@@ -72,6 +77,21 @@ describe('task artifacts cell', () => {
 
     expect(screen.getByRole('button', { name: /Artifacts/ })).toBeVisible()
     expect(screen.queryByText('Result not retained')).not.toBeInTheDocument()
+  })
+
+  test('given the artifacts dialog is opened, its body has a fixed height and scrolls', async () => {
+    renderCell(taskLog())
+
+    await userEvent.click(screen.getByRole('button', { name: /Artifacts/ }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.style.getPropertyValue('--dialog-content-height')).toBe(
+      'min(72vh, 760px)'
+    )
+    const body = dialog.querySelector(
+      '.h-\\[var\\(--dialog-content-height\\)\\]'
+    )
+    expect(body).toHaveClass('overflow-y-auto')
   })
 
   test('given an unfinished task, neither the button nor the hint is shown', () => {

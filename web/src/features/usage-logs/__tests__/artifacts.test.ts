@@ -424,3 +424,36 @@ describe('legacy Suno audio clips', () => {
     )
   })
 })
+
+describe('submitted request echo', () => {
+  test('given a request snapshot, the projection keeps prompt and http media only', () => {
+    const projection = parseTaskArtifactsResponse({
+      success: true,
+      data: {
+        artifacts: [],
+        request: {
+          prompt: 'two people',
+          images: ['https://cdn.example/1.png', 'javascript:alert(1)', 7],
+          videos: 'https://cdn.example/not-an-array.mp4',
+        },
+      },
+    })
+
+    assert.deepEqual(projection.request, {
+      prompt: 'two people',
+      images: ['https://cdn.example/1.png'],
+      videos: [],
+      audios: [],
+    })
+  })
+
+  test('given an empty or malformed request snapshot, no request is projected', () => {
+    for (const request of [null, 'prompt', { prompt: '', images: [] }]) {
+      const projection = parseTaskArtifactsResponse({
+        success: true,
+        data: { artifacts: [], request },
+      })
+      assert.equal(projection.request, undefined)
+    }
+  })
+})

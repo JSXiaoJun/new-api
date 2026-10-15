@@ -7497,6 +7497,13 @@
     "Client disconnected after the request reached the upstream, billed by usage": "Client disconnected after the request reached the upstream, billed by usage",
     "Client disconnected through Cloudflare after the upstream finished, billed by actual usage": "Client disconnected through Cloudflare after the upstream finished, billed by actual usage",
     "Please complete the pre-purchase confirmation in your wallet before topping up, redeeming codes, or purchasing subscriptions.": "Please complete the pre-purchase confirmation in your wallet before topping up, redeeming codes, or purchasing subscriptions.",
-    "Please check all confirmation items and enter the confirmation text.": "Please check all confirmation items and enter the confirmation text."
+    "Please check all confirmation items and enter the confirmation text.": "Please check all confirmation items and enter the confirmation text.",
+    "Reference images": "Reference images",
+    "Reference videos": "Reference videos",
+    "Reference audios": "Reference audios",
+    "Reference image {{index}}": "Reference image {{index}}",
+    "View original": "View original",
+    "Not recorded for this task": "Not recorded for this task",
+    "Submitted prompt": "Prompt"
   }
 }
