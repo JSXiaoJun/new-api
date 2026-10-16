@@ -439,15 +439,28 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		}))
 	}
 
+	waived := false
+	if quota > 0 {
+		var waiverReason *common.Message
+		waived, waiverReason = abnormalChargeWaiver(classifyAbnormalCharge(ctx, relayInfo))
+		if waived {
+			quota = 0
+			logContent = append(logContent, waiverReason)
+		}
+	}
+
 	// record all the consume log even if quota is 0
-	if totalTokens == 0 && !fixedPriceBilling {
+	switch {
+	case totalTokens == 0 && !fixedPriceBilling:
 		// in this case, must be some error happened
 		// we cannot just return, because we may have to return the pre-consumed quota
 		quota = 0
 		logContent = append(logContent, common.NewMessage("Possibly an upstream timeout"))
 		logger.LogError(ctx, common.LogText("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d",
 			relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, billingModelName, relayInfo.FinalPreConsumedQuota))
-	} else {
+	case waived:
+		logger.LogInfo(ctx, common.LogText("abnormal request charge waived by billing settings, userId %d, model %s", relayInfo.UserId, billingModelName))
+	default:
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}
@@ -472,7 +485,9 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		formulaMode = "tiered_expr"
 		formulaBaseQuota = tieredResult.ActualQuotaBeforeGroup
 	}
-	if totalTokens > 0 && (!tieredOk || tieredResult != nil) {
+	if waived {
+		other.SetPublic("abnormal_charge_waived", true)
+	} else if totalTokens > 0 && (!tieredOk || tieredResult != nil) {
 		appendBillingFormula(other, relayInfo, formulaMode, formulaBaseQuota, 1, 0, quota)
 	}
 	attachQuotaSaturation(ctx, relayInfo, other)

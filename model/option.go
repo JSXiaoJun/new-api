@@ -269,6 +269,9 @@ func validateOptionValue(key string, value string) error {
 	if key == "discount_setting.schedule" {
 		return discount_setting.ValidateScheduleJSON(value)
 	}
+	if err := billing_setting.ValidateAbnormalBillingOption(key, value); err != nil {
+		return err
+	}
 	if key == setting.FirstTokenDisplayRulesOptionKey {
 		return setting.ValidateFirstTokenDisplayRulesJSON(value)
 	}

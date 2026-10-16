@@ -15,3 +15,20 @@ func TestValidateOptionValueRejectsInvalidMaxTokenAutoGroups(t *testing.T) {
 	}
 	require.NoError(t, validateOptionValue("MaxTokenAutoGroups", "999999"))
 }
+
+func TestValidateOptionValueAcceptsOnlyBooleanAbnormalBillingSwitches(t *testing.T) {
+	for _, field := range []string{
+		"charge_client_disconnect_before_response",
+		"charge_client_disconnect_during_response",
+		"charge_upstream_interrupt_during_response",
+	} {
+		key := "abnormal_billing_setting." + field
+		for _, value := range []string{"true", "false"} {
+			assert.NoError(t, validateOptionValue(key, value), "%s=%s", key, value)
+		}
+		for _, value := range []string{"", "1", "0", "TRUE", "yes", " true"} {
+			assert.Error(t, validateOptionValue(key, value), "%s=%q must be rejected", key, value)
+		}
+	}
+	assert.Error(t, validateOptionValue("abnormal_billing_setting.charge_everything", "true"), "unknown switches must be rejected")
+}

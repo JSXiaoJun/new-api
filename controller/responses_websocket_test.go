@@ -499,6 +499,100 @@ func TestResponsesInterruptedStreamHealth(t *testing.T) {
 	}
 }
 
+// TestResponsesHTTPAbnormalBillingSwitches drives real SSE relays through the
+// gateway and checks the charge each switch leaves on the wallet and token.
+func TestResponsesHTTPAbnormalBillingSwitches(t *testing.T) {
+	tests := []struct {
+		name          string
+		beforeAnswer  bool
+		switchKey     string
+		switchValue   string
+		wantCharged   bool
+		wantLogReason string
+	}{
+		{name: "client leaves before upstream answers and is charged", beforeAnswer: true, switchKey: "charge_client_disconnect_before_response", switchValue: "true", wantCharged: true, wantLogReason: "billed by usage"},
+		{name: "client leaves before upstream answers and is waived", beforeAnswer: true, switchKey: "charge_client_disconnect_before_response", switchValue: "false", wantLogReason: "Not charged: the client disconnected before upstream responded"},
+		{name: "client leaves before upstream answers with only the other switches off", beforeAnswer: true, switchKey: "charge_client_disconnect_during_response", switchValue: "false", wantCharged: true},
+		{name: "client leaves mid-stream and is waived", switchKey: "charge_client_disconnect_during_response", switchValue: "false", wantLogReason: "Not charged: the client disconnected while receiving the response"},
+		{name: "client leaves mid-stream with only the other switches off", switchKey: "charge_client_disconnect_before_response", switchValue: "false", wantCharged: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key := "abnormal_billing_setting." + tt.switchKey
+			require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{key: tt.switchValue}))
+			t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{key: "true"})) })
+			fixture := newResponsesWSBillingTest(t, `tier("input", p * 2)`, func(*websocket.Conn, *http.Request) {})
+			// Production estimates the prompt; disconnect settlement charges that estimate.
+			constant.CountToken = true
+			upstreamReached := make(chan struct{})
+			fixture.httpUpstream = func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.ReadAll(r.Body)
+				if !tt.beforeAnswer {
+					w.Header().Set("Content-Type", "text/event-stream")
+					_, _ = fmt.Fprint(w, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"partial\",\"status\":\"in_progress\"}}\n\n")
+					_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n")
+					w.(http.Flusher).Flush()
+				}
+				close(upstreamReached)
+				<-r.Context().Done()
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			request, err := http.NewRequestWithContext(ctx, http.MethodPost, fixture.gatewayURL+"/v1/responses", strings.NewReader(`{"model":"ws-billing","input":"hello","stream":true}`))
+			require.NoError(t, err)
+			request.Header.Set("Authorization", "Bearer sk-"+fixture.token.Key)
+			request.Header.Set("Content-Type", "application/json")
+			clientDone := make(chan struct{})
+			go func() {
+				defer close(clientDone)
+				response, err := http.DefaultClient.Do(request)
+				if err != nil {
+					return
+				}
+				reader := bufio.NewReader(response.Body)
+				for {
+					line, err := reader.ReadString('\n')
+					if err != nil || strings.Contains(line, "response.output_text.delta") {
+						break
+					}
+				}
+				cancel()
+				_ = response.Body.Close()
+			}()
+			select {
+			case <-upstreamReached:
+			case <-time.After(3 * time.Second):
+				t.Fatal("upstream was not reached")
+			}
+			if tt.beforeAnswer {
+				cancel()
+			}
+			for _, done := range []<-chan struct{}{clientDone, fixture.httpDone} {
+				select {
+				case <-done:
+				case <-time.After(3 * time.Second):
+					t.Fatal("interrupted SSE request did not finish")
+				}
+			}
+			fixture.closeAndWait(t)
+
+			var log model.Log
+			require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeConsume).Order("id desc").First(&log).Error)
+			if tt.wantCharged {
+				assert.Positive(t, log.Quota)
+			} else {
+				assert.Zero(t, log.Quota)
+				assert.Contains(t, log.Other, `"abnormal_charge_waived":true`)
+			}
+			assertResponsesWSAccounting(t, fixture, []int{log.Quota})
+			if tt.wantLogReason != "" {
+				assert.Contains(t, log.Content, tt.wantLogReason)
+			}
+		})
+	}
+}
+
 func readResponsesWSTestEvent(t *testing.T, client *websocket.Conn) map[string]any {
 	t.Helper()
 	require.NoError(t, client.SetReadDeadline(time.Now().Add(3*time.Second)))
@@ -722,30 +816,45 @@ func TestResponsesWebSocketDialsNativeResponsesChannelTypes(t *testing.T) {
 }
 
 func TestResponsesWebSocketDisconnectSettlesDeliveredOutputOnce(t *testing.T) {
-	fixture := newResponsesWSBillingTest(t, `tier("output", c * 2)`, func(ws *websocket.Conn, _ *http.Request) {
-		if _, _, err := ws.ReadMessage(); !assert.NoError(t, err) {
-			return
-		}
-		for _, event := range []string{
-			`{"type":"response.created","response":{"id":"partial","status":"in_progress"}}`,
-			`{"type":"response.output_text.delta","delta":"hello"}`,
-		} {
-			if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(event))) {
-				return
-			}
-		}
-		_, _, _ = ws.ReadMessage()
-	})
-	require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"hi","max_output_tokens":1}`)))
-	assert.Equal(t, "response.created", readResponsesWSTestEvent(t, fixture.client)["type"])
-	delta := readResponsesWSTestEvent(t, fixture.client)
-	require.Equal(t, "response.output_text.delta", delta["type"])
-	assert.Equal(t, "hello", delta["delta"])
-	fixture.closeAndWait(t)
-	assertResponsesWSAccounting(t, fixture, []int{1})
-	keys, err := common.RDB.Keys(context.Background(), "perf:ws-billing:*").Result()
-	require.NoError(t, err)
-	assert.Empty(t, keys, "client cancellation must not affect model health")
+	for _, tt := range []struct {
+		name         string
+		chargeDuring string
+		wantQuota    int
+	}{
+		{name: "the during-response switch charges", chargeDuring: "true", wantQuota: 1},
+		{name: "the during-response switch waives", chargeDuring: "false", wantQuota: 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"abnormal_billing_setting.charge_client_disconnect_during_response": tt.chargeDuring}))
+			t.Cleanup(func() {
+				require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"abnormal_billing_setting.charge_client_disconnect_during_response": "true"}))
+			})
+			fixture := newResponsesWSBillingTest(t, `tier("output", c * 2)`, func(ws *websocket.Conn, _ *http.Request) {
+				if _, _, err := ws.ReadMessage(); !assert.NoError(t, err) {
+					return
+				}
+				for _, event := range []string{
+					`{"type":"response.created","response":{"id":"partial","status":"in_progress"}}`,
+					`{"type":"response.output_text.delta","delta":"hello"}`,
+				} {
+					if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(event))) {
+						return
+					}
+				}
+				_, _, _ = ws.ReadMessage()
+			})
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"hi","max_output_tokens":1}`)))
+			assert.Equal(t, "response.created", readResponsesWSTestEvent(t, fixture.client)["type"])
+			delta := readResponsesWSTestEvent(t, fixture.client)
+			require.Equal(t, "response.output_text.delta", delta["type"])
+			assert.Equal(t, "hello", delta["delta"])
+			fixture.closeAndWait(t)
+			assertResponsesWSAccounting(t, fixture, []int{tt.wantQuota})
+			keys, err := common.RDB.Keys(context.Background(), "perf:ws-billing:*").Result()
+			require.NoError(t, err)
+			assert.Empty(t, keys, "client cancellation must not affect model health")
+		})
+	}
 }
 
 func TestResponsesWebSocketCancelErrorDoesNotFinishActiveRequest(t *testing.T) {

@@ -7526,6 +7526,19 @@
     "Request fully sent": "Запрос отправлен полностью",
     "Upstream elapsed": "Время апстрима",
     "Client received data": "Клиент получил данные",
-    "Transport Error": "Ошибка транспорта"
+    "Transport Error": "Ошибка транспорта",
+    "Abnormal Billing Control": "Тарификация аномальных запросов",
+    "Save abnormal billing settings": "Сохранить настройки аномальной тарификации",
+    "Decide whether requests that ended abnormally are still charged. Upstream or gateway failures before any response are always refunded in full. A response that already delivered its completion event is always charged.": "Определяет, тарифицируются ли запросы, завершившиеся аномально. Сбои апстрима или шлюза до любого ответа всегда возвращаются полностью. Ответ, уже отправивший событие завершения, всегда тарифицируется.",
+    "Charge when the client disconnects before upstream responds": "Тарифицировать, если клиент отключился до ответа апстрима",
+    "The request already reached upstream but the client left before the first byte arrived. When on, the estimated input is charged; when off, the reservation is refunded in full.": "Запрос дошёл до апстрима, но клиент отключился до первого байта. Включено: тарифицируется оценка входа; выключено: резерв возвращается полностью.",
+    "Charge when the client disconnects while receiving the response": "Тарифицировать, если клиент отключился во время получения ответа",
+    "Upstream had started answering when the client left. When on, the usage produced so far is charged; when off, nothing is charged. Turning this off lets a client read output and disconnect before completion without paying.": "Апстрим уже начал отвечать, когда клиент отключился. Включено: тарифицируется произведённый объём; выключено: ничего не тарифицируется. Выключение позволяет прочитать вывод и отключиться до завершения бесплатно.",
+    "Charge when upstream or the gateway interrupts the response midway": "Тарифицировать, если апстрим или шлюз прервал ответ",
+    "The upstream connection broke, the stream timed out, or the stream ended without its completion event. When on, the usage produced so far is charged; when off, nothing is charged.": "Соединение с апстримом разорвалось, поток истёк по тайм-ауту или завершился без события завершения. Включено: тарифицируется произведённый объём; выключено: ничего не тарифицируется.",
+    "Not charged: the client disconnected before upstream responded": "Не тарифицировано: клиент отключился до ответа апстрима",
+    "Not charged: the client disconnected while receiving the response": "Не тарифицировано: клиент отключился во время получения ответа",
+    "Not charged: upstream or the gateway interrupted the response": "Не тарифицировано: апстрим или шлюз прервал ответ",
+    "Not charged: upstream or the gateway failed before responding": "Не тарифицировано: апстрим или шлюз отказал до ответа"
   }
 }

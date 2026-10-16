@@ -7526,6 +7526,19 @@
     "Request fully sent": "リクエスト送信完了",
     "Upstream elapsed": "上流所要時間",
     "Client received data": "クライアントのデータ受信",
-    "Transport Error": "通信エラー"
+    "Transport Error": "通信エラー",
+    "Abnormal Billing Control": "異常リクエストの課金制御",
+    "Save abnormal billing settings": "異常課金設定を保存",
+    "Decide whether requests that ended abnormally are still charged. Upstream or gateway failures before any response are always refunded in full. A response that already delivered its completion event is always charged.": "異常終了したリクエストを課金するかを決めます。応答前に上流またはゲートウェイが失敗した場合は常に全額返金されます。完了イベントまで届いた応答は常に課金されます。",
+    "Charge when the client disconnects before upstream responds": "上流の応答前にクライアントが切断した場合に課金",
+    "The request already reached upstream but the client left before the first byte arrived. When on, the estimated input is charged; when off, the reservation is refunded in full.": "リクエストは上流に届いたものの、最初のバイトが届く前にクライアントが切断しました。オンでは推定入力を課金し、オフでは予約分を全額返金します。",
+    "Charge when the client disconnects while receiving the response": "応答受信中にクライアントが切断した場合に課金",
+    "Upstream had started answering when the client left. When on, the usage produced so far is charged; when off, nothing is charged. Turning this off lets a client read output and disconnect before completion without paying.": "上流が応答を返し始めた後にクライアントが切断しました。オンではそれまでの使用量を課金し、オフでは課金しません。オフにすると、出力を読んで完了前に切断すれば無料で使えてしまいます。",
+    "Charge when upstream or the gateway interrupts the response midway": "上流またはゲートウェイが応答途中で中断した場合に課金",
+    "The upstream connection broke, the stream timed out, or the stream ended without its completion event. When on, the usage produced so far is charged; when off, nothing is charged.": "上流との接続が切れた、ストリームがタイムアウトした、または完了イベントなしで終了しました。オンではそれまでの使用量を課金し、オフでは課金しません。",
+    "Not charged: the client disconnected before upstream responded": "課金なし：上流の応答前にクライアントが切断しました",
+    "Not charged: the client disconnected while receiving the response": "課金なし：応答受信中にクライアントが切断しました",
+    "Not charged: upstream or the gateway interrupted the response": "課金なし：上流またはゲートウェイが応答を中断しました",
+    "Not charged: upstream or the gateway failed before responding": "課金なし：上流またはゲートウェイが応答前に失敗しました"
   }
 }

@@ -412,9 +412,6 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if usage == nil {
 		extraContent = append(extraContent, common.NewMessage("Upstream returned no usage"))
 	}
-	if ProxiedClientGone(ctx) {
-		extraContent = append(extraContent, common.NewMessage("Client disconnected through Cloudflare after the upstream finished, billed by actual usage"))
-	}
 	if originUsage != nil {
 		ObserveChannelAffinityUsageCacheByRelayFormat(ctx, billingUsage, relayInfo.GetFinalRequestRelayFormat())
 	}
@@ -472,10 +469,26 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, common.NewMessage("Audio input cost {{quota}}", map[string]any{"quota": logger.FormatQuota(common.QuotaFromDecimal(q))}))
 	}
 
-	if !summary.hasBillableUsage() {
+	waived := false
+	if summary.Quota > 0 {
+		var waiverReason *common.Message
+		waived, waiverReason = abnormalChargeWaiver(classifyAbnormalCharge(ctx, relayInfo))
+		if waived {
+			summary.Quota = 0
+			extraContent = append(extraContent, waiverReason)
+		}
+	}
+	if !waived && ProxiedClientGone(ctx) {
+		extraContent = append(extraContent, common.NewMessage("Client disconnected through Cloudflare after the upstream finished, billed by actual usage"))
+	}
+
+	switch {
+	case !summary.hasBillableUsage():
 		extraContent = append(extraContent, common.NewMessage("Upstream returned no usage, so nothing was charged (possibly an upstream timeout)"))
 		logger.LogError(ctx, common.LogText("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
-	} else {
+	case waived:
+		logger.LogInfo(ctx, common.LogText("abnormal request charge waived by billing settings, userId %d, model %s", relayInfo.UserId, summary.ModelName))
+	default:
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
@@ -563,7 +576,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		formulaBaseQuota = tieredResult.ActualQuotaBeforeGroup
 		formulaOtherRatio = 1
 	}
-	if summary.hasBillableUsage() && (!tieredBillingApplied || tieredResult != nil) {
+	if waived {
+		other.SetPublic("abnormal_charge_waived", true)
+	} else if summary.hasBillableUsage() && (!tieredBillingApplied || tieredResult != nil) {
 		appendBillingFormula(other, relayInfo, formulaMode, formulaBaseQuota, formulaOtherRatio, summary.ToolCallSurchargeQuota.InexactFloat64(), summary.Quota)
 	}
 

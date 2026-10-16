@@ -7526,6 +7526,19 @@
     "Request fully sent": "请求已完整发出",
     "Upstream elapsed": "上游耗时",
     "Client received data": "客户端收到数据",
-    "Transport Error": "传输错误"
+    "Transport Error": "传输错误",
+    "Abnormal Billing Control": "异常收费控制",
+    "Save abnormal billing settings": "保存异常收费设置",
+    "Decide whether requests that ended abnormally are still charged. Upstream or gateway failures before any response are always refunded in full. A response that already delivered its completion event is always charged.": "控制非正常结束的请求是否收费。上游或网关在返回任何响应前就失败的请求始终全额退款；已经收到完成事件的响应始终正常收费。",
+    "Charge when the client disconnects before upstream responds": "客户端在上游响应前断开时收费",
+    "The request already reached upstream but the client left before the first byte arrived. When on, the estimated input is charged; when off, the reservation is refunded in full.": "请求已发到上游，但客户端在收到第一个字节前就断开了。开启时按预估输入收费；关闭时全额退还预扣。",
+    "Charge when the client disconnects while receiving the response": "客户端在接收响应途中断开时收费",
+    "Upstream had started answering when the client left. When on, the usage produced so far is charged; when off, nothing is charged. Turning this off lets a client read output and disconnect before completion without paying.": "上游已经开始返回内容时客户端断开。开启时按已产生的用量收费；关闭时不收费。注意：关闭后，用户可以读完大部分输出、在完成前主动断开来免费使用。",
+    "Charge when upstream or the gateway interrupts the response midway": "上游或网关在响应途中中断时收费",
+    "The upstream connection broke, the stream timed out, or the stream ended without its completion event. When on, the usage produced so far is charged; when off, nothing is charged.": "上游连接中断、流超时，或流未发送完成事件就结束。开启时按已产生的用量收费；关闭时不收费。",
+    "Not charged: the client disconnected before upstream responded": "未收费：客户端在上游响应前断开",
+    "Not charged: the client disconnected while receiving the response": "未收费：客户端在接收响应途中断开",
+    "Not charged: upstream or the gateway interrupted the response": "未收费：上游或网关中断了响应",
+    "Not charged: upstream or the gateway failed before responding": "未收费：上游或网关在响应前失败"
   }
 }

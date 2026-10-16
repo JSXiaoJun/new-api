@@ -111,6 +111,9 @@ const defaultBillingSettings: BillingSettings = {
   'checkin_setting.enabled': false,
   'checkin_setting.min_quota': 1000,
   'checkin_setting.max_quota': 10000,
+  'abnormal_billing_setting.charge_client_disconnect_before_response': true,
+  'abnormal_billing_setting.charge_client_disconnect_during_response': true,
+  'abnormal_billing_setting.charge_upstream_interrupt_during_response': true,
 }
 
 export function BillingSettings() {

@@ -25,6 +25,7 @@ import { PaymentSettingsSection } from '../integrations/payment-settings-section
 import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { AbnormalBillingSection } from './abnormal-billing-section'
 import { DiscountSettingsSection } from './discount-settings-section'
 
 const getModelDefaults = (settings: BillingSettings) => ({
@@ -211,6 +212,28 @@ const BILLING_SECTIONS = [
           enabled: settings['checkin_setting.enabled'],
           minQuota: settings['checkin_setting.min_quota'],
           maxQuota: settings['checkin_setting.max_quota'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'abnormal-billing',
+    titleKey: 'Abnormal Billing Control',
+    build: (settings: BillingSettings) => (
+      <AbnormalBillingSection
+        defaultValues={{
+          charge_client_disconnect_before_response:
+            settings[
+              'abnormal_billing_setting.charge_client_disconnect_before_response'
+            ],
+          charge_client_disconnect_during_response:
+            settings[
+              'abnormal_billing_setting.charge_client_disconnect_during_response'
+            ],
+          charge_upstream_interrupt_during_response:
+            settings[
+              'abnormal_billing_setting.charge_upstream_interrupt_during_response'
+            ],
         }}
       />
     ),

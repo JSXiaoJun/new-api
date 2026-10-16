@@ -362,6 +362,9 @@ export type BillingSettings = {
   'checkin_setting.enabled': boolean
   'checkin_setting.min_quota': number
   'checkin_setting.max_quota': number
+  'abnormal_billing_setting.charge_client_disconnect_before_response': boolean
+  'abnormal_billing_setting.charge_client_disconnect_during_response': boolean
+  'abnormal_billing_setting.charge_upstream_interrupt_during_response': boolean
 }
 
 export type OperationsSettings = {

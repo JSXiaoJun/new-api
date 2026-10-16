@@ -7526,6 +7526,19 @@
     "Request fully sent": "Requête entièrement envoyée",
     "Upstream elapsed": "Durée amont",
     "Client received data": "Données reçues par le client",
-    "Transport Error": "Erreur de transport"
+    "Transport Error": "Erreur de transport",
+    "Abnormal Billing Control": "Facturation des requêtes anormales",
+    "Save abnormal billing settings": "Enregistrer la facturation des requêtes anormales",
+    "Decide whether requests that ended abnormally are still charged. Upstream or gateway failures before any response are always refunded in full. A response that already delivered its completion event is always charged.": "Choisissez si les requêtes terminées anormalement restent facturées. Les échecs de l’amont ou de la passerelle avant toute réponse sont toujours remboursés intégralement. Une réponse qui a déjà envoyé son événement de fin est toujours facturée.",
+    "Charge when the client disconnects before upstream responds": "Facturer si le client se déconnecte avant la réponse amont",
+    "The request already reached upstream but the client left before the first byte arrived. When on, the estimated input is charged; when off, the reservation is refunded in full.": "La requête a atteint l’amont mais le client est parti avant le premier octet. Activé : l’entrée estimée est facturée ; désactivé : la réservation est remboursée intégralement.",
+    "Charge when the client disconnects while receiving the response": "Facturer si le client se déconnecte pendant la réception",
+    "Upstream had started answering when the client left. When on, the usage produced so far is charged; when off, nothing is charged. Turning this off lets a client read output and disconnect before completion without paying.": "L’amont avait commencé à répondre quand le client est parti. Activé : l’usage produit est facturé ; désactivé : rien n’est facturé. Désactiver permet de lire la sortie puis de se déconnecter avant la fin sans payer.",
+    "Charge when upstream or the gateway interrupts the response midway": "Facturer si l’amont ou la passerelle interrompt la réponse",
+    "The upstream connection broke, the stream timed out, or the stream ended without its completion event. When on, the usage produced so far is charged; when off, nothing is charged.": "La connexion amont a été coupée, le flux a expiré ou s’est terminé sans événement de fin. Activé : l’usage produit est facturé ; désactivé : rien n’est facturé.",
+    "Not charged: the client disconnected before upstream responded": "Non facturé : le client s’est déconnecté avant la réponse amont",
+    "Not charged: the client disconnected while receiving the response": "Non facturé : le client s’est déconnecté pendant la réception",
+    "Not charged: upstream or the gateway interrupted the response": "Non facturé : l’amont ou la passerelle a interrompu la réponse",
+    "Not charged: upstream or the gateway failed before responding": "Non facturé : l’amont ou la passerelle a échoué avant de répondre"
   }
 }

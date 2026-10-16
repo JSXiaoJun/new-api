@@ -335,6 +335,7 @@
   "[OAuth-OIDC] GetUserInfo response status: %d": "[OAuth-OIDC] GetUserInfo 响应状态码: %d",
   "[OAuth-OIDC] GetUserInfo success: sub=%s, username=%s, name=%s, email=%s": "[OAuth-OIDC] GetUserInfo 成功: sub=%s, username=%s, name=%s, email=%s",
   "[OAuth] Failed to load verified emails for user %d: %s": "[OAuth] 加载用户 %d 的已验证邮箱失败: %s",
+  "abnormal request charge waived by billing settings, userId %d, model %s": "异常请求已按计费设置免除扣费，userId %d, model %s",
   "access token last-use update failed (token_id=%d): %v": "更新访问令牌最后使用时间失败 (token_id=%d): %v",
   "access token route is not declared: %s": "这条路由没有声明访问令牌的访问规则，已拒绝: %s",
   "admin reset subscription plan %d quota: reset_count=%d user_count=%d advance_reset_time=%t": "管理员重置了订阅套餐 %d 的额度: reset_count=%d user_count=%d advance_reset_time=%t",

@@ -897,4 +897,16 @@ export const STATIC_I18N_KEYS = [
   'Verification method',
   'Admin permissions updated',
   'Provider ID',
+  // Abnormal billing control switches (labels live in a constant array)
+  'Charge when the client disconnects before upstream responds',
+  'The request already reached upstream but the client left before the first byte arrived. When on, the estimated input is charged; when off, the reservation is refunded in full.',
+  'Charge when the client disconnects while receiving the response',
+  'Upstream had started answering when the client left. When on, the usage produced so far is charged; when off, nothing is charged. Turning this off lets a client read output and disconnect before completion without paying.',
+  'Charge when upstream or the gateway interrupts the response midway',
+  'The upstream connection broke, the stream timed out, or the stream ended without its completion event. When on, the usage produced so far is charged; when off, nothing is charged.',
+  // Gateway fail reasons stored in consume log content
+  'Not charged: the client disconnected before upstream responded',
+  'Not charged: the client disconnected while receiving the response',
+  'Not charged: upstream or the gateway interrupted the response',
+  'Not charged: upstream or the gateway failed before responding',
 ] as const

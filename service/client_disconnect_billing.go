@@ -19,11 +19,12 @@ const detachedClientWriterKey = "detached_client_writer"
 // successful so handlers keep reading upstream until the real usage arrives.
 type detachedClientWriter struct {
 	gin.ResponseWriter
-	clientCtx       context.Context
-	relayCtx        context.Context
-	writeFailed     atomic.Bool
-	truncated       atomic.Bool
-	lastWriteUnixNs atomic.Int64
+	clientCtx         context.Context
+	relayCtx          context.Context
+	writeFailed       atomic.Bool
+	truncated         atomic.Bool
+	lastWriteUnixNs   atomic.Int64
+	truncatedAtUnixNs atomic.Int64
 }
 
 func (w *detachedClientWriter) clientGone() bool {
@@ -96,6 +97,7 @@ func DetachProxiedClientCancellation(c *gin.Context) func() {
 			cancel()
 			return
 		}
+		writer.truncatedAtUnixNs.Store(time.Now().UnixNano())
 		writer.truncated.Store(true)
 		timer := time.NewTimer(maxRun)
 		defer timer.Stop()
@@ -127,6 +129,22 @@ func ProxiedClientGone(c *gin.Context) bool {
 	}
 	writer, ok := value.(*detachedClientWriter)
 	return ok && writer.truncated.Load()
+}
+
+// proxiedClientGoneAt returns when Cloudflare truncated a detached request.
+func proxiedClientGoneAt(c *gin.Context) (time.Time, bool) {
+	if c == nil {
+		return time.Time{}, false
+	}
+	value, ok := c.Get(detachedClientWriterKey)
+	if !ok {
+		return time.Time{}, false
+	}
+	writer, ok := value.(*detachedClientWriter)
+	if !ok || !writer.truncated.Load() {
+		return time.Time{}, false
+	}
+	return time.Unix(0, writer.truncatedAtUnixNs.Load()), true
 }
 
 // ClientRequestCanceled reports whether the inbound client connection is gone.
@@ -162,11 +180,31 @@ func SettleClientDisconnectBilling(c *gin.Context, info *relaycommon.RelayInfo) 
 	if promptTokens <= 0 {
 		return false
 	}
+	chargeCase := classifyAbnormalCharge(c, info)
+	if chargeCase == abnormalChargeNone {
+		// The relay failed only because the client left, so the attempt still
+		// tells which side of the response the client left from.
+		chargeCase = abnormalChargeClientBeforeResponse
+		if info.UpstreamAttempt().Responded() {
+			chargeCase = abnormalChargeClientDuringResponse
+		}
+	}
+	if chargeCase == abnormalChargeUpstreamBeforeResponse {
+		// Upstream failed before answering; the client leaving afterwards does
+		// not make that billable.
+		return false
+	}
+	// Settlement reads the case back and records the waiver itself.
+	c.Set(abnormalChargeCaseKey, chargeCase)
 	usage := &dto.Usage{
 		PromptTokens: promptTokens,
 		InputTokens:  promptTokens,
 		TotalTokens:  promptTokens,
 	}
-	PostTextConsumeQuota(c, info, usage, []*common.Message{common.NewMessage("Client disconnected after the request reached the upstream, billed by usage")})
+	var content []*common.Message
+	if waived, _ := abnormalChargeWaiver(chargeCase); !waived {
+		content = append(content, common.NewMessage("Client disconnected after the request reached the upstream, billed by usage"))
+	}
+	PostTextConsumeQuota(c, info, usage, content)
 	return true
 }

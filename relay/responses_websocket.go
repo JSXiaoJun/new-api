@@ -363,6 +363,9 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 		}
 	}
 
+	// Both branches above return unless the create payload reached upstream.
+	attempt := info.BeginUpstreamAttempt()
+	attempt.MarkRequestSent()
 	accumulator := service.NewResponsesUsageAccumulator(info)
 	info.StreamStatus = relaycommon.NewStreamStatus()
 	info.StreamStatus.RequireTerminal()
@@ -388,6 +391,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				return nil
 			}
 			info.SetFirstResponseTime()
+			attempt.MarkResponse()
 			var event struct {
 				dto.ResponsesStreamResponse
 				StreamID string `json:"stream_id"`

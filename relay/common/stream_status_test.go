@@ -267,6 +267,27 @@ func TestRelayInfoTerminationAttributesTheEndingSide(t *testing.T) {
 			want:    &RelayTermination{EndedBy: TerminationEndedByUpstream, Phase: TerminationPhaseReceiving, Reason: "missing_terminal", RequestSent: true},
 		},
 		{
+			name:    "client leaving after the completion event is not a termination",
+			attempt: attemptState{requestSent: true, response: true},
+			stream:  streamWith(StreamEndReasonClientGone, context.Canceled, (*StreamStatus).MarkCompleted),
+		},
+		{
+			name:    "stream timeout after an incomplete terminal is not a termination",
+			attempt: attemptState{requestSent: true, response: true},
+			stream: streamWith(StreamEndReasonTimeout, nil, func(s *StreamStatus) {
+				s.MarkIncomplete("max_output_tokens")
+			}),
+		},
+		{
+			name:    "a failure event still counts after the completion event",
+			attempt: attemptState{requestSent: true, response: true},
+			stream: streamWith(StreamEndReasonDone, nil, func(s *StreamStatus) {
+				s.MarkCompleted()
+				s.MarkFailed("server_error", "", 0)
+			}),
+			want: &RelayTermination{EndedBy: TerminationEndedByUpstream, Phase: TerminationPhaseReceiving, Reason: "response_failed", RequestSent: true},
+		},
+		{
 			name:    "completed stream is not a termination",
 			attempt: attemptState{requestSent: true, response: true},
 			stream: streamWith(StreamEndReasonEOF, nil, func(s *StreamStatus) {
@@ -287,7 +308,7 @@ func TestRelayInfoTerminationAttributesTheEndingSide(t *testing.T) {
 			attempt := info.UpstreamAttempt()
 			require.NotNil(t, attempt)
 			if tt.attempt.requestSent {
-				attempt.markRequestSent()
+				attempt.MarkRequestSent()
 			}
 			if tt.attempt.response {
 				attempt.MarkResponse()

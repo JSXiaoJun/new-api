@@ -1031,6 +1031,14 @@ func (info *RelayInfo) MarkUpstreamStart() {
 	info.upstreamAttempt = &UpstreamAttempt{startedAt: info.UpstreamStartTime}
 }
 
+// BeginUpstreamAttempt tracks an attempt for transports that bypass the shared
+// HTTP request path, without changing the upstream timing fields that callers
+// such as disconnect settlement read.
+func (info *RelayInfo) BeginUpstreamAttempt() *UpstreamAttempt {
+	info.upstreamAttempt = &UpstreamAttempt{startedAt: time.Now()}
+	return info.upstreamAttempt
+}
+
 // ResetUpstreamAttempt forgets the previous attempt before a retry selects a
 // channel, so a retry that fails before reaching upstream is not classified
 // by the earlier attempt.

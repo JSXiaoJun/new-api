@@ -7526,6 +7526,19 @@
     "Request fully sent": "Đã gửi đủ yêu cầu",
     "Upstream elapsed": "Thời gian upstream",
     "Client received data": "Client đã nhận dữ liệu",
-    "Transport Error": "Lỗi truyền tải"
+    "Transport Error": "Lỗi truyền tải",
+    "Abnormal Billing Control": "Kiểm soát tính phí bất thường",
+    "Save abnormal billing settings": "Lưu cài đặt tính phí bất thường",
+    "Decide whether requests that ended abnormally are still charged. Upstream or gateway failures before any response are always refunded in full. A response that already delivered its completion event is always charged.": "Quyết định có tính phí các yêu cầu kết thúc bất thường hay không. Lỗi upstream hoặc cổng nối trước khi có phản hồi luôn được hoàn tiền toàn bộ. Phản hồi đã gửi sự kiện hoàn tất luôn bị tính phí.",
+    "Charge when the client disconnects before upstream responds": "Tính phí khi client ngắt trước khi upstream phản hồi",
+    "The request already reached upstream but the client left before the first byte arrived. When on, the estimated input is charged; when off, the reservation is refunded in full.": "Yêu cầu đã tới upstream nhưng client rời đi trước khi nhận byte đầu tiên. Bật: tính phí phần đầu vào ước tính; tắt: hoàn lại toàn bộ khoản tạm giữ.",
+    "Charge when the client disconnects while receiving the response": "Tính phí khi client ngắt trong lúc nhận phản hồi",
+    "Upstream had started answering when the client left. When on, the usage produced so far is charged; when off, nothing is charged. Turning this off lets a client read output and disconnect before completion without paying.": "Upstream đã bắt đầu trả lời khi client rời đi. Bật: tính phí lượng đã tạo; tắt: không tính phí. Tắt mục này cho phép client đọc kết quả rồi ngắt trước khi hoàn tất mà không trả tiền.",
+    "Charge when upstream or the gateway interrupts the response midway": "Tính phí khi upstream hoặc cổng nối ngắt giữa chừng",
+    "The upstream connection broke, the stream timed out, or the stream ended without its completion event. When on, the usage produced so far is charged; when off, nothing is charged.": "Kết nối upstream bị ngắt, luồng hết thời gian chờ hoặc kết thúc mà không có sự kiện hoàn tất. Bật: tính phí lượng đã tạo; tắt: không tính phí.",
+    "Not charged: the client disconnected before upstream responded": "Không tính phí: client ngắt trước khi upstream phản hồi",
+    "Not charged: the client disconnected while receiving the response": "Không tính phí: client ngắt trong lúc nhận phản hồi",
+    "Not charged: upstream or the gateway interrupted the response": "Không tính phí: upstream hoặc cổng nối đã ngắt phản hồi",
+    "Not charged: upstream or the gateway failed before responding": "Không tính phí: upstream hoặc cổng nối lỗi trước khi phản hồi"
   }
 }

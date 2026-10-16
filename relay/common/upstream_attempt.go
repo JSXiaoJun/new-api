@@ -55,14 +55,19 @@ func (a *UpstreamAttempt) Trace(ctx context.Context) context.Context {
 	return httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		WroteRequest: func(info httptrace.WroteRequestInfo) {
 			if info.Err == nil {
-				a.markRequestSent()
+				a.MarkRequestSent()
 			}
 		},
 		GotFirstResponseByte: a.MarkResponse,
 	})
 }
 
-func (a *UpstreamAttempt) markRequestSent() {
+// MarkRequestSent records that the whole request reached the upstream
+// transport.
+func (a *UpstreamAttempt) MarkRequestSent() {
+	if a == nil {
+		return
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.requestSentAt.IsZero() {
@@ -97,6 +102,26 @@ func (a *UpstreamAttempt) Fail(err error, clientCanceled bool) {
 	a.failure = err
 	a.failedAt = time.Now()
 	a.clientCanceled = clientCanceled
+}
+
+// RespondedBefore reports whether upstream had started answering before t.
+func (a *UpstreamAttempt) RespondedBefore(t time.Time) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !a.responseAt.IsZero() && a.responseAt.Before(t)
+}
+
+// Responded reports whether upstream started answering at all.
+func (a *UpstreamAttempt) Responded() bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !a.responseAt.IsZero()
 }
 
 // Failure returns the first transport failure recorded for the attempt.
@@ -166,6 +191,11 @@ func (info *RelayInfo) Termination() *RelayTermination {
 			t.ElapsedMs = info.UpstreamEndTime.Sub(s.startedAt).Milliseconds()
 		}
 		outcome := ss.OutcomeSnapshot()
+		// Upstream already delivered its terminal event, so whatever closed the
+		// transport afterwards did not cut the response short.
+		if outcome.Response == ResponseOutcomeCompleted || outcome.Response == ResponseOutcomeIncomplete {
+			return nil
+		}
 		switch outcome.EndReason {
 		case StreamEndReasonClientGone, StreamEndReasonPingFail:
 			if errors.Is(ss.EndError, context.DeadlineExceeded) {
