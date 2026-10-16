@@ -40,6 +40,8 @@ func TestClassifyRelayOutcome(t *testing.T) {
 		{"empty upstream response", context.Background(), types.NewError(errors.New("empty"), types.ErrorCodeEmptyResponse), OutcomeFailure},
 		{"network failure", context.Background(), types.NewOpenAIError(errors.New("connection refused"), types.ErrorCodeDoRequestFailed, 500), OutcomeFailure},
 		{"client cancellation", canceled, types.NewOpenAIError(errors.New("context canceled"), types.ErrorCodeDoRequestFailed, 500), OutcomeIgnored},
+		{"client closed after non-stream response", canceled, nil, OutcomeSuccess},
+		{"client closed before upstream error", canceled, types.InitOpenAIError("server_error", 500), OutcomeIgnored},
 		{"upstream deadline", context.Background(), types.NewOpenAIError(context.DeadlineExceeded, types.ErrorCodeDoRequestFailed, 504), OutcomeFailure},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -87,6 +89,12 @@ func TestClientCancellationDuringUpstreamRead(t *testing.T) {
 	stream.RequireTerminal()
 	stream.SetEndReason(relaycommon.StreamEndReasonScannerErr, errors.New("reader closed"))
 	assert.Equal(t, OutcomeIgnored, ClassifyRelayOutcome(ctx, &relaycommon.RelayInfo{StreamStatus: stream}, nil))
+	assert.Equal(t, OutcomeIgnored, ClassifyRelayOutcome(ctx, &relaycommon.RelayInfo{IsStream: true}, nil))
+
+	buffered := relaycommon.NewStreamStatus()
+	buffered.RequireTerminal()
+	buffered.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
+	assert.Equal(t, OutcomeIgnored, ClassifyRelayOutcome(ctx, &relaycommon.RelayInfo{StreamStatus: buffered}, nil))
 
 	deadline := relaycommon.NewStreamStatus()
 	deadline.SetEndReason(relaycommon.StreamEndReasonClientGone, context.DeadlineExceeded)
