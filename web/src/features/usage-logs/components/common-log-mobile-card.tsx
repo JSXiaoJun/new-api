@@ -207,6 +207,7 @@ export function CommonLogMobileCard<TData>(props: {
                       : null
                   }
                   streamStatus={other?.stream_status}
+                  termination={other?.termination}
                 />
               )}
               {props.cells.has('use_time') && (

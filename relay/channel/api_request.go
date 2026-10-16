@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	common2 "github.com/QuantumNous/new-api/common"
@@ -527,18 +528,25 @@ func keepUpstreamRedirectResponse(_ *http.Request, _ []*http.Request) error {
 
 type upstreamTimingBody struct {
 	io.ReadCloser
-	info *common.RelayInfo
+	info    *common.RelayInfo
+	attempt *common.UpstreamAttempt
+	ctx     context.Context
+	closed  atomic.Bool
 }
 
 func (body *upstreamTimingBody) Read(p []byte) (int, error) {
 	n, err := body.ReadCloser.Read(p)
 	if err == io.EOF {
 		body.info.MarkUpstreamEnd()
+	} else if err != nil && !body.closed.Load() {
+		// Reads failing because the gateway closed the body are not upstream faults.
+		body.attempt.Fail(err, errors.Is(body.ctx.Err(), context.Canceled))
 	}
 	return n, err
 }
 
 func (body *upstreamTimingBody) Close() error {
+	body.closed.Store(true)
 	err := body.ReadCloser.Close()
 	body.info.MarkUpstreamEnd()
 	return err
@@ -596,16 +604,21 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		return nil, types.NewError(errors.New("client disconnected before upstream request"), types.ErrorCodeDoRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 	info.MarkUpstreamStart()
+	attempt := info.UpstreamAttempt()
+	requestCtx := req.Context()
+	req = req.WithContext(attempt.Trace(requestCtx))
 	resp, err := relayClient.Do(req)
 	if err != nil {
+		attempt.Fail(err, errors.Is(requestCtx.Err(), context.Canceled))
 		logger.LogError(c, common2.LogText("do request failed: %s", err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
 		return nil, errors.New("resp is nil")
 	}
+	attempt.MarkResponse()
 	if resp.Body != nil {
-		resp.Body = &upstreamTimingBody{ReadCloser: resp.Body, info: info}
+		resp.Body = &upstreamTimingBody{ReadCloser: resp.Body, info: info, attempt: attempt, ctx: requestCtx}
 	}
 	if common2.DebugEnabled {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)

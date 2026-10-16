@@ -717,6 +717,7 @@ export function useCommonLogsColumns(
               isSyncTask={other?.task_sync === true}
               tokensPerSecond={tokensPerSecond}
               streamStatus={other?.stream_status}
+              termination={other?.termination}
             />
           )
         },

@@ -260,7 +260,38 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendBillingInfo(relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
+	AppendRelayTermination(ctx, relayInfo, other)
 	return other
+}
+
+// AppendRelayTermination records which side ended an abnormal upstream attempt,
+// so a disconnect billed by estimate can be traced to the client, the upstream
+// or the gateway. The transport error is kept admin-only because it can name
+// upstream hosts and addresses.
+func AppendRelayTermination(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other *model.LogOther) {
+	if other == nil {
+		return
+	}
+	termination := relayInfo.Termination()
+	if termination == nil {
+		return
+	}
+	info := map[string]any{
+		"ended_by":     termination.EndedBy,
+		"phase":        termination.Phase,
+		"reason":       termination.Reason,
+		"request_sent": termination.RequestSent,
+		"elapsed_ms":   termination.ElapsedMs,
+	}
+	if ctx != nil && ctx.Writer != nil {
+		info["client_received_data"] = ctx.Writer.Size() > 0
+	}
+	other.SetPublic("termination", info)
+	if termination.EndedBy != relaycommon.TerminationEndedByClient {
+		if err := relayInfo.UpstreamAttempt().Failure(); err != nil {
+			other.SetAdmin("termination_error", common.MaskSensitiveInfo(err.Error()))
+		}
+	}
 }
 
 func AppendResponseModelLogInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) {

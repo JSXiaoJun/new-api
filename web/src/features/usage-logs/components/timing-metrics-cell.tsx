@@ -39,6 +39,12 @@ import {
   latencyBarClasses,
   latencyTextClasses,
 } from '../lib/latency'
+import {
+  getTerminationEndedByLabel,
+  getTerminationPhaseLabel,
+  getTerminationReasonLabel,
+  terminationTextClass,
+} from '../lib/termination'
 import type { LogOtherData } from '../types'
 import { useShowRawTiming } from './usage-logs-provider'
 
@@ -177,6 +183,7 @@ interface StreamTpsCellProps {
   isSyncTask?: boolean
   tokensPerSecond?: number | null
   streamStatus?: LogOtherData['stream_status']
+  termination?: LogOtherData['termination']
   className?: string
 }
 
@@ -188,6 +195,8 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
     props.tokensPerSecond != null
       ? `${Math.round(props.tokensPerSecond)} t/s`
       : '—'
+  const termination =
+    props.tokensPerSecond == null ? props.termination : undefined
   let streamLabel = props.isStream ? t('Stream') : t('Non-stream')
   if (props.isTask) {
     streamLabel = props.isSyncTask ? t('Sync') : t('Async')
@@ -231,12 +240,38 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
           </TooltipProvider>
         )}
       </span>
-      {(!props.compact ||
-        (props.isStream && props.tokensPerSecond != null)) && (
-        <span className='text-muted-foreground/60 px-0.5 tabular-nums'>
-          {tpsLabel}
-        </span>
+      {termination && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  className={cn(
+                    'cursor-help px-0.5 font-medium',
+                    terminationTextClass(termination.ended_by)
+                  )}
+                  tabIndex={0}
+                >
+                  {getTerminationEndedByLabel(termination.ended_by, t)}
+                </span>
+              }
+            />
+            <TooltipContent>
+              <div className='space-y-0.5 text-xs'>
+                <p>{getTerminationPhaseLabel(termination.phase, t)}</p>
+                <p>{getTerminationReasonLabel(termination.reason, t)}</p>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
+      {!termination &&
+        (!props.compact ||
+          (props.isStream && props.tokensPerSecond != null)) && (
+          <span className='text-muted-foreground/60 px-0.5 tabular-nums'>
+            {tpsLabel}
+          </span>
+        )}
     </div>
   )
 }

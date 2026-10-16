@@ -109,6 +109,7 @@ import {
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 import { ResponseModelDetails } from '../model-badge'
 import { PluginAuthorLink } from '../plugin-author-link'
+import { TerminationDetails } from '../termination-details'
 import { useShowRawTiming } from '../usage-logs-provider'
 import { DetailRow, DetailSection } from './log-detail-layout'
 
@@ -1303,6 +1304,15 @@ export function DetailsDialog(props: DetailsDialogProps) {
               }
             />
           )}
+
+        {other?.termination && (
+          <TerminationDetails
+            termination={other.termination}
+            transportError={
+              props.isAdmin ? adminInfo?.termination_error : undefined
+            }
+          />
+        )}
 
         {/* Stream status details */}
         {other?.stream_status && other.stream_status.status !== 'ok' && (

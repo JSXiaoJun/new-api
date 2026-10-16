@@ -90,3 +90,108 @@ func TestDoApiRequestPropagatesInboundContextCancellation(t *testing.T) {
 		t.Fatal("timed out waiting for canceled request")
 	}
 }
+
+// The upstream transport, not timing guesses, decides which side ended an
+// attempt: these cases drive a real connection into each disconnect phase.
+func TestDoApiRequestRecordsWhichSideEndedTheAttempt(t *testing.T) {
+	service.InitHttpClient()
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name        string
+		upstream    func(w http.ResponseWriter, r *http.Request, started chan<- struct{})
+		cancelAfter bool
+		readBody    bool
+		want        relaycommon.RelayTermination
+	}{
+		{
+			name: "client disconnects while upstream has not answered",
+			upstream: func(_ http.ResponseWriter, r *http.Request, started chan<- struct{}) {
+				_, _ = io.ReadAll(r.Body)
+				close(started)
+				<-r.Context().Done()
+			},
+			cancelAfter: true,
+			want: relaycommon.RelayTermination{
+				EndedBy: relaycommon.TerminationEndedByClient, Phase: relaycommon.TerminationPhaseAwaiting,
+				Reason: "canceled", RequestSent: true,
+			},
+		},
+		{
+			name: "upstream drops the connection before answering",
+			upstream: func(_ http.ResponseWriter, r *http.Request, started chan<- struct{}) {
+				_, _ = io.ReadAll(r.Body)
+				close(started)
+				panic(http.ErrAbortHandler)
+			},
+			want: relaycommon.RelayTermination{
+				EndedBy: relaycommon.TerminationEndedByUpstream, Phase: relaycommon.TerminationPhaseAwaiting,
+				Reason: "connection_error", RequestSent: true,
+			},
+		},
+		{
+			name: "upstream drops the connection mid-body",
+			upstream: func(w http.ResponseWriter, r *http.Request, started chan<- struct{}) {
+				_, _ = io.ReadAll(r.Body)
+				close(started)
+				w.Header().Set("Content-Length", "100")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"partial":`))
+				w.(http.Flusher).Flush()
+				panic(http.ErrAbortHandler)
+			},
+			readBody: true,
+			want: relaycommon.RelayTermination{
+				EndedBy: relaycommon.TerminationEndedByUpstream, Phase: relaycommon.TerminationPhaseReceiving,
+				Reason: "connection_error", RequestSent: true,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			started := make(chan struct{})
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				tt.upstream(w, r, started)
+			}))
+			defer upstream.Close()
+
+			requestContext, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequestWithContext(requestContext, http.MethodPost, "/v1/responses", bytes.NewReader([]byte(`{}`)))
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				resp, err := DoApiRequest(&contextTestAdaptor{baseURL: upstream.URL}, ctx, info, bytes.NewReader([]byte(`{}`)))
+				if err != nil {
+					return
+				}
+				if tt.readBody {
+					_, _ = io.ReadAll(resp.Body)
+				}
+				_ = resp.Body.Close()
+			}()
+
+			select {
+			case <-started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for upstream request")
+			}
+			if tt.cancelAfter {
+				cancel()
+			}
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for the attempt to end")
+			}
+
+			got := info.Termination()
+			require.NotNil(t, got)
+			got.ElapsedMs = 0
+			assert.Equal(t, tt.want, *got)
+		})
+	}
+}

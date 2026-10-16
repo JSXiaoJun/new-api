@@ -148,6 +148,8 @@ export interface LogOtherData {
     }
     // Reject / intercept reason (admin only)
     reject_reason?: string
+    // Masked transport error behind a non-client termination (admin only)
+    termination_error?: string
     task_plugin?: TaskPluginInfo
   }
   root_info?: {
@@ -268,6 +270,16 @@ export interface LogOtherData {
     error_count?: number
     end_error?: string
     errors?: string[]
+  }
+  // Set only when an upstream attempt ended abnormally: which side ended it,
+  // how far the attempt got, and whether the client had received any bytes.
+  termination?: {
+    ended_by?: 'client' | 'upstream' | 'gateway' | string
+    phase?: 'sending' | 'awaiting_response' | 'receiving' | string
+    reason?: string
+    request_sent?: boolean
+    elapsed_ms?: number
+    client_received_data?: boolean
   }
   // Violation fee fields
   violation_fee?: boolean

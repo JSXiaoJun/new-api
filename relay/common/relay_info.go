@@ -97,6 +97,7 @@ type RelayInfo struct {
 	UpstreamStartTime         time.Time
 	UpstreamFirstResponseTime time.Time
 	UpstreamEndTime           time.Time
+	upstreamAttempt           *UpstreamAttempt
 	//SendLastReasoningResponse bool
 	IsStream               bool
 	IsGeminiBatchEmbedding bool
@@ -1027,6 +1028,14 @@ func (info *RelayInfo) MarkUpstreamStart() {
 	info.UpstreamStartTime = time.Now()
 	info.UpstreamFirstResponseTime = time.Time{}
 	info.UpstreamEndTime = time.Time{}
+	info.upstreamAttempt = &UpstreamAttempt{startedAt: info.UpstreamStartTime}
+}
+
+// ResetUpstreamAttempt forgets the previous attempt before a retry selects a
+// channel, so a retry that fails before reaching upstream is not classified
+// by the earlier attempt.
+func (info *RelayInfo) ResetUpstreamAttempt() {
+	info.upstreamAttempt = nil
 }
 
 // MarkUpstreamEnd records when the current upstream stream stops producing

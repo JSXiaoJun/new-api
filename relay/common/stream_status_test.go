@@ -1,11 +1,17 @@
 package common
 
 import (
+	"bufio"
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStreamStatus_SetEndReason_FirstWins(t *testing.T) {
@@ -179,4 +185,144 @@ func TestStreamStatus_Summary_NilSafe(t *testing.T) {
 	t.Parallel()
 	var s *StreamStatus
 	assert.Equal(t, "StreamStatus<nil>", s.Summary())
+}
+
+type timeoutTestError struct{}
+
+func (timeoutTestError) Error() string   { return "i/o timeout" }
+func (timeoutTestError) Timeout() bool   { return true }
+func (timeoutTestError) Temporary() bool { return true }
+
+func TestRelayInfoTerminationAttributesTheEndingSide(t *testing.T) {
+	t.Parallel()
+
+	type attemptState struct {
+		requestSent bool
+		response    bool
+		failure     error
+		canceled    bool
+	}
+	streamWith := func(reason StreamEndReason, endErr error, mark func(*StreamStatus)) *StreamStatus {
+		s := NewStreamStatus()
+		s.SetEndReason(reason, endErr)
+		if mark != nil {
+			mark(s)
+		}
+		return s
+	}
+	tests := []struct {
+		name    string
+		attempt attemptState
+		stream  *StreamStatus
+		want    *RelayTermination
+	}{
+		{
+			name:    "client leaves while upstream has not answered",
+			attempt: attemptState{requestSent: true, failure: context.Canceled, canceled: true},
+			want:    &RelayTermination{EndedBy: TerminationEndedByClient, Phase: TerminationPhaseAwaiting, Reason: "canceled", RequestSent: true},
+		},
+		{
+			name:    "client leaves before the request body is written",
+			attempt: attemptState{failure: context.Canceled, canceled: true},
+			want:    &RelayTermination{EndedBy: TerminationEndedByClient, Phase: TerminationPhaseSending, Reason: "canceled"},
+		},
+		{
+			name:    "upstream closes the connection without answering",
+			attempt: attemptState{requestSent: true, failure: io.EOF},
+			want:    &RelayTermination{EndedBy: TerminationEndedByUpstream, Phase: TerminationPhaseAwaiting, Reason: "connection_error", RequestSent: true},
+		},
+		{
+			name:    "relay timeout while waiting for headers",
+			attempt: attemptState{requestSent: true, failure: timeoutTestError{}},
+			want:    &RelayTermination{EndedBy: TerminationEndedByGateway, Phase: TerminationPhaseAwaiting, Reason: "timeout", RequestSent: true},
+		},
+		{
+			name:    "client leaves during the stream",
+			attempt: attemptState{requestSent: true, response: true, failure: errors.New("read on closed body")},
+			stream:  streamWith(StreamEndReasonClientGone, context.Canceled, nil),
+			want:    &RelayTermination{EndedBy: TerminationEndedByClient, Phase: TerminationPhaseReceiving, Reason: "client_gone", RequestSent: true},
+		},
+		{
+			name:    "upstream stalls past the streaming timeout",
+			attempt: attemptState{requestSent: true, response: true},
+			stream:  streamWith(StreamEndReasonTimeout, nil, nil),
+			want:    &RelayTermination{EndedBy: TerminationEndedByGateway, Phase: TerminationPhaseReceiving, Reason: "stream_timeout", RequestSent: true},
+		},
+		{
+			name:    "upstream resets the stream",
+			attempt: attemptState{requestSent: true, response: true},
+			stream:  streamWith(StreamEndReasonScannerErr, io.ErrUnexpectedEOF, nil),
+			want:    &RelayTermination{EndedBy: TerminationEndedByUpstream, Phase: TerminationPhaseReceiving, Reason: "connection_error", RequestSent: true},
+		},
+		{
+			name:    "oversized line is a gateway limit",
+			attempt: attemptState{requestSent: true, response: true},
+			stream:  streamWith(StreamEndReasonScannerErr, bufio.ErrTooLong, nil),
+			want:    &RelayTermination{EndedBy: TerminationEndedByGateway, Phase: TerminationPhaseReceiving, Reason: "line_too_long", RequestSent: true},
+		},
+		{
+			name:    "stream ends at EOF without its terminal event",
+			attempt: attemptState{requestSent: true, response: true},
+			stream:  streamWith(StreamEndReasonEOF, nil, (*StreamStatus).RequireTerminal),
+			want:    &RelayTermination{EndedBy: TerminationEndedByUpstream, Phase: TerminationPhaseReceiving, Reason: "missing_terminal", RequestSent: true},
+		},
+		{
+			name:    "completed stream is not a termination",
+			attempt: attemptState{requestSent: true, response: true},
+			stream: streamWith(StreamEndReasonEOF, nil, func(s *StreamStatus) {
+				s.RequireTerminal()
+				s.MarkCompleted()
+			}),
+		},
+		{
+			name:    "non-stream response read without failure is not a termination",
+			attempt: attemptState{requestSent: true, response: true},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			info := &RelayInfo{}
+			info.MarkUpstreamStart()
+			attempt := info.UpstreamAttempt()
+			require.NotNil(t, attempt)
+			if tt.attempt.requestSent {
+				attempt.markRequestSent()
+			}
+			if tt.attempt.response {
+				attempt.MarkResponse()
+			}
+			attempt.Fail(tt.attempt.failure, tt.attempt.canceled)
+			if tt.stream != nil {
+				info.StreamStatus = tt.stream
+				info.MarkUpstreamEnd()
+			}
+
+			got := info.Termination()
+			if tt.want == nil {
+				assert.Nil(t, got)
+				return
+			}
+			require.NotNil(t, got)
+			assert.GreaterOrEqual(t, got.ElapsedMs, int64(0))
+			got.ElapsedMs = 0
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestRelayInfoTerminationKeepsTheFirstFailureAndResetsPerAttempt(t *testing.T) {
+	t.Parallel()
+	info := &RelayInfo{}
+	info.MarkUpstreamStart()
+	info.UpstreamAttempt().Fail(io.EOF, false)
+	info.UpstreamAttempt().Fail(context.Canceled, true)
+	assert.Equal(t, TerminationEndedByUpstream, info.Termination().EndedBy)
+
+	info.ResetUpstreamAttempt()
+	assert.Nil(t, info.Termination())
+
+	info.MarkUpstreamStart()
+	assert.Nil(t, info.Termination())
+	assert.WithinDuration(t, time.Now(), info.UpstreamStartTime, time.Second)
 }
