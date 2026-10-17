@@ -106,16 +106,19 @@ func classifyFailure(local bool, code, errorType string, status int) Outcome {
 	}
 	// Specific codes take precedence over broad protocol types, because
 	// providers also report invalid credentials as invalid_request_error.
+	// Rate limits measure capacity rather than health, while quota and
+	// balance exhaustion leaves a channel unusable even when sent as 429.
 	for _, value := range []string{code, errorType} {
 		switch value {
 		case "invalid_api_key", "api_key_invalid", "api_key_expired", "api_key_service_blocked", "invalid_authentication",
 			"authentication_error", "unauthenticated", "permission_denied", "permission_error", "access_denied",
-			"insufficient_quota", "quota_exceeded", "resource_exhausted", "rate_limit_exceeded", "rate_limit_error",
+			"insufficient_quota", "quota_exceeded", "resource_exhausted",
 			"overloaded_error", "server_error", "internal_error", "service_unavailable", "model_not_found",
 			"insufficient_user_quota", "pre_consume_token_quota_failed":
 			return OutcomeFailure
 		case "context_length_exceeded", "invalid_request", "invalid_request_error", "invalid_argument",
-			"sensitive_words_detected", "prompt_blocked", "content_filter", "content_policy_violation", "safety":
+			"sensitive_words_detected", "prompt_blocked", "content_filter", "content_policy_violation", "safety",
+			"rate_limit_exceeded", "rate_limit_error":
 			return OutcomeIgnored
 		}
 		if strings.HasPrefix(value, "violation_fee.") {
@@ -123,7 +126,7 @@ func classifyFailure(local bool, code, errorType string, status int) Outcome {
 		}
 	}
 	switch status {
-	case 400, 405, 409, 413, 415, 422:
+	case 400, 405, 409, 413, 415, 422, 429, 451:
 		return OutcomeIgnored
 	}
 	return OutcomeFailure
