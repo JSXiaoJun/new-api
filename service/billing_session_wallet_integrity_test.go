@@ -161,23 +161,29 @@ func (walletReplyHook) BeforeProcessPipeline(ctx context.Context, _ []redis.Cmde
 
 func (walletReplyHook) AfterProcessPipeline(context.Context, []redis.Cmder) error { return nil }
 
-func TestWalletSettlementFailureRefundsExactlyOnce(t *testing.T) {
+func TestWalletSettlementFailureSettlesExactlyOnce(t *testing.T) {
+	// Balance 100, reservation 40, so 60 is left before settlement. The correct
+	// result is 90 for actual usage 10 and 40 for actual usage 60.
 	cases := []struct {
-		name        string
-		redis       bool
-		afterApply  bool
-		actual      int
-		wantUnknown bool
-		want        int
+		name         string
+		redis        bool
+		afterApply   bool
+		dbFailures   int32
+		actual       int
+		wantUnknown  bool
+		wantNoRefund bool
+		want         int
 	}{
-		// A definite failure keeps the full refund, as before.
-		{name: "database_rejects_refund_difference", actual: 10, want: 100},
-		// An unknown outcome retries the same operation instead of refunding all.
+		// A failed refund difference is retried before refunding everything.
+		{name: "database_rejects_refund_difference_once", dbFailures: 1, actual: 10, want: 90},
+		{name: "database_rejects_refund_difference_twice", dbFailures: 2, actual: 10, want: 100},
+		// A failed charge keeps the reservation: no retry, no full refund.
+		{name: "database_rejects_charge_difference", dbFailures: 1, actual: 60, wantNoRefund: true, want: 60},
+		// An unknown outcome retries the same operation, which Redis applies once.
 		{name: "redis_reply_lost_after_refund_applied", redis: true, afterApply: true, actual: 10, wantUnknown: true, want: 90},
 		{name: "redis_reply_lost_before_refund_applied", redis: true, actual: 10, wantUnknown: true, want: 90},
-		// A charge with an unknown outcome is neither refunded nor charged again.
 		{name: "redis_reply_lost_after_charge_applied", redis: true, afterApply: true, actual: 60, wantUnknown: true, want: 40},
-		{name: "redis_reply_lost_before_charge_applied", redis: true, actual: 60, wantUnknown: true, want: 60},
+		{name: "redis_reply_lost_before_charge_applied", redis: true, actual: 60, wantUnknown: true, want: 40},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -202,14 +208,15 @@ func TestWalletSettlementFailureRefundsExactlyOnce(t *testing.T) {
 				UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
 			session, apiErr := NewBillingSession(ctx, info, 40)
 			require.Nil(t, apiErr)
-			if !tc.redis {
+			if tc.dbFailures > 0 {
+				var rejected atomic.Int32
 				const callback = "test:wallet_settlement_rejected"
 				require.NoError(t, model.DB.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
-					if tx.Statement.Schema != nil && tx.Statement.Schema.Name == "User" {
+					if tx.Statement.Schema != nil && tx.Statement.Schema.Name == "User" && rejected.Add(1) <= tc.dbFailures {
 						tx.AddError(errors.New("wallet storage unavailable"))
 					}
 				}))
-				t.Cleanup(func() { _ = model.DB.Callback().Update().Remove(callback) })
+				t.Cleanup(func() { require.NoError(t, model.DB.Callback().Update().Remove(callback)) })
 			}
 
 			failed.Store(false)
@@ -217,13 +224,11 @@ func TestWalletSettlementFailureRefundsExactlyOnce(t *testing.T) {
 			require.Error(t, err)
 			assert.Equal(t, tc.wantUnknown, errors.Is(err, model.ErrWalletOutcomeUnknown))
 			if tc.wantUnknown {
-				// A later settlement must not reuse an unresolved charge or amount.
+				// A later settlement must not reuse an unresolved operation for another amount.
 				require.Error(t, session.Settle(tc.actual+1))
 				require.Error(t, session.Settle(40))
 			}
-			if !tc.redis {
-				require.NoError(t, model.DB.Callback().Update().Remove("test:wallet_settlement_rejected"))
-			}
+			assert.Equal(t, !tc.wantNoRefund, session.NeedsRefund())
 			session.Refund(ctx)
 
 			balance := func() int {

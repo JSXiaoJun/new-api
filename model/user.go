@@ -1410,7 +1410,8 @@ func IncreaseUserQuota(id int, quota int, db bool, details ...QuotaCreditMeta) (
 	return nil
 }
 
-func DecreaseUserQuota(id int, quota int, db bool) (err error) {
+// details only carries an OperationId; a debit records no credit row.
+func DecreaseUserQuota(id int, quota int, db bool, details ...QuotaCreditMeta) (err error) {
 	if quota < 0 || quota > common.MaxQuota {
 		return errors.New("invalid quota")
 	}
@@ -1418,7 +1419,11 @@ func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 		return nil
 	}
 	if !db && common.RedisEnabled {
-		_, err := journalWalletDelta(id, -quota, false, QuotaCreditMeta{})
+		meta := QuotaCreditMeta{}
+		if len(details) > 0 {
+			meta.OperationId = details[0].OperationId
+		}
+		_, err := journalWalletDelta(id, -quota, false, meta)
 		return err
 	}
 	return withWalletTransaction(id, func(tx *gorm.DB) error {

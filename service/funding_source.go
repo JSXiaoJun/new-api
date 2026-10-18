@@ -37,7 +37,7 @@ type WalletFunding struct {
 	userId          int
 	requestId       string
 	consumed        int    // 实际预扣的用户额度
-	settleOperation string // 结算退差额的幂等操作 ID，结果未知时用同一 ID 重试
+	settleOperation string // 结算差额的幂等操作 ID（Redis 模式），结果未知时用同一 ID 重试
 }
 
 func (w *WalletFunding) Source() string { return BillingSourceWallet }
@@ -61,11 +61,11 @@ func (w *WalletFunding) Settle(delta int) error {
 	if delta == 0 {
 		return nil
 	}
-	if delta > 0 {
-		return model.DecreaseUserQuota(w.userId, delta, false)
-	}
 	if w.settleOperation == "" {
 		w.settleOperation = common.GetUUID()
+	}
+	if delta > 0 {
+		return model.DecreaseUserQuota(w.userId, delta, false, model.QuotaCreditMeta{OperationId: w.settleOperation})
 	}
 	return model.IncreaseUserQuota(w.userId, -delta, false, model.QuotaCreditMeta{
 		Source: "wallet_settlement_refund", RequestId: w.requestId, OperationId: w.settleOperation,
