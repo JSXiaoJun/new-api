@@ -3,6 +3,8 @@ package model
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -15,7 +17,10 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 type walletCommandHook struct{ before func(redis.Cmder) error }
@@ -269,6 +274,36 @@ func TestWalletSettlementDuringFlushIsNotDropped(t *testing.T) {
 	assert.Equal(t, 70, getUserQuotaFromDB(t, user.Id))
 }
 
+// A delayed copy of an operation that fell back to SQL must find it recorded,
+// even when only the acknowledgment (which lifts the flush barrier) ran.
+func TestWalletFallbackRecordsOperationBeforeLiftingBarrier(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	server := useUserCacheMiniRedis(t)
+	user := createReserveTestUser(t, 100)
+	require.NoError(t, DecreaseUserQuota(user.Id, 10, false))
+	var captured []any
+	common.RDB.AddHook(walletCommandHook{before: func(cmd redis.Cmder) error {
+		if cmd.Name() == "eval" && strings.Contains(cmd.Args()[1].(string), "local previous") && captured == nil {
+			captured = append([]any(nil), cmd.Args()...)
+			server.HSet(walletKeys(user.Id)[0], "busy", "interrupted-flush")
+		}
+		if cmd.Name() == "set" {
+			return errors.New("plain SET unavailable")
+		}
+		return nil
+	}})
+	require.NoError(t, DecreaseUserQuota(user.Id, 20, false, QuotaCreditMeta{OperationId: "fallback-op"}))
+	require.NotNil(t, captured)
+	assert.True(t, server.Exists("wallet:v1:op:fallback-op"), "recorded by the acknowledgment")
+
+	result, err := common.RDB.Do(context.Background(), captured...).Int()
+	require.NoError(t, err)
+	assert.Equal(t, 1, result, "the delayed copy reports the applied operation")
+	FlushWalletJournals()
+	assert.Equal(t, 70, getUserQuotaFromDB(t, user.Id), "and does not apply it again")
+}
+
 func TestWalletPaymentProvidersDrainPendingDebitsWithoutReplayingCredit(t *testing.T) {
 	for _, provider := range []string{PaymentProviderEpay, PaymentProviderStripe, PaymentProviderCreem, PaymentProviderWaffo, PaymentProviderWaffoPancake, "manual"} {
 		t.Run(provider, func(t *testing.T) {
@@ -449,6 +484,103 @@ func TestWalletEnrollmentRollbackRecoversWithoutApplyingFailedCredit(t *testing.
 	_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, total)
+}
+
+// A rolled-back report lets billing retry a settlement, so a failed commit,
+// which may have written the change, must never be reported as rolled back.
+// MySQL has no deferred constraints, so its commit cannot be failed on demand;
+// the body cases still run there.
+func TestWalletTransactionReportsRollbackOnlyWhenNothingCommitted(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			var driver gorm.Dialector
+			switch dialect {
+			case "sqlite":
+				driver = sqlite.Open(filepath.Join(t.TempDir(), "wallet-tx.db") + "?_pragma=foreign_keys(1)")
+			case "mysql":
+				dsn := os.Getenv("TEST_MYSQL_DSN")
+				if dsn == "" {
+					t.Skip("TEST_MYSQL_DSN is not configured")
+				}
+				driver = mysql.Open(dsn)
+			case "postgres":
+				dsn := os.Getenv("TEST_POSTGRES_DSN")
+				if dsn == "" {
+					t.Skip("TEST_POSTGRES_DSN is not configured")
+				}
+				driver = postgres.Open(dsn)
+			}
+			// The prefix keeps the wallet tables apart from real ones in a shared database.
+			db, err := gorm.Open(driver, &gorm.Config{NamingStrategy: schema.NamingStrategy{TablePrefix: fmt.Sprintf("wallet_tx_%d_", time.Now().UnixNano())}})
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			sqlDB.SetMaxOpenConns(1)
+			previous := DB
+			DB = db
+			t.Cleanup(func() {
+				DB = previous
+				db.Exec("DROP TABLE IF EXISTS wallet_commit_child")
+				db.Exec("DROP TABLE IF EXISTS wallet_commit_parent")
+				require.NoError(t, sqlDB.Close())
+			})
+			db.Exec("DROP TABLE IF EXISTS wallet_commit_child")
+			db.Exec("DROP TABLE IF EXISTS wallet_commit_parent")
+			require.NoError(t, db.Exec("CREATE TABLE wallet_commit_parent (id INTEGER PRIMARY KEY)").Error)
+			childTable := "CREATE TABLE wallet_commit_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES wallet_commit_parent(id) DEFERRABLE INITIALLY DEFERRED)"
+			if dialect == "mysql" {
+				childTable = "CREATE TABLE wallet_commit_child (id INTEGER PRIMARY KEY, parent_id INTEGER)"
+			}
+			require.NoError(t, db.Exec(childTable).Error)
+
+			rolledBack, err := walletSQLTransaction(func(tx *gorm.DB) error {
+				require.NoError(t, tx.Exec("INSERT INTO wallet_commit_child (id, parent_id) VALUES (1, NULL)").Error)
+				return errors.New("body failed")
+			})
+			require.Error(t, err)
+			assert.True(t, rolledBack, "a failed body rolls back")
+
+			if dialect != "mysql" {
+				rolledBack, err = walletSQLTransaction(func(tx *gorm.DB) error {
+					return tx.Exec("INSERT INTO wallet_commit_child (id, parent_id) VALUES (2, 99)").Error
+				})
+				require.Error(t, err, "the deferred foreign key fails the commit")
+				assert.False(t, rolledBack, "a failed commit is not reported as rolled back")
+				if dialect == "sqlite" {
+					// SQLite keeps a transaction open after a failed COMMIT; close it here.
+					require.NoError(t, db.Exec("ROLLBACK").Error)
+				}
+			}
+
+			rolledBack, err = walletSQLTransaction(func(tx *gorm.DB) error {
+				return tx.Exec("INSERT INTO wallet_commit_parent (id) VALUES (1)").Error
+			})
+			require.NoError(t, err)
+			assert.False(t, rolledBack)
+			var children, parents int64
+			require.NoError(t, db.Raw("SELECT COUNT(*) FROM wallet_commit_child").Scan(&children).Error)
+			require.NoError(t, db.Raw("SELECT COUNT(*) FROM wallet_commit_parent").Scan(&parents).Error)
+			assert.Zero(t, children, "neither failed transaction left a row")
+			assert.EqualValues(t, 1, parents)
+
+			// Wallet mutations rejected inside the transaction are not applied.
+			require.NoError(t, db.AutoMigrate(&User{}, &QuotaCredit{}))
+			t.Cleanup(func() { require.NoError(t, db.Migrator().DropTable(&QuotaCredit{}, &User{})) })
+			full := User{Username: "wallet-full-" + dialect, Password: "unused", AffCode: "wallet-full-" + dialect, Quota: walletQuotaLimit}
+			require.NoError(t, db.Create(&full).Error)
+			require.ErrorIs(t, IncreaseUserQuota(full.Id, 10, true), ErrWalletNotApplied)
+			require.ErrorIs(t, IncreaseUserQuota(full.Id, 10, true), ErrWalletQuotaLimitExceeded)
+			require.ErrorIs(t, DecreaseUserQuota(full.Id+1000, 10, true), ErrWalletNotApplied)
+			require.NoError(t, DecreaseUserQuota(full.Id, 10, true))
+			require.NoError(t, IncreaseUserQuota(full.Id, 10, true))
+			var stored User
+			require.NoError(t, db.Select("quota").First(&stored, full.Id).Error)
+			assert.Equal(t, walletQuotaLimit, stored.Quota)
+			var credits int64
+			require.NoError(t, db.Model(&QuotaCredit{}).Where("user_id = ?", full.Id).Count(&credits).Error)
+			assert.EqualValues(t, 1, credits, "only the applied increase is recorded")
+		})
+	}
 }
 
 func TestWalletRedisCommandReplayIsIdempotentAcrossCheckpoint(t *testing.T) {

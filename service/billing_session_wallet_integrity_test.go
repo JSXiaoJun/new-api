@@ -112,6 +112,7 @@ func TestWalletSettlementRetryAfterFundingFailureChargesOnlyOnce(t *testing.T) {
 		UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
 	session, apiErr := NewBillingSession(ctx, info, 20)
 	require.Nil(t, apiErr)
+	useSettlementRetryDelays(t, 0)
 	t.Run("database failure", func(t *testing.T) {
 		const callback = "test:wallet_settlement_failure"
 		require.NoError(t, model.DB.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
@@ -121,6 +122,7 @@ func TestWalletSettlementRetryAfterFundingFailureChargesOnlyOnce(t *testing.T) {
 		}))
 		t.Cleanup(func() { require.NoError(t, model.DB.Callback().Update().Remove(callback)) })
 		require.Error(t, session.Settle(30))
+		waitSettlementRetry(t, session)
 		assert.Equal(t, 80, getUserQuota(t, 605))
 		assert.Equal(t, 80, getTokenRemainQuota(t, 606))
 	})
@@ -161,85 +163,266 @@ func (walletReplyHook) BeforeProcessPipeline(ctx context.Context, _ []redis.Cmde
 
 func (walletReplyHook) AfterProcessPipeline(context.Context, []redis.Cmder) error { return nil }
 
+func useSettlementRetryDelays(t *testing.T, delays ...time.Duration) {
+	t.Helper()
+	previous := walletSettlementRetryDelays
+	walletSettlementRetryDelays = delays
+	t.Cleanup(func() { walletSettlementRetryDelays = previous })
+}
+
+// waitSettlementRetry waits until no background retry owns the session.
+func waitSettlementRetry(t *testing.T, session *BillingSession) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		session.mu.Lock()
+		defer session.mu.Unlock()
+		return session.pending == nil || !session.pending.retrying
+	}, 2*time.Second, time.Millisecond)
+}
+
+// useWalletReplyRedis serves the wallet from a fresh Redis whose next armed
+// apply script loses its reply, before or after Redis ran it.
+func useWalletReplyRedis(t *testing.T, afterApply bool, failed *atomic.Bool) {
+	t.Helper()
+	server := miniredis.RunT(t)
+	previousEnabled, previousRDB := common.RedisEnabled, common.RDB
+	common.RedisEnabled = true
+	common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr()})
+	common.RDB.AddHook(walletReplyHook{afterApply: afterApply, failed: failed})
+	t.Cleanup(func() {
+		_ = common.RDB.Close()
+		common.RedisEnabled, common.RDB = previousEnabled, previousRDB
+	})
+}
+
+// commitFailedFunding reports its first settlement with a plain error, the
+// way a failed SQL commit looks; with applied it really wrote the change.
+type commitFailedFunding struct {
+	*WalletFunding
+	applied bool
+	called  *atomic.Bool
+}
+
+func (f commitFailedFunding) Settle(delta int) error {
+	if f.called.CompareAndSwap(false, true) {
+		if f.applied {
+			if err := f.WalletFunding.Settle(delta); err != nil {
+				return err
+			}
+		}
+		return errors.New("commit failed")
+	}
+	return f.WalletFunding.Settle(delta)
+}
+
 func TestWalletSettlementFailureSettlesExactlyOnce(t *testing.T) {
 	// Balance 100, reservation 40, so 60 is left before settlement. The correct
-	// result is 90 for actual usage 10 and 40 for actual usage 60.
+	// result is 90 for actual usage 10 and 40 for actual usage 60. Each case runs
+	// once for a request that completed and once for one that ended abnormally
+	// (the relay then calls Refund). Before these retries, an abnormal end
+	// refunded the whole reservation (100) and a completed request kept it (60).
 	cases := []struct {
-		name         string
-		redis        bool
-		afterApply   bool
-		dbFailures   int32
-		actual       int
-		wantUnknown  bool
-		wantNoRefund bool
-		want         int
+		name          string
+		actual        int
+		redis         bool
+		afterApply    bool
+		dbFailures    int32
+		commitFailed  bool
+		commitApplied bool
+		completed     int
+		abnormal      int
 	}{
-		// A failed refund difference is retried before refunding everything.
-		{name: "database_rejects_refund_difference_once", dbFailures: 1, actual: 10, want: 90},
-		{name: "database_rejects_refund_difference_twice", dbFailures: 2, actual: 10, want: 100},
-		// A failed charge keeps the reservation: no retry, no full refund.
-		{name: "database_rejects_charge_difference", dbFailures: 1, actual: 60, wantNoRefund: true, want: 60},
-		// An unknown outcome retries the same operation, which Redis applies once.
-		{name: "redis_reply_lost_after_refund_applied", redis: true, afterApply: true, actual: 10, wantUnknown: true, want: 90},
-		{name: "redis_reply_lost_before_refund_applied", redis: true, actual: 10, wantUnknown: true, want: 90},
-		{name: "redis_reply_lost_after_charge_applied", redis: true, afterApply: true, actual: 60, wantUnknown: true, want: 40},
-		{name: "redis_reply_lost_before_charge_applied", redis: true, actual: 60, wantUnknown: true, want: 40},
+		// The write was rolled back: it is retried in the background.
+		{name: "database_rejects_refund_difference_once", actual: 10, dbFailures: 1, completed: 90, abnormal: 90},
+		{name: "database_rejects_charge_difference_once", actual: 60, dbFailures: 1, completed: 40, abnormal: 40},
+		// Storage never recovers: the reservation stays charged and is logged.
+		{name: "database_always_rejects_refund_difference", actual: 10, dbFailures: 1000, completed: 60, abnormal: 60},
+		{name: "database_always_rejects_charge_difference", actual: 60, dbFailures: 1000, completed: 60, abnormal: 60},
+		// Redis lost the reply: the same operation is retried and applied once.
+		{name: "redis_reply_lost_after_refund_applied", actual: 10, redis: true, afterApply: true, completed: 90, abnormal: 90},
+		{name: "redis_reply_lost_before_refund_applied", actual: 10, redis: true, completed: 90, abnormal: 90},
+		{name: "redis_reply_lost_after_charge_applied", actual: 60, redis: true, afterApply: true, completed: 40, abnormal: 40},
+		{name: "redis_reply_lost_before_charge_applied", actual: 60, redis: true, completed: 40, abnormal: 40},
+		// The commit failed, so the change may have landed with no idempotency
+		// guard. A charge is never retried (the user could pay twice). A refund
+		// gets one attempt when the request ended abnormally; if the commit had
+		// landed this credits the difference twice (120), still less than the
+		// full refund it replaces (130).
+		{name: "commit_failed_refund_not_applied", actual: 10, commitFailed: true, completed: 60, abnormal: 90},
+		{name: "commit_failed_refund_applied", actual: 10, commitFailed: true, commitApplied: true, completed: 90, abnormal: 120},
+		{name: "commit_failed_charge_not_applied", actual: 60, commitFailed: true, completed: 60, abnormal: 60},
+		{name: "commit_failed_charge_applied", actual: 60, commitFailed: true, commitApplied: true, completed: 40, abnormal: 40},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			truncate(t)
-			seedUser(t, 610, 100)
-			failed := &atomic.Bool{}
-			failed.Store(true) // armed right before settlement
-			if tc.redis {
-				server := miniredis.RunT(t)
-				previousEnabled, previousRDB := common.RedisEnabled, common.RDB
-				common.RedisEnabled = true
-				common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr()})
-				common.RDB.AddHook(walletReplyHook{afterApply: tc.afterApply, failed: failed})
-				t.Cleanup(func() {
-					_ = common.RDB.Close()
-					common.RedisEnabled, common.RDB = previousEnabled, previousRDB
-				})
+		for _, abnormal := range []bool{false, true} {
+			name, want := tc.name+"/completed", tc.completed
+			if abnormal {
+				name, want = tc.name+"/abnormal", tc.abnormal
 			}
-			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-			info := &relaycommon.RelayInfo{UserId: 610, RequestId: tc.name, IsPlayground: true, ForcePreConsume: true,
-				UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
-			session, apiErr := NewBillingSession(ctx, info, 40)
-			require.Nil(t, apiErr)
-			if tc.dbFailures > 0 {
-				var rejected atomic.Int32
-				const callback = "test:wallet_settlement_rejected"
-				require.NoError(t, model.DB.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
-					if tx.Statement.Schema != nil && tx.Statement.Schema.Name == "User" && rejected.Add(1) <= tc.dbFailures {
-						tx.AddError(errors.New("wallet storage unavailable"))
-					}
-				}))
-				t.Cleanup(func() { require.NoError(t, model.DB.Callback().Update().Remove(callback)) })
-			}
+			t.Run(name, func(t *testing.T) {
+				useSettlementRetryDelays(t, 0, time.Millisecond, time.Millisecond)
+				truncate(t)
+				seedUser(t, 610, 100)
+				failed := &atomic.Bool{}
+				failed.Store(true) // armed right before settlement
+				if tc.redis {
+					useWalletReplyRedis(t, tc.afterApply, failed)
+				}
+				ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+				ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+				info := &relaycommon.RelayInfo{UserId: 610, RequestId: name, IsPlayground: true, ForcePreConsume: true,
+					UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
+				session, apiErr := NewBillingSession(ctx, info, 40)
+				require.Nil(t, apiErr)
+				if tc.commitFailed {
+					session.funding = commitFailedFunding{WalletFunding: session.funding.(*WalletFunding), applied: tc.commitApplied, called: &atomic.Bool{}}
+				}
+				if tc.dbFailures > 0 {
+					var rejected atomic.Int32
+					const callback = "test:wallet_settlement_rejected"
+					require.NoError(t, model.DB.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
+						if tx.Statement.Schema != nil && tx.Statement.Schema.Name == "User" && rejected.Add(1) <= tc.dbFailures {
+							tx.AddError(errors.New("wallet storage unavailable"))
+						}
+					}))
+					t.Cleanup(func() { require.NoError(t, model.DB.Callback().Update().Remove(callback)) })
+				}
 
-			failed.Store(false)
-			err := session.Settle(tc.actual)
-			require.Error(t, err)
-			assert.Equal(t, tc.wantUnknown, errors.Is(err, model.ErrWalletOutcomeUnknown))
-			if tc.wantUnknown {
-				// A later settlement must not reuse an unresolved operation for another amount.
-				require.Error(t, session.Settle(tc.actual+1))
-				require.Error(t, session.Settle(40))
-			}
-			assert.Equal(t, !tc.wantNoRefund, session.NeedsRefund())
-			session.Refund(ctx)
+				failed.Store(false)
+				require.Error(t, session.Settle(tc.actual))
+				if tc.commitFailed {
+					// An unprotected difference must not be settled again by the caller.
+					require.Error(t, session.Settle(tc.actual))
+				}
+				if abnormal {
+					session.Refund(ctx)
+				}
+				waitSettlementRetry(t, session)
 
-			balance := func() int {
-				model.FlushWalletJournals()
-				return getUserQuota(t, 610)
-			}
-			require.Eventually(t, func() bool { return balance() == tc.want }, 2*time.Second, 10*time.Millisecond)
-			time.Sleep(50 * time.Millisecond)
-			assert.Equal(t, tc.want, balance(), "no late second credit")
-		})
+				balance := func() int {
+					model.FlushWalletJournals()
+					return getUserQuota(t, 610)
+				}
+				require.Eventually(t, func() bool { return balance() == want }, 2*time.Second, 5*time.Millisecond)
+				time.Sleep(30 * time.Millisecond)
+				assert.Equal(t, want, balance(), "no late second settlement")
+			})
+		}
 	}
+}
+
+// blockingRetryFunding fails the first settlement as not applied and holds the
+// retry inside the wallet write until release is closed.
+type blockingRetryFunding struct {
+	*WalletFunding
+	calls   *atomic.Int32
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (f blockingRetryFunding) Settle(delta int) error {
+	if f.calls.Add(1) == 1 {
+		return fmt.Errorf("%w: storage busy", model.ErrWalletNotApplied)
+	}
+	close(f.entered)
+	<-f.release
+	return f.WalletFunding.Settle(delta)
+}
+
+func TestWalletSettlementRetryDoesNotBlockRefundOrRunConcurrently(t *testing.T) {
+	useSettlementRetryDelays(t, 0)
+	truncate(t)
+	seedUser(t, 612, 100)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	info := &relaycommon.RelayInfo{UserId: 612, RequestId: "retry-in-flight", IsPlayground: true, ForcePreConsume: true,
+		UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
+	session, apiErr := NewBillingSession(ctx, info, 40)
+	require.Nil(t, apiErr)
+	funding := blockingRetryFunding{WalletFunding: session.funding.(*WalletFunding), calls: &atomic.Int32{},
+		entered: make(chan struct{}), release: make(chan struct{})}
+	session.funding = funding
+
+	require.Error(t, session.Settle(10))
+	<-funding.entered
+	refunded := make(chan struct{})
+	go func() { session.Refund(ctx); close(refunded) }()
+	select {
+	case <-refunded:
+	case <-time.After(time.Second):
+		t.Fatal("Refund waited for the background wallet write")
+	}
+	require.Error(t, session.Settle(10), "no second write while the retry is in flight")
+	close(funding.release)
+	waitSettlementRetry(t, session)
+	assert.EqualValues(t, 2, funding.calls.Load())
+	assert.Equal(t, 90, getUserQuota(t, 612))
+}
+
+func TestUnknownWalletSettlementStopsRetryingAfterItsWindow(t *testing.T) {
+	useSettlementRetryDelays(t, 0, 300*time.Millisecond)
+	previousWindow := walletSettlementRetryWindow
+	walletSettlementRetryWindow = 100 * time.Millisecond
+	t.Cleanup(func() { walletSettlementRetryWindow = previousWindow })
+	truncate(t)
+	seedUser(t, 613, 100)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	info := &relaycommon.RelayInfo{UserId: 613, RequestId: "retry-window", IsPlayground: true, ForcePreConsume: true,
+		UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
+	session, apiErr := NewBillingSession(ctx, info, 40)
+	require.Nil(t, apiErr)
+	var calls atomic.Int32
+	session.funding = countingUnknownFunding{WalletFunding: session.funding.(*WalletFunding), calls: &calls}
+
+	require.ErrorIs(t, session.Settle(10), model.ErrWalletOutcomeUnknown)
+	waitSettlementRetry(t, session)
+	// The immediate retry is still inside the window; the next one is not.
+	assert.EqualValues(t, 2, calls.Load())
+	require.Error(t, session.Settle(10), "an expired unknown operation is not retried by the caller either")
+	assert.EqualValues(t, 2, calls.Load())
+	assert.Equal(t, 60, getUserQuota(t, 613))
+}
+
+// countingUnknownFunding reports every settlement as an unknown outcome
+// without writing anything.
+type countingUnknownFunding struct {
+	*WalletFunding
+	calls *atomic.Int32
+}
+
+func (f countingUnknownFunding) Settle(int) error {
+	f.calls.Add(1)
+	return fmt.Errorf("%w: i/o timeout", model.ErrWalletOutcomeUnknown)
+}
+
+func TestUnknownWalletSettlementOnlyRetriesTheSameAmount(t *testing.T) {
+	useSettlementRetryDelays(t, 200*time.Millisecond)
+	truncate(t)
+	seedUser(t, 611, 100)
+	failed := &atomic.Bool{}
+	failed.Store(true)
+	useWalletReplyRedis(t, true, failed)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	info := &relaycommon.RelayInfo{UserId: 611, RequestId: "unknown-same-amount", IsPlayground: true, ForcePreConsume: true,
+		UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
+	session, apiErr := NewBillingSession(ctx, info, 40)
+	require.Nil(t, apiErr)
+
+	failed.Store(false)
+	err := session.Settle(10)
+	require.ErrorIs(t, err, model.ErrWalletOutcomeUnknown)
+	// The lost operation may have refunded 30: another amount, including the
+	// reservation itself, would be recorded against the same operation.
+	require.Error(t, session.Settle(11))
+	require.Error(t, session.Settle(40))
+	require.NoError(t, session.Settle(10))
+	model.FlushWalletJournals()
+	assert.Equal(t, 90, getUserQuota(t, 611))
+	time.Sleep(300 * time.Millisecond) // let the scheduled retry find nothing to do
+	model.FlushWalletJournals()
+	assert.Equal(t, 90, getUserQuota(t, 611))
 }
 
 func TestRefundedWalletSessionRejectsLateSettlement(t *testing.T) {

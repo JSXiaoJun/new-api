@@ -1390,7 +1390,7 @@ func IncreaseUserQuota(id int, quota int, db bool, details ...QuotaCreditMeta) (
 		_, err := journalWalletDelta(id, quota, false, meta)
 		return err
 	}
-	err = withWalletTransaction(id, func(tx *gorm.DB) error {
+	rolledBack, err := walletTransaction(id, func(tx *gorm.DB) error {
 		result := tx.Model(&User{}).Where("id = ? AND quota <= ?", id, walletQuotaLimit-quota).
 			Update("quota", gorm.Expr("quota + ?", quota))
 		if result.Error != nil {
@@ -1404,10 +1404,10 @@ func IncreaseUserQuota(id int, quota int, db bool, details ...QuotaCreditMeta) (
 			RequestId: meta.RequestId, OperatorId: meta.OperatorId, Ip: meta.Ip,
 		})
 	})
-	if err != nil {
-		return err
+	if rolledBack {
+		return walletNotApplied(err)
 	}
-	return nil
+	return err
 }
 
 // details only carries an OperationId; a debit records no credit row.
@@ -1426,7 +1426,7 @@ func DecreaseUserQuota(id int, quota int, db bool, details ...QuotaCreditMeta) (
 		_, err := journalWalletDelta(id, -quota, false, meta)
 		return err
 	}
-	return withWalletTransaction(id, func(tx *gorm.DB) error {
+	rolledBack, err := walletTransaction(id, func(tx *gorm.DB) error {
 		result := tx.Model(&User{}).Where("id = ? AND quota >= ?", id, -walletQuotaLimit+quota).
 			Update("quota", gorm.Expr("quota - ?", quota))
 		if result.Error != nil {
@@ -1437,6 +1437,10 @@ func DecreaseUserQuota(id int, quota int, db bool, details ...QuotaCreditMeta) (
 		}
 		return nil
 	})
+	if rolledBack {
+		return walletNotApplied(err)
+	}
+	return err
 }
 
 func DeltaUpdateUserQuota(id int, delta int) (err error) {

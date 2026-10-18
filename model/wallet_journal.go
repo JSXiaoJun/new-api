@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
@@ -35,12 +36,63 @@ type walletEvent struct {
 	Credit   QuotaCredit `json:"credit"`
 }
 
+// ErrWalletNotApplied wraps a wallet mutation error when the mutation certainly
+// changed nothing: it failed before reaching storage, or its SQL transaction
+// body failed and rolled back. A failed commit is never wrapped, because the
+// mutation may have been applied. Retrying a not-applied mutation is safe.
+var ErrWalletNotApplied = errors.New("wallet mutation not applied")
+
+// walletMutationError tags a wallet error with how certain its outcome is while
+// keeping the original message and identity for every existing caller.
+type walletMutationError struct {
+	outcome error
+	err     error
+}
+
+func (e *walletMutationError) Error() string   { return e.err.Error() }
+func (e *walletMutationError) Unwrap() []error { return []error{e.outcome, e.err} }
+
+func tagWalletOutcome(outcome, err error) error {
+	if err == nil || errors.Is(err, ErrWalletNotApplied) || errors.Is(err, ErrWalletOutcomeUnknown) {
+		return err
+	}
+	return &walletMutationError{outcome: outcome, err: err}
+}
+
+func walletNotApplied(err error) error { return tagWalletOutcome(ErrWalletNotApplied, err) }
+
+// walletSQLTransaction reports rolledBack when the error came from the
+// transaction body or from opening it, so nothing was committed.
+func walletSQLTransaction(body func(*gorm.DB) error) (rolledBack bool, err error) {
+	ran := false
+	var bodyErr error
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		ran = true
+		bodyErr = body(tx)
+		return bodyErr
+	})
+	return err != nil && (!ran || bodyErr != nil), err
+}
+
 // withWalletTransaction serializes SQL writers using the user row, while a
 // non-expiring Redis barrier stops reservations during commit/acknowledgment.
 // A subsequent flush can recover a crashed writer under that same SQL row lock.
 func withWalletTransaction(id int, work func(*gorm.DB) error) error {
+	_, err := walletTransaction(id, work)
+	return err
+}
+
+// walletTransaction is withWalletTransaction that also reports whether a
+// failure certainly left the wallet unchanged (see walletSQLTransaction).
+func walletTransaction(id int, work func(*gorm.DB) error) (rolledBack bool, err error) {
+	return walletTransactionRecording(id, work, nil)
+}
+
+// walletTransactionRecording also records, in Redis mode, the operation key
+// that operationKey returns after a successful commit (empty: none).
+func walletTransactionRecording(id int, work func(*gorm.DB) error, operationKey func() string) (rolledBack bool, err error) {
 	if !common.RedisEnabled {
-		return DB.Transaction(func(tx *gorm.DB) error {
+		return walletSQLTransaction(func(tx *gorm.DB) error {
 			var user User
 			if err := lockForUpdate(tx).Select("id", "wallet_epoch").First(&user, id).Error; err != nil {
 				return err
@@ -68,7 +120,7 @@ func withWalletTransaction(id int, work func(*gorm.DB) error) error {
 	var finalQuota int
 	var finalSequence int64
 	var epoch string
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	rolledBack, err = walletSQLTransaction(func(tx *gorm.DB) error {
 		// SQLite has no row locks. Acquire its writer lock before reading the
 		// checkpoint so two deferred transactions cannot both freeze Redis.
 		if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
@@ -186,22 +238,31 @@ return 1`
 	if err != nil {
 		// Keep the barrier on any uncertain result. A later checkpoint-only
 		// flush resolves commit ambiguity without repeating the business action.
-		return err
+		return rolledBack, err
 	}
+	// An applied operation is recorded before the barrier is lifted, so a
+	// delayed copy of it can never run in between and apply it again.
 	const acknowledge = `
 if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] or redis.call('HGET', KEYS[1], 'busy') ~= ARGV[2] then return 0 end
 local dirtyType = redis.call('TYPE', KEYS[3]).ok
 if dirtyType ~= 'none' and dirtyType ~= 'set' then return redis.error_reply('invalid wallet dirty key') end
+if KEYS[4] then redis.call('SET', KEYS[4], '1', 'EX', 600) end
 redis.call('HSET', KEYS[1], 'quota', ARGV[3], 'acked', ARGV[4])
 redis.call('HDEL', KEYS[1], 'busy')
 redis.call('DEL', KEYS[2])
 redis.call('SREM', KEYS[3], ARGV[5])
 return 1`
-	if _, err := common.RDB.Eval(ctx, acknowledge, keys, epoch, token, finalQuota, finalSequence, id).Result(); err != nil {
+	ackKeys := keys
+	if operationKey != nil {
+		if key := operationKey(); key != "" {
+			ackKeys = append(append([]string{}, keys...), key)
+		}
+	}
+	if _, err := common.RDB.Eval(ctx, acknowledge, ackKeys, epoch, token, finalQuota, finalSequence, id).Result(); err != nil {
 		// SQL committed: reporting business failure could cause a second credit.
 		common.SysError(fmt.Sprintf("wallet %d committed but Redis acknowledgment failed: %v", id, err))
 	}
-	return nil
+	return false, nil
 }
 
 func getWalletQuota(id int) (int, error) {
@@ -244,7 +305,7 @@ return redis.call('HGET', KEYS[1], 'quota') or 'invalid'`
 
 func journalWalletDelta(id, delta int, reserve bool, meta QuotaCreditMeta) (bool, error) {
 	if _, err := getWalletQuota(id); err != nil {
-		return false, err
+		return false, walletNotApplied(err)
 	}
 	event := walletEvent{Delta: int64(delta)}
 	if delta > 0 {
@@ -256,7 +317,7 @@ func journalWalletDelta(id, delta int, reserve bool, meta QuotaCreditMeta) (bool
 	}
 	payload, err := common.Marshal(event)
 	if err != nil {
-		return false, err
+		return false, walletNotApplied(err)
 	}
 	operationId := meta.OperationId
 	if operationId == "" {
@@ -292,13 +353,19 @@ return 1`
 	}
 	result, err := common.RDB.Eval(context.Background(), apply, keys, delta, reserveArg, string(payload), -walletQuotaLimit, walletQuotaLimit, id).Int()
 	if err != nil {
-		return false, fmt.Errorf("%w: %w", ErrWalletOutcomeUnknown, err)
+		return false, tagWalletOutcome(ErrWalletOutcomeUnknown, err)
 	}
 	if result == -2 {
 		// A flush can start between the read and the Lua mutation. Serialize
 		// behind that writer instead of dropping a completed request's charge.
 		var applied bool
-		err := withWalletTransaction(id, func(tx *gorm.DB) error {
+		recordApplied := func() string {
+			if applied {
+				return keys[3]
+			}
+			return ""
+		}
+		rolledBack, err := walletTransactionRecording(id, func(tx *gorm.DB) error {
 			query := tx.Model(&User{}).Where("id = ?", id).
 				Where("quota >= ? AND quota <= ?", int64(-walletQuotaLimit)-int64(delta), int64(walletQuotaLimit)-int64(delta))
 			if reserve {
@@ -316,14 +383,27 @@ return 1`
 			}
 			applied = true
 			return RecordQuotaCredit(tx, event.Credit)
-		})
-		return applied && err == nil, err
+		}, recordApplied)
+		if err != nil {
+			if rolledBack {
+				return false, walletNotApplied(err)
+			}
+			return false, err
+		}
+		if applied {
+			// Also set here in case the acknowledgment (which records it before
+			// lifting the barrier) did not run.
+			if setErr := common.RDB.Set(context.Background(), keys[3], "1", 600*time.Second).Err(); setErr != nil {
+				common.SysError(fmt.Sprintf("wallet %d applied fallback mutation but could not record operation: %v", id, setErr))
+			}
+		}
+		return applied, nil
 	}
 	if result == -3 {
-		return false, ErrWalletQuotaLimitExceeded
+		return false, walletNotApplied(ErrWalletQuotaLimitExceeded)
 	}
 	if result < 0 {
-		return false, ErrWalletUnavailable
+		return false, walletNotApplied(ErrWalletUnavailable)
 	}
 	if result == 0 {
 		return false, nil

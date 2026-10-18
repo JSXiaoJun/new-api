@@ -30,16 +30,15 @@ import (
 type BillingSession struct {
 	relayInfo        *relaycommon.RelayInfo
 	funding          FundingSource
-	preConsumedQuota int    // 实际预扣额度（信任用户可能为 0）
-	tokenConsumed    int    // 令牌额度实际扣减量
-	extraReserved    int    // 发送前补充预扣的额度（订阅退款时需要单独回滚）
-	trusted          bool   // 是否命中信任额度旁路
-	fundingSettled   bool   // funding.Settle 已成功，资金来源已提交
-	failedDelta      int    // 钱包结算失败的差额，Refund 先用同一操作 ID 重试它
-	failedUnknown    bool   // 该差额结果未知（可能已执行），不能整笔退预扣
-	settled          bool   // Settle 全部完成（资金 + 令牌）
-	refunded         bool   // Refund 已调用
-	lang             string // 请求声明的语言，为空表示未声明
+	preConsumedQuota int                // 实际预扣额度（信任用户可能为 0）
+	tokenConsumed    int                // 令牌额度实际扣减量
+	extraReserved    int                // 发送前补充预扣的额度（订阅退款时需要单独回滚）
+	trusted          bool               // 是否命中信任额度旁路
+	fundingSettled   bool               // funding.Settle 已成功，资金来源已提交
+	pending          *pendingSettlement // 钱包结算失败、尚未确定生效的差额（后台用同一操作 ID 重试）
+	settled          bool               // Settle 全部完成（资金 + 令牌）
+	refunded         bool               // Refund 已调用
+	lang             string             // 请求声明的语言，为空表示未声明
 	mu               sync.Mutex
 }
 
@@ -59,12 +58,14 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		return nil
 	}
 	delta := actualQuota - s.preConsumedQuota
-	if s.failedUnknown && delta != s.failedDelta {
-		// 同一操作 ID 只能重试同一金额，否则原操作若已生效会被记成另一金额。
-		return fmt.Errorf("billing session settlement outcome unknown (delta=%d)", s.failedDelta)
+	if p := s.pending; p != nil && (p.inFlight || p.ambiguous || p.unknown && (delta != p.delta || p.retryExpired())) {
+		// 后台重试正在写钱包；结果未知时同一操作 ID 只能在有效期内重试同一金额；
+		// 提交失败的差额没有幂等保护：都不能再结算。
+		return fmt.Errorf("billing session settlement outcome unknown (delta=%d)", p.delta)
 	}
 	if delta == 0 {
 		s.settled = true
+		s.pending = nil
 		return nil
 	}
 	// Preserve the subscription zero-estimate contract. Wallet settlement below
@@ -103,14 +104,13 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）
 	if !s.fundingSettled {
 		if err := s.funding.Settle(delta); err != nil {
-			if _, wallet := s.funding.(*WalletFunding); wallet {
-				s.failedDelta = delta
-				s.failedUnknown = errors.Is(err, model.ErrWalletOutcomeUnknown)
+			if s.funding.Source() == BillingSourceWallet {
+				s.notePendingSettlementLocked(delta, err)
 			}
 			return err
 		}
 		s.fundingSettled = true
-		s.failedDelta, s.failedUnknown = 0, false
+		s.pending = nil
 	}
 	// 2) 调整令牌额度
 	var tokenErr error
@@ -129,13 +129,39 @@ func (s *BillingSession) Settle(actualQuota int) error {
 // Refund 退还所有预扣费，幂等安全，异步执行。
 func (s *BillingSession) Refund(c *gin.Context) {
 	s.mu.Lock()
-	if s.settled || s.refunded || !s.needsRefundLocked() {
+	if s.settled || s.refunded {
+		s.mu.Unlock()
+		return
+	}
+	if p := s.pending; p != nil {
+		// 结算差额已失败：交给同一操作 ID 的重试，不整笔退预扣，避免差额生效后重复退款。
+		p.refundRequested = true
+		extraAttempt := s.needsRefundLocked()
+		retrying := p.retrying || extraAttempt
+		userId, delta := p.userId, p.delta
+		s.mu.Unlock()
+		if retrying {
+			logger.LogWarn(c, common.LogText("wallet settlement failed, retrying the same settlement instead of refunding the reservation (userId=%d, delta=%d)", userId, delta))
+		} else {
+			logger.LogWarn(c, common.LogText("wallet settlement failed and is left for reconciliation instead of refunding the reservation (userId=%d, delta=%d)", userId, delta))
+		}
+		if extraAttempt {
+			gopool.Go(func() { s.refundDifferenceOnce() })
+		}
+		return
+	}
+	if !s.needsRefundLocked() {
 		s.mu.Unlock()
 		return
 	}
 	s.refunded = true
-	failedDelta, failedUnknown := s.failedDelta, s.failedUnknown
 	s.mu.Unlock()
+
+	logger.LogInfo(c, common.LogText("user %d request failed, refunding the pre-consumed quota (token_quota=%s, funding=%s)",
+		s.relayInfo.UserId,
+		logger.FormatQuota(s.tokenConsumed),
+		s.funding.Source(),
+	))
 
 	// 复制需要的值到闭包中
 	tokenId := s.relayInfo.TokenId
@@ -144,38 +170,9 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	tokenConsumed := s.tokenConsumed
 	extraReserved := s.extraReserved
 	subscriptionId := s.relayInfo.SubscriptionId
-	userId := s.relayInfo.UserId
-	requestId := s.relayInfo.RequestId
 	funding := s.funding
 
-	if failedDelta != 0 {
-		logger.LogWarn(c, common.LogText("wallet settlement failed, retrying the same settlement before refunding (userId=%d, delta=%d, outcome_unknown=%t)",
-			userId, failedDelta, failedUnknown))
-	} else {
-		logger.LogInfo(c, common.LogText("user %d request failed, refunding the pre-consumed quota (token_quota=%s, funding=%s)",
-			userId,
-			logger.FormatQuota(tokenConsumed),
-			funding.Source(),
-		))
-	}
-
 	gopool.Go(func() {
-		if failedDelta != 0 {
-			// 先用同一操作 ID 重试结算差额：原操作若已生效，Redis 不会重复执行。
-			err := funding.Settle(failedDelta)
-			if err == nil {
-				if !isPlayground {
-					_ = adjustTokenQuotaForSettlement(tokenId, tokenKey, userId, failedDelta)
-				}
-				return
-			}
-			if failedUnknown || errors.Is(err, model.ErrWalletOutcomeUnknown) {
-				common.SysError(common.LogText("wallet settlement outcome still unknown after retry, reconciliation required (userId=%d, requestId=%s, delta=%d): %s",
-					userId, requestId, failedDelta, err.Error()))
-				return
-			}
-			// 退差额两次都确定未执行：按原逻辑整笔退回预扣。
-		}
 		// 1) 退还资金来源
 		if err := funding.Refund(); err != nil {
 			common.SysLog(common.LogText("error refunding billing source: %s", err.Error()))
@@ -221,10 +218,10 @@ func (s *BillingSession) needsRefundLocked() bool {
 		// fundingSettled 时资金来源已提交结算，不能再退预扣费
 		return false
 	}
-	if s.failedDelta != 0 {
-		// 退差额失败、或差额结果未知时需要重试；扣差额确定失败时保留预扣，
-		// 不重试（数据库模式无幂等保护）也不整笔退回。
-		return s.failedDelta < 0 || s.failedUnknown
+	if p := s.pending; p != nil {
+		// 结算差额失败后不再整笔退预扣：后台重试负责它；只有提交失败的退差额
+		// 在请求异常结束时再试一次。
+		return !p.retrying && p.ambiguous && p.delta < 0 && !p.extraAttemptSpent
 	}
 	if s.tokenConsumed > 0 {
 		return true
