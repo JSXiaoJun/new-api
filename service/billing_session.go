@@ -35,6 +35,8 @@ type BillingSession struct {
 	extraReserved    int    // 发送前补充预扣的额度（订阅退款时需要单独回滚）
 	trusted          bool   // 是否命中信任额度旁路
 	fundingSettled   bool   // funding.Settle 已成功，资金来源已提交
+	fundingUnknown   bool   // funding.Settle 结果未知（可能已执行），不能整笔退预扣
+	unknownDelta     int    // 结果未知的结算差额，只能用同一操作 ID 重试
 	settled          bool   // Settle 全部完成（资金 + 令牌）
 	refunded         bool   // Refund 已调用
 	lang             string // 请求声明的语言，为空表示未声明
@@ -57,6 +59,10 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		return nil
 	}
 	delta := actualQuota - s.preConsumedQuota
+	if s.fundingUnknown && (delta >= 0 || delta != s.unknownDelta) {
+		// 扣差额没有幂等 ID，金额不同也不能复用同一 ID：都可能重复执行。
+		return fmt.Errorf("billing session settlement outcome unknown (delta=%d)", s.unknownDelta)
+	}
 	if delta == 0 {
 		s.settled = true
 		return nil
@@ -97,9 +103,14 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）
 	if !s.fundingSettled {
 		if err := s.funding.Settle(delta); err != nil {
+			if errors.Is(err, model.ErrWalletOutcomeUnknown) {
+				s.fundingUnknown = true
+				s.unknownDelta = delta
+			}
 			return err
 		}
 		s.fundingSettled = true
+		s.fundingUnknown = false
 	}
 	// 2) 调整令牌额度
 	var tokenErr error
@@ -131,7 +142,13 @@ func (s *BillingSession) Refund(c *gin.Context) {
 		return
 	}
 	s.refunded = true
+	fundingUnknown, unknownDelta := s.fundingUnknown, s.unknownDelta
 	s.mu.Unlock()
+
+	if fundingUnknown {
+		s.retryUnknownSettlementRefund(c, unknownDelta)
+		return
+	}
 
 	logger.LogInfo(c, common.LogText("user %d request failed, refunding the pre-consumed quota (token_quota=%s, funding=%s)",
 		s.relayInfo.UserId,
@@ -167,6 +184,31 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	})
 }
 
+// retryUnknownSettlementRefund 用同一操作 ID 重试结果未知的退差额，而不是整笔退预扣：
+// 原操作若已生效，重试只确认不重复执行；重试失败则保留现状并记录，交给对账。
+func (s *BillingSession) retryUnknownSettlementRefund(c *gin.Context, delta int) {
+	tokenId := s.relayInfo.TokenId
+	tokenKey := s.relayInfo.TokenKey
+	isPlayground := s.relayInfo.IsPlayground
+	userId := s.relayInfo.UserId
+	requestId := s.relayInfo.RequestId
+	funding := s.funding
+	logger.LogWarn(c, common.LogText("settlement refund outcome unknown, retrying with the same operation (userId=%d, delta=%d)", userId, delta))
+	gopool.Go(func() {
+		if err := funding.Settle(delta); err != nil {
+			common.SysError(common.LogText("settlement refund outcome still unknown after retry, reconciliation required (userId=%d, requestId=%s, delta=%d): %s",
+				userId, requestId, delta, err.Error()))
+			return
+		}
+		if !isPlayground {
+			if err := model.IncreaseTokenQuota(tokenId, tokenKey, -delta); err != nil {
+				common.SysLog(common.LogText("error adjusting token quota after funding settled (userId=%d, tokenId=%d, delta=%d): %s",
+					userId, tokenId, delta, err.Error()))
+			}
+		}
+	})
+}
+
 // NeedsRefund 返回是否存在需要退还的预扣状态。
 func (s *BillingSession) NeedsRefund() bool {
 	s.mu.Lock()
@@ -178,6 +220,10 @@ func (s *BillingSession) needsRefundLocked() bool {
 	if s.settled || s.refunded || s.fundingSettled {
 		// fundingSettled 时资金来源已提交结算，不能再退预扣费
 		return false
+	}
+	if s.fundingUnknown {
+		// 只剩用同一操作 ID 重试退差额；扣差额结果未知时不再处理
+		return s.unknownDelta < 0
 	}
 	if s.tokenConsumed > 0 {
 		return true

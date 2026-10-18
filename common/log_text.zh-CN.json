@@ -718,6 +718,8 @@
   "server exited": "服务已退出",
   "server forced to shutdown: %v": "服务未能正常关闭，已强制退出: %v",
   "settle task billing error: %s": "任务计费结算出错: %s",
+  "settlement refund outcome still unknown after retry, reconciliation required (userId=%d, requestId=%s, delta=%d): %s": "结算退差额重试后结果仍未知，需要人工对账 (userId=%d, requestId=%s, delta=%d): %s",
+  "settlement refund outcome unknown, retrying with the same operation (userId=%d, delta=%d)": "结算退差额结果未知，正在用同一操作重试 (userId=%d, delta=%d)",
   "setup log is already working": "日志正在初始化，跳过本次调用",
   "skip password reset email for %s: %s": "未向 %s 发送密码重置邮件: %s",
   "skipped %d options rows with empty keys while rebuilding the primary key": "重建主键时跳过了 %d 行键为空的 options 记录",

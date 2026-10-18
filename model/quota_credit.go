@@ -27,6 +27,9 @@ type QuotaCreditMeta struct {
 	RequestId  string
 	OperatorId int
 	Ip         string
+	// OperationId makes a Redis wallet mutation idempotent for 10 minutes, so
+	// a caller can retry after ErrWalletOutcomeUnknown. Empty means one-shot.
+	OperationId string
 }
 
 // RecordQuotaCredit must share the transaction that actually adds wallet quota.

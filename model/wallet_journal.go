@@ -12,6 +12,11 @@ import (
 
 var ErrWalletUnavailable = errors.New("wallet state unavailable; reconciliation required")
 
+// ErrWalletOutcomeUnknown means Redis received a wallet mutation but its reply
+// was lost, so the mutation may already be applied. Only a retry with the same
+// QuotaCreditMeta.OperationId can resolve it without applying it twice.
+var ErrWalletOutcomeUnknown = errors.New("wallet mutation outcome unknown")
+
 const walletDirtyKey = "wallet:v1:dirty"
 
 // walletQuotaLimit bounds wallet balances to the JavaScript-safe 64-bit
@@ -253,7 +258,11 @@ func journalWalletDelta(id, delta int, reserve bool, meta QuotaCreditMeta) (bool
 	if err != nil {
 		return false, err
 	}
-	keys := append(walletKeys(id), "wallet:v1:op:"+common.GetUUID())
+	operationId := meta.OperationId
+	if operationId == "" {
+		operationId = common.GetUUID()
+	}
+	keys := append(walletKeys(id), "wallet:v1:op:"+operationId)
 	const apply = `
 local previous = redis.call('GET', KEYS[4])
 if previous then return tonumber(previous) end
@@ -283,7 +292,7 @@ return 1`
 	}
 	result, err := common.RDB.Eval(context.Background(), apply, keys, delta, reserveArg, string(payload), -walletQuotaLimit, walletQuotaLimit, id).Int()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("%w: %w", ErrWalletOutcomeUnknown, err)
 	}
 	if result == -2 {
 		// A flush can start between the read and the Lua mutation. Serialize
