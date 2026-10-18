@@ -113,7 +113,7 @@ func Distribute() func(c *gin.Context) {
 				}
 				message := selectErr.Message
 				if selectErr.NoAvailableChannel {
-					message = noAvailableChannelMessage(c, usingGroup, modelRequest.Model)
+					message = noAvailableChannelMessage(c, usingGroup, modelRequest.Model, selectErr.FilterKind != "")
 				} else if selectErr.MessageID != "" {
 					message = i18n.T(c, selectErr.MessageID, selectErr.Params)
 				}
@@ -130,10 +130,16 @@ func Distribute() func(c *gin.Context) {
 	}
 }
 
-// noAvailableChannelMessage explains a 503 for a task-plugin-claimed model.
-// The response tells the caller the model is plugin-claimed without naming the
+// noAvailableChannelMessage explains a 503 for a group without a channel for
+// the model, in Chinese and English when the caller states no language.
+// For a task-plugin-claimed model the response says so without naming the
 // plugin; the candidate plugin keys go to the server log under the request id.
-func noAvailableChannelMessage(c *gin.Context, group, modelName string) string {
+// When the group does not offer the model at all, the response lists the
+// caller's selectable groups that do, so a wrong token group is self-evident.
+// filtered means request filters rejected the channel, which another group
+// would not fix.
+func noAvailableChannelMessage(c *gin.Context, group, modelName string, filtered bool) string {
+	params := map[string]any{"Group": group, "Model": modelName}
 	value, exists := c.Get(jsplugin.ContextKeyPinnedPlugin)
 	pinned, ok := value.(jsplugin.PinnedPlugin)
 	if exists && ok && pinned.Plugin != nil {
@@ -149,9 +155,25 @@ func noAvailableChannelMessage(c *gin.Context, group, modelName string) string {
 			}
 		}
 		logger.LogWarn(c, common.LogText("task_plugin subsystem=distribution event=no_available_channel group=%q model=%q plugins=%q reason=no_eligible_channel", group, modelName, strings.Join(keys, ",")))
-		return i18n.T(c, i18n.MsgDistributorNoAvailableChannelTaskPlugin, map[string]any{"Group": group, "Model": modelName})
+		return i18n.TBilingual(c, i18n.MsgDistributorNoAvailableChannelTaskPlugin, params)
 	}
-	return i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": group, "Model": modelName})
+	enableGroups := model.GetModelEnableGroups(modelName)
+	if filtered || slices.Contains(enableGroups, group) {
+		return i18n.TBilingual(c, i18n.MsgDistributorNoAvailableChannel, params)
+	}
+	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	var otherGroups []string
+	for _, enableGroup := range enableGroups {
+		if service.IsUserSelectableGroup(userGroup, enableGroup) {
+			otherGroups = append(otherGroups, enableGroup)
+		}
+	}
+	if len(otherGroups) == 0 {
+		return i18n.TBilingual(c, i18n.MsgDistributorModelInNoUsableGroup, params)
+	}
+	slices.Sort(otherGroups)
+	params["Groups"] = strings.Join(otherGroups, ", ")
+	return i18n.TBilingual(c, i18n.MsgDistributorModelInOtherGroups, params)
 }
 
 func channelMatchesExpectedTaskPlugin(c *gin.Context, channel *model.Channel, expected string) bool {

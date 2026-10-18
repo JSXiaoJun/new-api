@@ -92,6 +92,21 @@ func T(c *gin.Context, key string, args ...map[string]any) string {
 	return Translate(StatedLang(c), key, args...)
 }
 
+// TBilingual translates a message key like T, except that a reader who states
+// no language gets the Chinese text followed by the English text. API clients
+// rarely send Accept-Language, so this keeps an error readable for both
+// audiences. The Chinese text is Traditional when DEFAULT_LANGUAGE is zh-TW.
+func TBilingual(c *gin.Context, key string, args ...map[string]any) string {
+	if lang := StatedLang(c); lang != "" {
+		return Translate(lang, key, args...)
+	}
+	chinese := LangZhCN
+	if normalizeLang(common.DefaultLanguage) == LangZhTW {
+		chinese = LangZhTW
+	}
+	return Translate(chinese, key, args...) + " / " + Translate(LangEn, key, args...)
+}
+
 // Translate translates a message key for the specified language. An empty
 // language means the reader stated none and gets common.DefaultLanguage.
 func Translate(lang, key string, args ...map[string]any) string {

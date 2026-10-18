@@ -14,10 +14,14 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestChannelMatchesExpectedTaskPluginUsesGenericChannelSetting(t *testing.T) {
@@ -189,9 +193,9 @@ func TestDistributeHidesTaskPluginDetailsButLogsDiagnostics(t *testing.T) {
 
 	const group = "private-plugin-error-test-group"
 	for _, locale := range []struct{ language, message string }{
-		{"en", "No available channel for model task-model under group " + group + ": the model is claimed by a task plugin, which has no enabled channel serving it (distributor)"},
-		{"zh-CN", "分组 " + group + " 下模型 task-model 无可用渠道：该模型由任务插件认领，但当前没有启用的渠道可服务此模型（distributor）"},
-		{"zh-TW", "分組 " + group + " 下模型 task-model 無可用管道：該模型由任務插件認領，但目前沒有啟用的管道可服務此模型（distributor）"},
+		{"en", "No available channel for model task-model under group " + group + ": the model is claimed by a task plugin, which has no enabled channel serving it"},
+		{"zh-CN", "分组 " + group + " 下模型 task-model 无可用渠道：该模型由任务插件认领，但当前没有启用的渠道可服务此模型"},
+		{"zh-TW", "分組 " + group + " 下模型 task-model 無可用管道：該模型由任務插件認領，但目前沒有啟用的管道可服務此模型"},
 	} {
 		for _, providerCount := range []int{1, 2} {
 			t.Run(fmt.Sprintf("%s/%d_providers", locale.language, providerCount), func(t *testing.T) {
@@ -257,14 +261,64 @@ func TestDistributeHidesTaskPluginDetailsButLogsDiagnostics(t *testing.T) {
 	}
 }
 
-func TestNoAvailableChannelMessageWithoutPlugin(t *testing.T) {
+// A token on the wrong group is told which of the user's groups offer the
+// model, in Chinese and English unless the caller states a language.
+func TestNoAvailableChannelMessage(t *testing.T) {
 	require.NoError(t, i18n.Init())
-	plain, _ := gin.CreateTestContext(nil)
-	plain.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	plain.Request.Header.Set("Accept-Language", "en")
-	generic := noAvailableChannelMessage(plain, "default", "gpt-4o")
-	assert.NotContains(t, generic, "task plugin")
-	assert.Contains(t, generic, "gpt-4o")
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}))
+	previousDB := model.DB
+	previousUsableGroups := setting.UserUsableGroups2JSONString()
+	previousGroupRatios := ratio_setting.GroupRatio2JSONString()
+	model.DB = db
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP","svip":"SVIP"}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":2,"svip":3,"internal":1}`))
+	model.InvalidatePricingCache()
+	t.Cleanup(func() {
+		model.DB = previousDB
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(previousUsableGroups))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousGroupRatios))
+		model.InvalidatePricingCache()
+	})
+	for id, ability := range []struct{ group, model string }{
+		{"svip", "gpt-4o"}, {"vip", "gpt-4o"}, {"default", "gpt-4o-mini"}, {"internal", "secret-model"},
+	} {
+		require.NoError(t, db.Create(&model.Channel{Id: id + 1, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled}).Error)
+		require.NoError(t, db.Create(&model.Ability{Group: ability.group, Model: ability.model, ChannelId: id + 1, Enabled: true}).Error)
+	}
+
+	for _, tc := range []struct {
+		name, acceptLanguage, group, model string
+		filtered                           bool
+		want                               string
+	}{
+		{"wrong group, no stated language", "", "default", "gpt-4o", false,
+			"分组 default 下没有模型 gpt-4o，请将令牌分组切换为以下分组之一：svip, vip / " +
+				"Model gpt-4o is not available in group default. Switch your token to one of these groups: svip, vip"},
+		{"wrong group in English", "en-US", "default", "gpt-4o", false,
+			"Model gpt-4o is not available in group default. Switch your token to one of these groups: svip, vip"},
+		{"wrong group in Chinese", "zh-CN", "default", "gpt-4o", false,
+			"分组 default 下没有模型 gpt-4o，请将令牌分组切换为以下分组之一：svip, vip"},
+		{"only an unusable group offers the model", "en", "default", "secret-model", false,
+			"Model secret-model is not available in group default, and none of your groups offer it. Check the model name or contact the administrator"},
+		{"unknown model", "en", "default", "no-such-model", false,
+			"Model no-such-model is not available in group default, and none of your groups offer it. Check the model name or contact the administrator"},
+		{"the group offers the model", "en", "vip", "gpt-4o", false,
+			"No available channel for model gpt-4o under group vip"},
+		{"request filters rejected the channel", "en", "default", "gpt-4o", true,
+			"No available channel for model gpt-4o under group default"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			if tc.acceptLanguage != "" {
+				c.Request.Header.Set("Accept-Language", tc.acceptLanguage)
+			}
+			common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+			assert.Equal(t, tc.want, noAvailableChannelMessage(c, tc.group, tc.model, tc.filtered))
+		})
+	}
 }
 
 func TestSharedEndpointRebindsToSelectedType61Plugin(t *testing.T) {
