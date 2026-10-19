@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -79,8 +80,8 @@ func (w *detachedClientWriter) Unwrap() http.ResponseWriter {
 //
 // The returned release func must be called when the request ends.
 func DetachProxiedClientCancellation(c *gin.Context) func() {
-	if !common.CloudflareDisconnectBillingEnabled || c == nil || c.Request == nil || c.Writer == nil ||
-		c.GetHeader("Cf-Ray") == "" {
+	if !common.CloudflareDisconnectBillingEnabled || !billing_setting.ContinueAfterCloudflareTruncation() ||
+		c == nil || c.Request == nil || c.Writer == nil || c.GetHeader("Cf-Ray") == "" {
 		return func() {}
 	}
 	clientCtx := c.Request.Context()
@@ -166,6 +167,10 @@ func ClientRequestCanceled(c *gin.Context) bool {
 // since there is no token count to charge proportionally.
 func SettleClientDisconnectBilling(c *gin.Context, info *relaycommon.RelayInfo) bool {
 	if info == nil || info.Billing == nil || info.ChannelMeta == nil || !ClientRequestCanceled(c) {
+		return false
+	}
+	// Upstream new-api refunds the whole reservation of a failed request.
+	if billing_setting.AbnormalBillingAlignsWithOfficial() {
 		return false
 	}
 	// MarkUpstreamStart is only called right before the upstream HTTP call,

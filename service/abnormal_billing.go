@@ -65,6 +65,10 @@ func classifyAbnormalCharge(c *gin.Context, info *relaycommon.RelayInfo) abnorma
 // the log line explaining why.
 func abnormalChargeWaiver(chargeCase abnormalChargeCase) (bool, *common.Message) {
 	settings := billing_setting.GetAbnormalBillingSetting()
+	// Upstream new-api charges whatever usage settlement reached.
+	if settings.AlignWithOfficial {
+		return false, nil
+	}
 	switch chargeCase {
 	case abnormalChargeClientBeforeResponse:
 		if !settings.ChargeClientDisconnectBeforeResponse {

@@ -33,17 +33,22 @@ import {
 } from '../abnormal-billing-section'
 
 const allCharged: AbnormalBillingValues = {
+  align_with_official: false,
   charge_client_disconnect_before_response: true,
   charge_client_disconnect_during_response: true,
   charge_upstream_interrupt_during_response: true,
+  continue_after_cloudflare_truncation: true,
 }
 
+const alignLabel = 'Align abnormal billing with official new-api'
 const beforeLabel =
   'Charge when the client disconnects before upstream responds'
 const duringLabel =
   'Charge when the client disconnects while receiving the response'
 const upstreamLabel =
   'Charge when upstream or the gateway interrupts the response midway'
+const cloudflareLabel =
+  'Keep reading upstream after a Cloudflare truncation and charge actual usage'
 
 let testI18n: i18n
 
@@ -78,7 +83,7 @@ afterEach(() => {
 })
 
 describe('abnormal billing control section', () => {
-  it('shows the three switches with their saved values and nothing to save', () => {
+  it('shows every switch with its saved value and nothing to save', () => {
     render(
       <Fixture
         values={{
@@ -88,7 +93,11 @@ describe('abnormal billing control section', () => {
       />
     )
 
+    expect(screen.getByRole('switch', { name: alignLabel })).not.toBeChecked()
     expect(screen.getByRole('switch', { name: beforeLabel })).toBeChecked()
+    expect(
+      screen.getByRole('switch', { name: beforeLabel })
+    ).not.toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByRole('switch', { name: duringLabel })).toBeChecked()
     expect(
       screen.getByRole('switch', { name: upstreamLabel })
@@ -136,6 +145,73 @@ describe('abnormal billing control section', () => {
 
     await waitFor(() => expect(save).toBeEnabled())
     expect(screen.getByRole('switch', { name: beforeLabel })).not.toBeChecked()
+  })
+
+  it('disables the three case switches while the official alignment is on', () => {
+    render(<Fixture values={{ ...allCharged, align_with_official: true }} />)
+
+    expect(screen.getByRole('switch', { name: alignLabel })).toBeChecked()
+    expect(
+      screen.getByRole('switch', { name: alignLabel })
+    ).not.toHaveAttribute('aria-disabled', 'true')
+    for (const label of [beforeLabel, duringLabel, upstreamLabel]) {
+      expect(screen.getByRole('switch', { name: label })).toHaveAttribute(
+        'aria-disabled',
+        'true'
+      )
+    }
+  })
+
+  it('keeps the Cloudflare switch usable and saves it alone while the official alignment is on', async () => {
+    const put = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true } })
+    const user = userEvent.setup()
+    render(<Fixture values={{ ...allCharged, align_with_official: true }} />)
+
+    const cloudflare = screen.getByRole('switch', { name: cloudflareLabel })
+    expect(cloudflare).toBeChecked()
+    expect(cloudflare).not.toHaveAttribute('aria-disabled', 'true')
+    await user.click(cloudflare)
+    const save = screen.getByRole('button', {
+      name: 'Save abnormal billing settings',
+    })
+    await user.click(save)
+
+    await waitFor(() => expect(save).toBeDisabled())
+    expect(put).toHaveBeenCalledTimes(1)
+    expect(put).toHaveBeenCalledWith('/api/option/', {
+      key: 'abnormal_billing_setting.continue_after_cloudflare_truncation',
+      value: 'false',
+    })
+  })
+
+  it('saves the official alignment and locks the case switches once it is turned on', async () => {
+    const put = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true } })
+    const user = userEvent.setup()
+    render(<Fixture values={allCharged} />)
+
+    expect(
+      screen.getByRole('switch', { name: beforeLabel })
+    ).not.toHaveAttribute('aria-disabled', 'true')
+    await user.click(screen.getByRole('switch', { name: alignLabel }))
+    expect(screen.getByRole('switch', { name: beforeLabel })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    )
+    const save = screen.getByRole('button', {
+      name: 'Save abnormal billing settings',
+    })
+    await user.click(save)
+
+    await waitFor(() => expect(save).toBeDisabled())
+    expect(put).toHaveBeenCalledTimes(1)
+    expect(put).toHaveBeenCalledWith('/api/option/', {
+      key: 'abnormal_billing_setting.align_with_official',
+      value: 'true',
+    })
   })
 
   it('keeps the accepted switch saved when a later one is rejected', async () => {

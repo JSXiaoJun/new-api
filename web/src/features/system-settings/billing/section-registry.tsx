@@ -222,6 +222,8 @@ const BILLING_SECTIONS = [
     build: (settings: BillingSettings) => (
       <AbnormalBillingSection
         defaultValues={{
+          align_with_official:
+            settings['abnormal_billing_setting.align_with_official'],
           charge_client_disconnect_before_response:
             settings[
               'abnormal_billing_setting.charge_client_disconnect_before_response'
@@ -233,6 +235,10 @@ const BILLING_SECTIONS = [
           charge_upstream_interrupt_during_response:
             settings[
               'abnormal_billing_setting.charge_upstream_interrupt_during_response'
+            ],
+          continue_after_cloudflare_truncation:
+            settings[
+              'abnormal_billing_setting.continue_after_cloudflare_truncation'
             ],
         }}
       />

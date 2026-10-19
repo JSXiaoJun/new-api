@@ -7539,6 +7539,10 @@
     "Not charged: the client disconnected before upstream responded": "未收費：客戶端在上游回應前斷開",
     "Not charged: the client disconnected while receiving the response": "未收費：客戶端在接收回應途中斷開",
     "Not charged: upstream or the gateway interrupted the response": "未收費：上游或閘道中斷了回應",
-    "Not charged: upstream or the gateway failed before responding": "未收費：上游或閘道在回應前失敗"
+    "Not charged: upstream or the gateway failed before responding": "未收費：上游或閘道在回應前失敗",
+    "Align abnormal billing with official new-api": "異常請求按官方 new-api 方式計費",
+    "When on, abnormal requests are billed exactly like official new-api and the three switches below are ignored: a request that fails before upstream responds is refunded in full, an interrupted response is charged the usage produced so far, a relay stops as soon as the client disconnects, and a task submit whose caller disconnects is cancelled and refunded even if upstream already accepted it. The Cloudflare truncation switch still applies.": "開啟後，異常請求的計費與官方 new-api 完全一致，下面三個開關不再生效：上游回應前失敗的請求全額退款；回應途中中斷的請求按已產生的用量收費；客戶端斷開後立即停止轉發；任務提交時呼叫方斷開，即使上游已經受理，也會取消並全額退款。Cloudflare 截斷開關不受影響，仍然生效。",
+    "Keep reading upstream after a Cloudflare truncation and charge actual usage": "Cloudflare 截斷後繼續讀完上游，按實際用量收費",
+    "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api. This switch works whether or not the official alignment is on.": "適用於經過 Cloudflare、因長時間沒有資料（預設 90 秒）被 Cloudflare 切斷的請求。開啟時，閘道會繼續把上游讀完，按實際用量收費，但客戶端收不到後面的內容；關閉時，和官方 new-api 一樣立即停止轉發。這個開關不受「按官方 new-api 方式計費」影響。"
   }
 }

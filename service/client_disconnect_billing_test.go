@@ -159,15 +159,21 @@ func TestCloudflareTruncationKeepsRelayRunning(t *testing.T) {
 
 func TestDisconnectWithoutCloudflareTruncationCancelsRelay(t *testing.T) {
 	tests := []struct {
-		name  string
-		cfRay string
+		name        string
+		cfRay       string
+		minIdle     int
+		continueOff bool
 	}{
-		{name: "direct connection", cfRay: ""},
-		{name: "user abort through Cloudflare before idle timeout", cfRay: "8f0c1d2e3a4b5c6d-SJC"},
+		{name: "direct connection", cfRay: "", minIdle: 90},
+		{name: "user abort through Cloudflare before idle timeout", cfRay: "8f0c1d2e3a4b5c6d-SJC", minIdle: 90},
+		{name: "Cloudflare truncation with the continue switch off", cfRay: "8f0c1d2e3a4b5c6d-SJC", minIdle: 0, continueOff: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx, _, cancel := newProxiedRequestContext(t, tt.cfRay, 90)
+			if tt.continueOff {
+				setAbnormalOption(t, "continue_after_cloudflare_truncation", false, true)
+			}
+			ctx, _, cancel := newProxiedRequestContext(t, tt.cfRay, tt.minIdle)
 			release := DetachProxiedClientCancellation(ctx)
 			defer release()
 
@@ -372,6 +378,100 @@ func TestAbnormalBillingSwitchesDecideStreamSettlement(t *testing.T) {
 			assert.Zero(t, charged)
 			assert.Zero(t, getTokenUsedQuota(t, disconnectTokenId))
 			assert.Contains(t, log.Other, waivedMarker)
+		})
+	}
+}
+
+// setAbnormalOption sets one abnormal billing option for a test and restores
+// its default afterwards.
+func setAbnormalOption(t *testing.T, field string, value, defaultValue bool) {
+	t.Helper()
+	settings := config.GlobalConfig.Get("abnormal_billing_setting")
+	require.NoError(t, config.UpdateConfigFromMap(settings, map[string]string{field: strconv.FormatBool(value)}))
+	t.Cleanup(func() {
+		require.NoError(t, config.UpdateConfigFromMap(settings, map[string]string{field: strconv.FormatBool(defaultValue)}))
+	})
+}
+
+func setOfficialAlignedBilling(t *testing.T) {
+	t.Helper()
+	setAbnormalOption(t, "align_with_official", true, false)
+}
+
+// The Cloudflare switch is independent of the official alignment: a truncated
+// relay keeps reading upstream and is charged its real usage.
+func TestCloudflareTruncationContinuesUnderOfficialAlignment(t *testing.T) {
+	setOfficialAlignedBilling(t)
+
+	ctx, _, cancel := newProxiedRequestContext(t, "8f0c1d2e3a4b5c6d-SJC", 0)
+	release := DetachProxiedClientCancellation(ctx)
+	defer release()
+	cancel()
+	require.Eventually(t, func() bool { return ProxiedClientGone(ctx) }, time.Second, time.Millisecond)
+	assert.NoError(t, ctx.Request.Context().Err(), "the relay must keep running after the truncation")
+
+	billingCtx, info, _ := newDisconnectBillingCase(t, tokenPriced())
+	info.MarkUpstreamStart()
+	info.UpstreamAttempt().MarkRequestSent()
+	info.UpstreamAttempt().MarkResponse()
+	writer := &detachedClientWriter{ResponseWriter: billingCtx.Writer, clientCtx: context.Background(), relayCtx: context.Background()}
+	writer.truncatedAtUnixNs.Store(time.Now().Add(-time.Hour).UnixNano())
+	writer.truncated.Store(true)
+	billingCtx.Set(detachedClientWriterKey, writer)
+
+	PostTextConsumeQuota(billingCtx, info, &dto.Usage{PromptTokens: 1_000, CompletionTokens: 200, TotalTokens: 1_200}, nil)
+
+	assert.Equal(t, 1_200, disconnectStartQuota-getUserQuota(t, disconnectUserId))
+	log := lastConsumeLog(t)
+	assert.Contains(t, log.Content, "billed by actual usage")
+	assert.NotContains(t, log.Other, waivedMarker)
+}
+
+// With the official alignment on, a failed request is refunded in full and an
+// interrupted one is charged its usage, whatever the three switches say.
+func TestOfficialAlignedBillingIgnoresAbnormalSwitches(t *testing.T) {
+	t.Run("client leaving before upstream answers is refunded even when the switch charges", func(t *testing.T) {
+		setAbnormalBilling(t, true, true, true)
+		setOfficialAlignedBilling(t)
+		ctx, info, cancel := newDisconnectBillingCase(t, tokenPriced())
+		info.MarkUpstreamStart()
+		info.UpstreamAttempt().MarkRequestSent()
+		info.UpstreamAttempt().Fail(context.Canceled, true)
+		cancel()
+
+		assert.False(t, SettleClientDisconnectBilling(ctx, info))
+		session := info.Billing.(*BillingSession)
+		require.True(t, session.NeedsRefund(), "the reservation must fall back to the refund")
+		session.Refund(ctx)
+		require.Eventually(t, func() bool { return getUserQuota(t, disconnectUserId) == disconnectStartQuota }, time.Second, 10*time.Millisecond)
+	})
+
+	for _, tt := range []struct {
+		name   string
+		reason relaycommon.StreamEndReason
+		endErr error
+	}{
+		{name: "client leaving mid-stream is charged even when its switch waives", reason: relaycommon.StreamEndReasonClientGone, endErr: context.Canceled},
+		{name: "upstream reset mid-stream is charged even when its switch waives", reason: relaycommon.StreamEndReasonScannerErr, endErr: io.ErrUnexpectedEOF},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			setAbnormalBilling(t, false, false, false)
+			setOfficialAlignedBilling(t)
+			ctx, info, _ := newDisconnectBillingCase(t, tokenPriced())
+			info.IsStream = true
+			info.MarkUpstreamStart()
+			info.UpstreamAttempt().MarkRequestSent()
+			info.UpstreamAttempt().MarkResponse()
+			info.StreamStatus = relaycommon.NewStreamStatus()
+			info.StreamStatus.RequireTerminal()
+			info.StreamStatus.SetEndReason(tt.reason, tt.endErr)
+
+			PostTextConsumeQuota(ctx, info, &dto.Usage{PromptTokens: 1_000, CompletionTokens: 200, TotalTokens: 1_200}, nil)
+
+			assert.Equal(t, 1_200, disconnectStartQuota-getUserQuota(t, disconnectUserId))
+			log := lastConsumeLog(t)
+			assert.Equal(t, 1_200, log.Quota)
+			assert.NotContains(t, log.Other, waivedMarker)
 		})
 	}
 }

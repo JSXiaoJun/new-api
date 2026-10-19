@@ -18,9 +18,11 @@ func TestValidateOptionValueRejectsInvalidMaxTokenAutoGroups(t *testing.T) {
 
 func TestValidateOptionValueAcceptsOnlyBooleanAbnormalBillingSwitches(t *testing.T) {
 	for _, field := range []string{
+		"align_with_official",
 		"charge_client_disconnect_before_response",
 		"charge_client_disconnect_during_response",
 		"charge_upstream_interrupt_during_response",
+		"continue_after_cloudflare_truncation",
 	} {
 		key := "abnormal_billing_setting." + field
 		for _, value := range []string{"true", "false"} {

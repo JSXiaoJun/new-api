@@ -111,9 +111,11 @@ const defaultBillingSettings: BillingSettings = {
   'checkin_setting.enabled': false,
   'checkin_setting.min_quota': 1000,
   'checkin_setting.max_quota': 10000,
+  'abnormal_billing_setting.align_with_official': false,
   'abnormal_billing_setting.charge_client_disconnect_before_response': true,
   'abnormal_billing_setting.charge_client_disconnect_during_response': true,
   'abnormal_billing_setting.charge_upstream_interrupt_during_response': true,
+  'abnormal_billing_setting.continue_after_cloudflare_truncation': true,
 }
 
 export function BillingSettings() {

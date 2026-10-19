@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,7 +21,8 @@ const taskCallerContextKey = "task_caller_context"
 func DetachTaskSubmission(c *gin.Context) func() {
 	clientRequest := c.Request
 	callerContext := clientRequest.Context()
-	if callerContext.Err() != nil {
+	// Upstream new-api cancels the submit with its caller and refunds it.
+	if callerContext.Err() != nil || billing_setting.AbnormalBillingAlignsWithOfficial() {
 		return func() {}
 	}
 	timeout := time.Duration(constant.TaskSubmitTimeoutSeconds) * time.Second

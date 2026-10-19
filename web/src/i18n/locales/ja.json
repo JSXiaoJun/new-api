@@ -7539,6 +7539,10 @@
     "Not charged: the client disconnected before upstream responded": "課金なし：上流の応答前にクライアントが切断しました",
     "Not charged: the client disconnected while receiving the response": "課金なし：応答受信中にクライアントが切断しました",
     "Not charged: upstream or the gateway interrupted the response": "課金なし：上流またはゲートウェイが応答を中断しました",
-    "Not charged: upstream or the gateway failed before responding": "課金なし：上流またはゲートウェイが応答前に失敗しました"
+    "Not charged: upstream or the gateway failed before responding": "課金なし：上流またはゲートウェイが応答前に失敗しました",
+    "Align abnormal billing with official new-api": "異常リクエストを公式 new-api と同じ方式で課金",
+    "When on, abnormal requests are billed exactly like official new-api and the three switches below are ignored: a request that fails before upstream responds is refunded in full, an interrupted response is charged the usage produced so far, a relay stops as soon as the client disconnects, and a task submit whose caller disconnects is cancelled and refunded even if upstream already accepted it. The Cloudflare truncation switch still applies.": "オンにすると、異常リクエストは公式 new-api と完全に同じ方式で課金され、下の 3 つのスイッチは無視されます：上流の応答前に失敗したリクエストは全額返金、応答途中で中断したリクエストはそれまでの使用量を課金、クライアントが切断するとすぐに中継を停止、呼び出し元が切断したタスク送信は上流が受け付け済みでもキャンセルして返金します。Cloudflare 切断のスイッチは引き続き有効です。",
+    "Keep reading upstream after a Cloudflare truncation and charge actual usage": "Cloudflare による切断後も上流を最後まで読み、実際の使用量で課金",
+    "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api. This switch works whether or not the official alignment is on.": "Cloudflare 経由で、長時間データがなく（既定 90 秒）Cloudflare に切断されたリクエストが対象です。オンにすると、ゲートウェイは上流を最後まで読み、実際の使用量で課金しますが、クライアントはそれ以降の内容を受け取りません。オフにすると、公式 new-api と同様にすぐ中継を停止します。このスイッチは公式との整合の設定に関係なく有効です。"
   }
 }

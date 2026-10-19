@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -430,21 +431,32 @@ func TestExecuteTaskSubmissionDisconnectAfterDurableInsertDoesNotRefund(t *testi
 // caller that stops waiting must not cancel it: the task is persisted and
 // charged. A failed attempt after the caller left is neither retried nor sent
 // again, and a caller still waiting is never cut off by the detach timeout.
+// With the official billing alignment on, the submit is cancelled with its
+// caller and refunded, as upstream new-api does.
 func TestDetachedTaskSubmissionLifecycle(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		disconnect   bool
 		attemptFails bool
+		aligned      bool
 		wantCode     string
 		wantEvents   []string
 		wantTasks    int64
 		wantAttempts int
 	}{
-		{"disconnect during submit persists and settles", true, false, "", []string{"reserve", "insert", "settle"}, 1, 1},
-		{"failed attempt after disconnect is not retried", true, true, "request_cancelled", []string{"refund"}, 0, 1},
-		{"connected caller outlives the detach timeout", false, false, "", []string{"reserve", "insert", "settle"}, 1, 1},
+		{"disconnect during submit persists and settles", true, false, false, "", []string{"reserve", "insert", "settle"}, 1, 1},
+		{"failed attempt after disconnect is not retried", true, true, false, "request_cancelled", []string{"refund"}, 0, 1},
+		{"connected caller outlives the detach timeout", false, false, false, "", []string{"reserve", "insert", "settle"}, 1, 1},
+		{"official alignment refunds a submit whose caller left", true, false, true, "request_cancelled", []string{"refund"}, 0, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.aligned {
+				alignSettings := config.GlobalConfig.Get("abnormal_billing_setting")
+				require.NoError(t, config.UpdateConfigFromMap(alignSettings, map[string]string{"align_with_official": "true"}))
+				t.Cleanup(func() {
+					require.NoError(t, config.UpdateConfigFromMap(alignSettings, map[string]string{"align_with_official": "false"}))
+				})
+			}
 			events := make([]string, 0, 3)
 			database := setupTaskSubmissionDatabase(t, true, &events)
 			previousLogConsumeEnabled := common.LogConsumeEnabled
