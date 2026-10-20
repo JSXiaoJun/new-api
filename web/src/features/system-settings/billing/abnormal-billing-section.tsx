@@ -45,6 +45,7 @@ export type AbnormalBillingValues = {
   charge_upstream_interrupt_during_response: boolean
   continue_after_cloudflare_truncation: boolean
   match_upstream_charge: boolean
+  charge_upstream_billed_failure: boolean
 }
 
 const ALIGN_SWITCH_NAME = 'align_with_official'
@@ -95,6 +96,12 @@ const SWITCHES: Array<{
     labelKey: 'Charge whatever upstream billed for abandoned requests',
     descriptionKey:
       'When on, a user always pays what upstream billed for a request that ended early, and the switches above no longer waive it; only a request that failed before upstream answered stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.',
+  },
+  {
+    name: 'charge_upstream_billed_failure',
+    labelKey: 'Charge what upstream billed for a request it broke off',
+    descriptionKey:
+      'Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.',
   },
 ]
 

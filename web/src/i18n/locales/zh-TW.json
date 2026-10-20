@@ -7625,6 +7625,9 @@
     "All users, or search by username or user ID": "全部使用者，或輸入使用者名稱/使用者 ID 搜尋",
     "Pick one user to choose records to recover.": "選定一位使用者後才能勾選記錄補收。",
     "Show all users": "顯示全部使用者",
-    "Show only the records of {{username}}": "只看 {{username}} 的記錄"
+    "Show only the records of {{username}}": "只看 {{username}} 的記錄",
+    "Charge what upstream billed for a request it broke off": "上游中途斷開但已計費時，依上游實收向使用者收費",
+    "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.": "Sub2API 等上游在回覆中途斷開時，會依已回報的用量計費（Claude 串流一開始就會回報輸入），而使用者只收到錯誤。開啟後，這類失敗的請求不再退款，而是依上游回報的用量收費；只收最後一次嘗試，先前失敗的重試不收。關閉時與以前一樣全額退款。按次計費的模型一律退款。",
+    "Upstream failed after billing its usage; charged the usage upstream reported": "上游在已計費後中途失敗，依上游回報的用量收費"
   }
 }

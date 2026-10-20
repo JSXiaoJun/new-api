@@ -243,6 +243,8 @@ const BILLING_SECTIONS = [
             ],
           match_upstream_charge:
             settings['abnormal_billing_setting.match_upstream_charge'],
+          charge_upstream_billed_failure:
+            settings['abnormal_billing_setting.charge_upstream_billed_failure'],
         }}
       />
     ),

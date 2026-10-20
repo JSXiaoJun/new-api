@@ -1,9 +1,12 @@
 package claude
 
 import (
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -255,6 +258,64 @@ func TestClaudeStreamFallbackCountsInterruptedToolUse(t *testing.T) {
 	// Text estimate plus the per-tool_use framing the upstream bills.
 	assert.Equal(t, tokenkit.Estimate("claude-sonnet-5", `read_file{"path":"main.go"}`)+40, claudeInfo.Usage.CompletionTokens)
 	assert.Equal(t, 100, claudeInfo.Usage.PromptTokens)
+}
+
+// A stream upstream broke off with an error event keeps the usage upstream
+// already reported on the attempt, for both client formats, so failure
+// settlement can charge what upstream billed; an error before any usage
+// leaves nothing to charge.
+func TestClaudeStreamErrorKeepsTheUsageUpstreamReported(t *testing.T) {
+	start := `{"type":"message_start","message":{"id":"msg_1","type":"message","model":"claude","role":"assistant","content":[],"usage":{"input_tokens":1000,"cache_read_input_tokens":200,"output_tokens":1}}}`
+	delta := `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}`
+	finalUsage := `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":40}}`
+	broken := `{"type":"error","error":{"type":"upstream_error","message":"upstream stream disconnected"}}`
+	for _, tc := range []struct {
+		name           string
+		format         types.RelayFormat
+		events         []string
+		wantPrompt     int
+		wantCompletion int
+	}{
+		// Like Sub2API, output counts only from message_delta, not the
+		// placeholder in message_start.
+		{name: "claude client", format: types.RelayFormatClaude, events: []string{start, delta, broken}, wantPrompt: 1000},
+		{name: "openai client", format: types.RelayFormatOpenAI, events: []string{start, delta, broken}, wantPrompt: 1000},
+		{name: "output reported before the break", format: types.RelayFormatClaude, events: []string{start, delta, finalUsage, broken}, wantPrompt: 1000, wantCompletion: 40},
+		{name: "error before any usage", format: types.RelayFormatClaude, events: []string{broken}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var body strings.Builder
+			for _, event := range tc.events {
+				body.WriteString("data: " + event + "\n\n")
+			}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+			info := &relaycommon.RelayInfo{
+				RelayFormat: tc.format, IsStream: true, DisablePing: true, StartTime: time.Now(),
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude"},
+			}
+			info.MarkUpstreamStart()
+
+			usage, apiErr := ClaudeStreamHandler(c, &http.Response{StatusCode: http.StatusOK, Header: make(http.Header),
+				Body: io.NopCloser(strings.NewReader(body.String()))}, info)
+
+			require.NotNil(t, apiErr)
+			assert.Nil(t, usage)
+			reported := info.UpstreamAttempt().ReportedUsage()
+			if tc.wantPrompt == 0 {
+				assert.Nil(t, reported)
+				return
+			}
+			require.NotNil(t, reported)
+			assert.Equal(t, tc.wantPrompt, reported.PromptTokens)
+			assert.Equal(t, tc.wantCompletion, reported.CompletionTokens)
+			assert.Equal(t, 200, reported.PromptTokensDetails.CachedTokens)
+			require.NotNil(t, reported.BillingUsage)
+			require.NotNil(t, reported.BillingUsage.ClaudeUsage, "priced as Claude usage")
+			assert.Equal(t, tc.wantPrompt, reported.BillingUsage.ClaudeUsage.InputTokens)
+			assert.Equal(t, tc.wantCompletion, reported.BillingUsage.ClaudeUsage.OutputTokens)
+		})
+	}
 }
 
 func TestBuildOpenAIStyleUsageFromClaudeUsage(t *testing.T) {

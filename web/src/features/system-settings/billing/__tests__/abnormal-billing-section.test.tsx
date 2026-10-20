@@ -39,6 +39,7 @@ const allCharged: AbnormalBillingValues = {
   charge_upstream_interrupt_during_response: true,
   continue_after_cloudflare_truncation: true,
   match_upstream_charge: false,
+  charge_upstream_billed_failure: false,
 }
 
 const alignLabel = 'Align abnormal billing with official new-api'
@@ -209,6 +210,32 @@ describe('abnormal billing control section', () => {
     expect(put).toHaveBeenCalledTimes(1)
     expect(put).toHaveBeenCalledWith('/api/option/', {
       key: 'abnormal_billing_setting.match_upstream_charge',
+      value: 'true',
+    })
+  })
+
+  it('saves the upstream-billed failure switch alone, off by default and usable under the official alignment', async () => {
+    const put = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true } })
+    const user = userEvent.setup()
+    render(<Fixture values={{ ...allCharged, align_with_official: true }} />)
+
+    const failure = screen.getByRole('switch', {
+      name: 'Charge what upstream billed for a request it broke off',
+    })
+    expect(failure).not.toBeChecked()
+    expect(failure).not.toHaveAttribute('aria-disabled', 'true')
+    await user.click(failure)
+    const save = screen.getByRole('button', {
+      name: 'Save abnormal billing settings',
+    })
+    await user.click(save)
+
+    await waitFor(() => expect(save).toBeDisabled())
+    expect(put).toHaveBeenCalledTimes(1)
+    expect(put).toHaveBeenCalledWith('/api/option/', {
+      key: 'abnormal_billing_setting.charge_upstream_billed_failure',
       value: 'true',
     })
   })

@@ -7625,6 +7625,9 @@
     "All users, or search by username or user ID": "Tous les utilisateurs, ou rechercher par nom ou ID",
     "Pick one user to choose records to recover.": "Choisissez un utilisateur pour sélectionner les enregistrements à recouvrer.",
     "Show all users": "Afficher tous les utilisateurs",
-    "Show only the records of {{username}}": "Afficher seulement les enregistrements de {{username}}"
+    "Show only the records of {{username}}": "Afficher seulement les enregistrements de {{username}}",
+    "Charge what upstream billed for a request it broke off": "Facturer ce que l’amont a facturé pour une requête qu’il a interrompue",
+    "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.": "Un amont comme Sub2API facture l’usage déjà signalé lorsque la réponse s’interrompt en cours (un flux Claude signale d’abord l’entrée), tandis que l’utilisateur ne reçoit qu’une erreur. Activé, une telle requête échouée est facturée exactement cet usage au lieu d’être remboursée ; seule la dernière tentative compte, pas les essais précédents échoués. Désactivé, elle est remboursée entièrement comme avant. Les modèles facturés à l’appel sont toujours remboursés.",
+    "Upstream failed after billing its usage; charged the usage upstream reported": "L’amont a échoué après avoir facturé son usage ; l’usage signalé par l’amont a été facturé"
   }
 }

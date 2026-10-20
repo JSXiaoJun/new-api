@@ -368,6 +368,7 @@ export type BillingSettings = {
   'abnormal_billing_setting.charge_upstream_interrupt_during_response': boolean
   'abnormal_billing_setting.continue_after_cloudflare_truncation': boolean
   'abnormal_billing_setting.match_upstream_charge': boolean
+  'abnormal_billing_setting.charge_upstream_billed_failure': boolean
   'abnormal_request_setting.flag_hourly_count': number
   'abnormal_request_setting.flag_ratio_percent': number
   'abnormal_request_setting.flag_min_requests': number

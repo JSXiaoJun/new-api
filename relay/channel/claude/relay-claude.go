@@ -329,6 +329,23 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 	})
 	info.StreamStatus.RequireTerminal()
 	if err != nil {
+		// Upstream may bill a stream it broke off for the usage it already
+		// reported (Sub2API does); keep that for failure settlement.
+		if usage := claudeInfo.Usage; usage != nil {
+			if !claudeInfo.Done {
+				// Output is billed from message_delta; message_start only
+				// carries a placeholder output count.
+				usage.CompletionTokens = 0
+				usage.BillingUsage = nil
+			}
+			if usage.PromptTokens > 0 || usage.CompletionTokens > 0 ||
+				usage.PromptTokensDetails.CachedTokens > 0 || usage.PromptTokensDetails.CachedCreationTokens > 0 {
+				usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+				usage.UsageSemantic = "anthropic"
+				relayconvert.FinalizeClaudeStreamBillingUsage(claudeInfo)
+				info.UpstreamAttempt().ReportUsage(usage)
+			}
+		}
 		return nil, err
 	}
 

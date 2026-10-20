@@ -7625,6 +7625,9 @@
     "All users, or search by username or user ID": "すべてのユーザー、またはユーザー名/ユーザー ID で検索",
     "Pick one user to choose records to recover.": "回収する記録を選ぶには、ユーザーを 1 人選んでください。",
     "Show all users": "すべてのユーザーを表示",
-    "Show only the records of {{username}}": "{{username}} の記録のみ表示"
+    "Show only the records of {{username}}": "{{username}} の記録のみ表示",
+    "Charge what upstream billed for a request it broke off": "上流が途中で切断したが課金済みのリクエストを上流の課金額で請求",
+    "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.": "Sub2API などの上流は、応答が途中で切れた場合でも既に報告した使用量を課金します（Claude のストリームは最初に入力を報告します）。一方ユーザーはエラーを受け取るだけです。オンにすると、このような失敗したリクエストを返金せず、その使用量どおりに請求します。請求するのは最後の試行のみで、それ以前に失敗したリトライは請求しません。オフでは従来どおり全額返金します。回数課金のモデルは常に返金します。",
+    "Upstream failed after billing its usage; charged the usage upstream reported": "上流が課金後に途中で失敗したため、上流が報告した使用量を請求しました"
   }
 }

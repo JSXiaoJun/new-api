@@ -7625,6 +7625,9 @@
     "All users, or search by username or user ID": "All users, or search by username or user ID",
     "Pick one user to choose records to recover.": "Pick one user to choose records to recover.",
     "Show all users": "Show all users",
-    "Show only the records of {{username}}": "Show only the records of {{username}}"
+    "Show only the records of {{username}}": "Show only the records of {{username}}",
+    "Charge what upstream billed for a request it broke off": "Charge what upstream billed for a request it broke off",
+    "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.": "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.",
+    "Upstream failed after billing its usage; charged the usage upstream reported": "Upstream failed after billing its usage; charged the usage upstream reported"
   }
 }

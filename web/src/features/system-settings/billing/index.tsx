@@ -117,6 +117,7 @@ const defaultBillingSettings: BillingSettings = {
   'abnormal_billing_setting.charge_upstream_interrupt_during_response': true,
   'abnormal_billing_setting.continue_after_cloudflare_truncation': true,
   'abnormal_billing_setting.match_upstream_charge': false,
+  'abnormal_billing_setting.charge_upstream_billed_failure': false,
   'abnormal_request_setting.flag_hourly_count': 10,
   'abnormal_request_setting.flag_ratio_percent': 80,
   'abnormal_request_setting.flag_min_requests': 20,

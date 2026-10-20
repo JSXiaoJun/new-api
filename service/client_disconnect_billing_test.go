@@ -690,3 +690,74 @@ func TestAbnormalBillingSwitchesUseTheCloudflareTruncationMoment(t *testing.T) {
 		})
 	}
 }
+
+// A request that upstream broke off after reporting usage (Sub2API bills that
+// usage) is refunded unless charge_upstream_billed_failure is on; then it is
+// charged exactly the reported usage, once, whatever the other switches say.
+func TestUpstreamBilledFailureSettlement(t *testing.T) {
+	reported := &dto.Usage{PromptTokens: 1_000, CompletionTokens: 1, TotalTokens: 1_001}
+	tests := []struct {
+		name        string
+		on          bool
+		perCall     bool
+		clientLeft  bool
+		switchesOff bool
+		retried     bool
+		usage       *dto.Usage
+		wantCharged int
+	}{
+		{name: "switch off keeps the full refund", usage: reported},
+		{name: "switch on charges the usage upstream reported", on: true, usage: reported, wantCharged: 1_001},
+		{name: "switch on with the waiver switches off still charges", on: true, switchesOff: true, usage: reported, wantCharged: 1_001},
+		{name: "nothing reported is refunded", on: true},
+		{name: "zero usage is refunded", on: true, usage: &dto.Usage{}},
+		{name: "a per-call model is refunded", on: true, perCall: true, usage: reported},
+		{name: "a client that left is settled by the disconnect rules instead", on: true, clientLeft: true, usage: reported},
+		{name: "a retry that failed before upstream answered drops the earlier attempt's usage", on: true, retried: true, usage: reported},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setAbnormalOption(t, "charge_upstream_billed_failure", tt.on, false)
+			if tt.switchesOff {
+				setAbnormalBilling(t, false, false, false)
+			}
+			priceData := tokenPriced()
+			if tt.perCall {
+				priceData.UsePrice = true
+				priceData.ModelPrice = 0.01
+			}
+			ctx, info, cancel := newDisconnectBillingCase(t, priceData)
+			info.IsStream = true
+			info.MarkUpstreamStart()
+			info.UpstreamAttempt().MarkRequestSent()
+			info.UpstreamAttempt().MarkResponse()
+			info.UpstreamAttempt().ReportUsage(tt.usage)
+			info.StreamStatus = relaycommon.NewStreamStatus()
+			info.StreamStatus.RequireTerminal()
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonHandlerStop, io.ErrUnexpectedEOF)
+			if tt.retried {
+				info.MarkUpstreamStart()
+			}
+			if tt.clientLeft {
+				cancel()
+			}
+
+			settled := SettleUpstreamBilledFailure(ctx, info)
+			info.Billing.Refund(ctx)
+
+			assert.Equal(t, tt.wantCharged > 0, settled)
+			// The refund of the reservation completes in the background.
+			require.Eventually(t, func() bool {
+				return disconnectStartQuota-getUserQuota(t, disconnectUserId) == tt.wantCharged
+			}, 5*time.Second, 10*time.Millisecond, "the user pays %d", tt.wantCharged)
+			if tt.wantCharged == 0 {
+				return
+			}
+			log := lastConsumeLog(t)
+			assert.Equal(t, tt.wantCharged, log.Quota)
+			assert.Equal(t, 1_000, log.PromptTokens)
+			assert.Contains(t, log.Content, "Upstream failed after billing its usage")
+			assert.NotContains(t, log.Other, waivedMarker)
+		})
+	}
+}

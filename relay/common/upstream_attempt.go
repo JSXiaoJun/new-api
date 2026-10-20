@@ -8,6 +8,8 @@ import (
 	"net/http/httptrace"
 	"sync"
 	"time"
+
+	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
 // Sides that can end a relay attempt abnormally.
@@ -36,6 +38,9 @@ type UpstreamAttempt struct {
 	failedAt       time.Time
 	failure        error
 	clientCanceled bool
+	// reportedUsage is the usage upstream reported before the attempt
+	// failed, which upstream may already have billed.
+	reportedUsage *dto.Usage
 }
 
 type upstreamAttemptSnapshot struct {
@@ -145,6 +150,30 @@ func (a *UpstreamAttempt) RequestSent() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return !a.requestSentAt.IsZero() || !a.responseAt.IsZero()
+}
+
+// ReportUsage keeps the usage upstream reported on an attempt that then
+// failed. A copy is stored so later changes by the handler do not leak in.
+func (a *UpstreamAttempt) ReportUsage(usage *dto.Usage) {
+	if a == nil || usage == nil {
+		return
+	}
+	reported := *usage
+	reported.BillingUsage = dto.CloneBillingUsage(usage.BillingUsage)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.reportedUsage = &reported
+}
+
+// ReportedUsage returns the usage upstream reported before the attempt
+// failed, or nil.
+func (a *UpstreamAttempt) ReportedUsage() *dto.Usage {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.reportedUsage
 }
 
 // Failure returns the first transport failure recorded for the attempt.

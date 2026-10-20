@@ -29,6 +29,9 @@ const (
 	// abnormalRequestFailedKey marks a request settled only because it failed
 	// after the client left; official new-api refunds such a request in full.
 	abnormalRequestFailedKey = "abnormal_request_failed"
+	// upstreamBilledFailureKey marks a failed request charged the usage
+	// upstream reported (charge_upstream_billed_failure).
+	upstreamBilledFailureKey = "upstream_billed_failure"
 )
 
 var abnormalChargeCaseNames = map[abnormalChargeCase]string{
@@ -87,7 +90,7 @@ func classifyAbnormalCharge(c *gin.Context, info *relaycommon.RelayInfo) abnorma
 // a request that failed after the client left, which official new-api
 // refunds, and charges the usage of every other interrupted response.
 func abnormalChargeWaiver(c *gin.Context, info *relaycommon.RelayInfo, chargeCase abnormalChargeCase) (bool, *common.Message) {
-	if chargeCase == abnormalChargeNone {
+	if chargeCase == abnormalChargeNone || c != nil && c.GetBool(upstreamBilledFailureKey) {
 		return false, nil
 	}
 	if chargeCase.userCaused() && info != nil && billing_setting.IsStrictBillingUser(info.UserId) {
