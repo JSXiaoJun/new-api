@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Outcomes of an abnormal request whose charge was dropped or reduced.
@@ -310,23 +311,85 @@ func applyAbnormalChargeFlags(summary *AbnormalChargeUserSummary, thresholds Abn
 	summary.Flagged = len(reasons) >= 2
 }
 
-// ListAbnormalCharges returns one user's records since `since`, newest first.
-// status is "pending", "recovered", or empty for both.
-func ListAbnormalCharges(userId int, since int64, status string, startIdx, num int) ([]*AbnormalCharge, int64, error) {
-	query := DB.Model(&AbnormalCharge{}).Where("user_id = ? AND created_at >= ?", userId, since)
-	switch status {
+// AbnormalChargeFilter selects abnormal request records. UserId pins one
+// user; otherwise Keyword matches a user id or username. An operator below
+// root only sees users of a lower role.
+type AbnormalChargeFilter struct {
+	UserId       int
+	Keyword      string
+	OperatorRole int
+	Since        int64
+	// Status is "", "pending" or "recovered".
+	Status string
+	// Case is one of the abnormal case names, or "" for any.
+	Case string
+}
+
+// AbnormalChargeEntry is a record listed with its user.
+type AbnormalChargeEntry struct {
+	AbnormalCharge
+	Username string `json:"username"`
+}
+
+// ListAbnormalCharges returns abnormal request records, newest first.
+func ListAbnormalCharges(filter AbnormalChargeFilter, startIdx, num int) ([]*AbnormalChargeEntry, int64, error) {
+	query := DB.Model(&AbnormalCharge{}).Where("created_at >= ?", filter.Since)
+	if filter.UserId > 0 {
+		query = query.Where("user_id = ?", filter.UserId)
+	}
+	keyword := strings.TrimSpace(filter.Keyword)
+	if keyword != "" || filter.OperatorRole != common.RoleRootUser {
+		users := DB.Unscoped().Model(&User{}).Select("id")
+		if keyword != "" {
+			if id, err := strconv.Atoi(keyword); err == nil && id > 0 {
+				users = users.Where("id = ? OR username LIKE ?", id, "%"+keyword+"%")
+			} else {
+				users = users.Where("username LIKE ?", "%"+keyword+"%")
+			}
+		}
+		if filter.OperatorRole != common.RoleRootUser {
+			users = users.Where("role < ?", filter.OperatorRole)
+		}
+		query = query.Where("user_id IN (?)", users)
+	}
+	switch filter.Status {
 	case "pending":
 		query = query.Where("recovery_id = ''")
 	case "recovered":
 		query = query.Where("recovery_id <> ''")
+	}
+	if filter.Case != "" {
+		query = query.Where(clause.Eq{Column: clause.Column{Name: "case"}, Value: filter.Case})
 	}
 	var total int64
 	if err := query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	records := []*AbnormalCharge{}
-	err := query.Order("id desc").Offset(startIdx).Limit(num).Find(&records).Error
-	return records, total, err
+	if err := query.Order("id desc").Offset(startIdx).Limit(num).Find(&records).Error; err != nil {
+		return nil, 0, err
+	}
+	entries := make([]*AbnormalChargeEntry, 0, len(records))
+	userIds := make([]int, 0, len(records))
+	for _, record := range records {
+		entries = append(entries, &AbnormalChargeEntry{AbnormalCharge: *record})
+		userIds = append(userIds, record.UserId)
+	}
+	if len(userIds) == 0 {
+		return entries, total, nil
+	}
+	var users []User
+	if err := DB.Unscoped().Select("id", "username").Where("id IN ?", userIds).Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+	names := make(map[int]string, len(users))
+	for _, user := range users {
+		names[user.Id] = user.Username
+	}
+	for _, entry := range entries {
+		entry.Username = names[entry.UserId]
+	}
+	return entries, total, nil
 }
 
 var (

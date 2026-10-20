@@ -7615,6 +7615,16 @@
     "Upstream charged {{number}}": "上流で課金済み {{number}} 件",
     "Charge whatever upstream billed for abandoned requests": "中断されたリクエストは上流の課金額どおりに課金",
     "When on, a user always pays what upstream billed for a request that ended early, and the switches above no longer waive it; only a request that failed before upstream answered stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.": "オンにすると、途中で終了したリクエストはユーザーが常に上流の課金額を支払い、上のスイッチでは免除されなくなります。上流が応答する前に失敗したリクエストだけは無料です。上流を最後まで読むチャネル（Sub2API は既定でオン）では、上流が報告した使用量を後から課金するため、残高がマイナスになることがあります。また、Sub2API と New API チャネルの非ストリームリクエストも最後まで読みます。これらの上流は全額課金するためです。公式との整合の設定に関係なく有効で、切断したクライアントへのその返金も上書きします。",
-    "Charged the usage upstream billed for a request that ended early: {{amount}}": "途中で終了したリクエストに、上流が課金した使用量を課金：{{amount}}"
+    "Charged the usage upstream billed for a request that ended early: {{amount}}": "途中で終了したリクエストに、上流が課金した使用量を課金：{{amount}}",
+    "Abnormal request views": "異常リクエストの表示",
+    "By user": "ユーザー別",
+    "All records": "すべての記録",
+    "All statuses": "すべてのステータス",
+    "Any ending": "すべての終了方法",
+    "Filter by user": "ユーザーで絞り込み",
+    "All users, or search by username or user ID": "すべてのユーザー、またはユーザー名/ユーザー ID で検索",
+    "Pick one user to choose records to recover.": "回収する記録を選ぶには、ユーザーを 1 人選んでください。",
+    "Show all users": "すべてのユーザーを表示",
+    "Show only the records of {{username}}": "{{username}} の記録のみ表示"
   }
 }

@@ -58,6 +58,7 @@ function record(id: number, overrides: Partial<AbnormalChargeRecord> = {}) {
   return {
     id,
     user_id: 42,
+    username: 'abuser',
     created_at: 1_790_000_000,
     request_id: `req-${id}`,
     token_name: 'key',
@@ -120,21 +121,43 @@ function Fixture() {
   )
 }
 
-function page<T>(items: T[]) {
+function page<T>(items: T[], total = items.length) {
   return {
     data: {
       success: true,
-      data: { page: 1, page_size: 20, total: items.length, items },
+      data: { page: 1, page_size: 20, total, items },
     },
   }
 }
 
-function mockLists(records: AbnormalChargeRecord[] = []) {
-  return vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
-    if (url === '/api/user/abnormal_charges') return page([suspicious])
-    if (url === '/api/user/42/abnormal_charges') return page(records)
-    throw new Error(`unexpected GET ${url}`)
-  })
+type ListOptions = {
+  records?: AbnormalChargeRecord[]
+  recordTotal?: number
+  users?: AbnormalChargeUser[]
+  userTotal?: number
+}
+
+function mockLists(options: ListOptions = {}) {
+  return vi
+    .spyOn(api, 'get')
+    .mockImplementation(async (url: string): Promise<unknown> => {
+      if (url === '/api/user/abnormal_charges') {
+        return page(options.users ?? [suspicious], options.userTotal)
+      }
+      if (url === '/api/user/abnormal_charges/records') {
+        return page(options.records ?? [], options.recordTotal)
+      }
+      throw new Error(`unexpected GET ${url}`)
+    })
+}
+
+function lastParams(get: ReturnType<typeof mockLists>, url: string) {
+  const calls = get.mock.calls.filter((call) => call[0] === url)
+  const config = calls.at(-1)?.[1] as
+    | { params: Record<string, unknown> }
+    | undefined
+  if (!config) throw new Error(`no GET ${url}`)
+  return config.params
 }
 
 beforeEach(async () => {
@@ -197,18 +220,20 @@ describe('abnormal requests section', () => {
     )
   })
 
-  it('recovers only the records ticked in the records dialog', async () => {
-    mockLists([
-      record(1),
-      record(2, {
-        upstream_billing: 'billed',
-        upstream_quota: 9_000,
-        charged_quota: 4_000,
-        forgone_quota: 5_000,
-        outcome: 'partial',
-      }),
-      record(3, { user_caused: false, case: 'upstream_during_response' }),
-    ])
+  it('opens the records of one user from the user list and recovers only the ticked ones', async () => {
+    const get = mockLists({
+      records: [
+        record(1),
+        record(2, {
+          upstream_billing: 'billed',
+          upstream_quota: 9_000,
+          charged_quota: 4_000,
+          forgone_quota: 5_000,
+          outcome: 'partial',
+        }),
+        record(3, { user_caused: false, case: 'upstream_during_response' }),
+      ],
+    })
     const post = vi.spyOn(api, 'post').mockResolvedValue({
       data: {
         success: true,
@@ -219,8 +244,11 @@ describe('abnormal requests section', () => {
     render(<Fixture />)
 
     await user.click(await screen.findByRole('button', { name: 'Records' }))
-    const dialog = await screen.findByRole('dialog')
-    await within(dialog).findByText('Upstream or gateway interrupted')
+    const dialog = await screen.findByRole('tabpanel')
+    await within(dialog).findByText('Not caused by the user')
+    expect(lastParams(get, '/api/user/abnormal_charges/records')).toMatchObject(
+      { user_id: 42, status: 'pending', p: 1 }
+    )
     expect(within(dialog).getByText('Upstream charged')).toBeInTheDocument()
     expect(
       within(dialog).queryByRole('checkbox', { name: 'Select record 3' })
@@ -288,5 +316,88 @@ describe('abnormal requests section', () => {
       ).toBeEnabled()
     )
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+  })
+
+  it('lists the records of every user page by page and offers recovery only for one picked user', async () => {
+    const get = mockLists({
+      records: [record(7), record(8, { user_id: 51, username: 'other' })],
+      recordTotal: 45,
+    })
+    const user = userEvent.setup()
+    render(<Fixture />)
+
+    await user.click(await screen.findByRole('tab', { name: 'All records' }))
+    const panel = await screen.findByRole('tabpanel')
+    await within(panel).findByText('other')
+    const first = lastParams(get, '/api/user/abnormal_charges/records')
+    expect(first).toMatchObject({ p: 1, page_size: 20 })
+    expect(first.user_id).toBeUndefined()
+    expect(within(panel).queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(
+      within(panel).getByText('Pick one user to choose records to recover.')
+    ).toBeInTheDocument()
+
+    await user.click(
+      within(panel).getByRole('button', { name: /^Go to page 3/ })
+    )
+    await waitFor(() =>
+      expect(
+        lastParams(get, '/api/user/abnormal_charges/records')
+      ).toMatchObject({ p: 3 })
+    )
+
+    await user.click(
+      within(panel).getByRole('button', {
+        name: 'Show only the records of other',
+      })
+    )
+    await waitFor(() =>
+      expect(
+        lastParams(get, '/api/user/abnormal_charges/records')
+      ).toMatchObject({ user_id: 51, p: 1 })
+    )
+    expect(
+      await within(panel).findByRole('button', {
+        name: /^Recover \d+ selected/,
+      })
+    ).toBeDisabled()
+  })
+
+  it('searches records by a typed username without pinning a user', async () => {
+    const get = mockLists({ records: [record(7)] })
+    const user = userEvent.setup()
+    render(<Fixture />)
+
+    await user.click(await screen.findByRole('tab', { name: 'All records' }))
+    const panel = await screen.findByRole('tabpanel')
+    await user.type(
+      within(panel).getByRole('combobox', { name: 'Filter by user' }),
+      'abu'
+    )
+
+    await waitFor(() =>
+      expect(
+        lastParams(get, '/api/user/abnormal_charges/records')
+      ).toMatchObject({ keyword: 'abu', p: 1 })
+    )
+    expect(
+      lastParams(get, '/api/user/abnormal_charges/records').user_id
+    ).toBeUndefined()
+  })
+
+  it('pages through the user list', async () => {
+    const get = mockLists({ userTotal: 45 })
+    const user = userEvent.setup()
+    render(<Fixture />)
+
+    await screen.findByText('abuser')
+    await user.click(screen.getByRole('button', { name: 'Go to next page' }))
+
+    await waitFor(() =>
+      expect(lastParams(get, '/api/user/abnormal_charges')).toMatchObject({
+        p: 2,
+        page_size: 20,
+      })
+    )
   })
 })

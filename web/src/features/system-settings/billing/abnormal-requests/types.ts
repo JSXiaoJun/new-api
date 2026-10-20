@@ -51,9 +51,16 @@ export type AbnormalChargeUser = {
   strict_billing: boolean
 }
 
+export type AbnormalChargeCase =
+  | 'client_before_response'
+  | 'client_during_response'
+  | 'upstream_during_response'
+  | 'upstream_before_response'
+
 export type AbnormalChargeRecord = {
   id: number
   user_id: number
+  username: string
   created_at: number
   request_id: string
   token_name: string
@@ -62,7 +69,7 @@ export type AbnormalChargeRecord = {
   ip: string
   is_stream: boolean
   is_task: boolean
-  case: string
+  case: AbnormalChargeCase
   user_caused: boolean
   ended_by: string
   phase: string
@@ -81,6 +88,16 @@ export type AbnormalChargeRecord = {
 }
 
 export type AbnormalChargeRecordStatus = '' | 'pending' | 'recovered'
+
+export type AbnormalChargeRecordQuery = {
+  days: number
+  user_id?: number
+  keyword?: string
+  status: AbnormalChargeRecordStatus
+  case: AbnormalChargeCase | ''
+  p: number
+  page_size: number
+}
 
 export type AbnormalRecovery = {
   recovered_records: number

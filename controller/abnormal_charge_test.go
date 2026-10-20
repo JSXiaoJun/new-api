@@ -128,6 +128,8 @@ func TestAbnormalChargeEndpointsRejectInvalidRequests(t *testing.T) {
 		{name: "an admin recovering another admin", handler: RecoverUserAbnormalCharges, method: http.MethodPost, path: "/api/user/43/abnormal_charges/recover", id: "43", body: `{"days":1}`, role: common.RoleAdminUser},
 		{name: "list with an out-of-range period", handler: GetAbnormalChargeUsers, method: http.MethodGet, path: "/api/user/abnormal_charges?days=91&p=1&page_size=10", role: common.RoleRootUser},
 		{name: "records with an unknown status", handler: GetUserAbnormalCharges, method: http.MethodGet, path: "/api/user/42/abnormal_charges?status=all&p=1&page_size=10", id: "42", role: common.RoleRootUser},
+		{name: "all records with an unknown case", handler: GetAbnormalChargeRecords, method: http.MethodGet, path: "/api/user/abnormal_charges/records?case=other&p=1&page_size=10", role: common.RoleRootUser},
+		{name: "all records with a bad user id", handler: GetAbnormalChargeRecords, method: http.MethodGet, path: "/api/user/abnormal_charges/records?user_id=x&p=1&page_size=10", role: common.RoleRootUser},
 		{name: "strict billing of an equal role", handler: SetUserStrictBilling, method: http.MethodPut, path: "/api/user/43/strict_billing", id: "43", body: `{"enabled":true}`, role: common.RoleAdminUser},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

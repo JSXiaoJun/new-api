@@ -7615,6 +7615,16 @@
     "Upstream charged {{number}}": "上游已收費 {{number}} 次",
     "Charge whatever upstream billed for abandoned requests": "對標上游：上游收了多少，使用者就付多少",
     "When on, a user always pays what upstream billed for a request that ended early, and the switches above no longer waive it; only a request that failed before upstream answered stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.": "開啟後，請求提前結束時，上游收了多少，使用者就付多少，上面的開關不再免單；只有上游還沒回應就失敗的請求不收費。在「繼續讀完上游」的渠道上（Sub2API 預設開啟），會按上游回報的用量事後補扣，餘額可能變成負數。同時，Sub2API 和 New API 渠道的非串流請求也會被讀完，因為這兩種上游會按全額收費。不受「按官方 new-api 方式計費」影響，並且會覆蓋它對斷開請求的退款。",
-    "Charged the usage upstream billed for a request that ended early: {{amount}}": "請求提前結束，按上游實際收費補扣：{{amount}}"
+    "Charged the usage upstream billed for a request that ended early: {{amount}}": "請求提前結束，按上游實際收費補扣：{{amount}}",
+    "Abnormal request views": "異常請求檢視",
+    "By user": "依使用者",
+    "All records": "全部記錄",
+    "All statuses": "全部狀態",
+    "Any ending": "任意結束方式",
+    "Filter by user": "依使用者篩選",
+    "All users, or search by username or user ID": "全部使用者，或輸入使用者名稱/使用者 ID 搜尋",
+    "Pick one user to choose records to recover.": "選定一位使用者後才能勾選記錄補收。",
+    "Show all users": "顯示全部使用者",
+    "Show only the records of {{username}}": "只看 {{username}} 的記錄"
   }
 }

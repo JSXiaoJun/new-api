@@ -202,11 +202,11 @@ func TestRecoverAbnormalChargesChargesEachRecordOnce(t *testing.T) {
 			assert.EqualValues(t, 60_000, recovery.Quota)
 			assert.Equal(t, -79_000, userQuota(t, db, 21))
 
-			pending, pendingTotal, err := ListAbnormalCharges(21, now-3600, "pending", 0, 20)
+			pending, pendingTotal, err := ListAbnormalCharges(AbnormalChargeFilter{UserId: 21, OperatorRole: common.RoleRootUser, Since: now - 3600, Status: "pending"}, 0, 20)
 			require.NoError(t, err)
 			require.EqualValues(t, 1, pendingTotal)
 			assert.Equal(t, upstream[0], pending[0].Id)
-			recovered, recoveredTotal, err := ListAbnormalCharges(21, now-3600, "recovered", 0, 3)
+			recovered, recoveredTotal, err := ListAbnormalCharges(AbnormalChargeFilter{UserId: 21, OperatorRole: common.RoleRootUser, Since: now - 3600, Status: "recovered"}, 0, 3)
 			require.NoError(t, err)
 			assert.EqualValues(t, 8, recoveredTotal)
 			assert.Len(t, recovered, 3)
@@ -259,7 +259,7 @@ func TestRecoverAbnormalChargesRequiresAHigherRole(t *testing.T) {
 			_, err := RecoverAbnormalCharges(41, 2, common.RoleAdminUser, nil, now-3600, 0)
 			require.ErrorIs(t, err, ErrAbnormalChargePermission)
 			assert.Equal(t, 5_000, userQuota(t, db, 41))
-			pending, total, err := ListAbnormalCharges(41, now-3600, "pending", 0, 10)
+			pending, total, err := ListAbnormalCharges(AbnormalChargeFilter{UserId: 41, OperatorRole: common.RoleRootUser, Since: now - 3600, Status: "pending"}, 0, 10)
 			require.NoError(t, err)
 			assert.EqualValues(t, 1, total, "a rejected recovery must not claim records")
 			assert.Empty(t, pending[0].RecoveryId)
@@ -338,7 +338,7 @@ func TestRecoverAbnormalChargesStopsAtTheReviewedRecords(t *testing.T) {
 			assert.EqualValues(t, reviewed.PendingCount, recovery.Count)
 			assert.Equal(t, reviewed.PendingQuota, recovery.Quota)
 			assert.Equal(t, 8_000, userQuota(t, db, 71))
-			_, pending, err := ListAbnormalCharges(71, now-3600, "pending", 0, 10)
+			_, pending, err := ListAbnormalCharges(AbnormalChargeFilter{UserId: 71, OperatorRole: common.RoleRootUser, Since: now - 3600, Status: "pending"}, 0, 10)
 			require.NoError(t, err)
 			assert.EqualValues(t, 1, pending, "the newer record stays pending")
 		})
@@ -377,6 +377,65 @@ func TestSetStrictBillingUserKeepsChangesFromOtherNodes(t *testing.T) {
 			require.NoError(t, db.Where(Option{Key: key}).First(&option).Error)
 			assert.Equal(t, "[7,9]", option.Value)
 			assert.Equal(t, []int{7, 9}, billing_setting.StrictBillingUsers())
+		})
+	}
+}
+
+// The records list of the review page: every user's records newest first,
+// narrowed to one user, a keyword, a status or a case, and never showing a
+// user the operator cannot manage.
+func TestListAbnormalChargesFiltersAcrossUsers(t *testing.T) {
+	for _, dialect := range abnormalChargeDialects() {
+		t.Run(string(dialect), func(t *testing.T) {
+			db := useAbnormalChargeDatabase(t, dialect)
+			now := common.GetTimestamp()
+			seedAbnormalChargeUser(t, db, 81, common.RoleCommonUser, 1_000)
+			seedAbnormalChargeUser(t, db, 82, common.RoleCommonUser, 1_000)
+			seedAbnormalChargeUser(t, db, 83, common.RoleAdminUser, 1_000)
+			before := AbnormalCharge{UserCaused: true, Case: "client_before_response", Outcome: AbnormalChargeOutcomeWaived, ForgoneQuota: 100}
+			during := AbnormalCharge{UserCaused: true, Case: "client_during_response", Outcome: AbnormalChargeOutcomeWaived, ForgoneQuota: 200}
+			seedAbnormalCharges(t, 81, now-300, 3, before)
+			seedAbnormalCharges(t, 82, now-200, 2, during)
+			seedAbnormalCharges(t, 83, now-100, 1, before)
+			seedAbnormalCharges(t, 81, now-2*86400, 1, before)
+			_, err := RecoverAbnormalCharges(82, 1, common.RoleRootUser, nil, now-3600, 0)
+			require.NoError(t, err)
+
+			list := func(filter AbnormalChargeFilter) ([]*AbnormalChargeEntry, int64) {
+				t.Helper()
+				if filter.OperatorRole == 0 {
+					filter.OperatorRole = common.RoleRootUser
+				}
+				if filter.Since == 0 {
+					filter.Since = now - 86400
+				}
+				entries, total, err := ListAbnormalCharges(filter, 0, 4)
+				require.NoError(t, err)
+				return entries, total
+			}
+			entries, total := list(AbnormalChargeFilter{})
+			assert.EqualValues(t, 6, total, "the record outside the period is left out")
+			require.Len(t, entries, 4, "one page")
+			assert.Equal(t, 83, entries[0].UserId, "newest first")
+			assert.Equal(t, "abnormal_83", entries[0].Username)
+
+			_, total = list(AbnormalChargeFilter{UserId: 81})
+			assert.EqualValues(t, 3, total)
+			entries, total = list(AbnormalChargeFilter{Keyword: "abnormal_82"})
+			assert.EqualValues(t, 2, total)
+			assert.Equal(t, 82, entries[0].UserId)
+			_, total = list(AbnormalChargeFilter{Keyword: "83"})
+			assert.EqualValues(t, 1, total, "a numeric keyword matches the user id")
+			_, total = list(AbnormalChargeFilter{Status: "pending"})
+			assert.EqualValues(t, 4, total)
+			_, total = list(AbnormalChargeFilter{Status: "recovered"})
+			assert.EqualValues(t, 2, total)
+			_, total = list(AbnormalChargeFilter{Case: "client_during_response"})
+			assert.EqualValues(t, 2, total)
+			_, total = list(AbnormalChargeFilter{OperatorRole: common.RoleAdminUser})
+			assert.EqualValues(t, 5, total, "an admin does not see another admin")
+			_, total = list(AbnormalChargeFilter{OperatorRole: common.RoleAdminUser, UserId: 83})
+			assert.Zero(t, total, "not even when asking for that user")
 		})
 	}
 }

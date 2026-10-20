@@ -5,8 +5,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -133,6 +135,73 @@ func sendDrainable(t *testing.T, ctx *gin.Context, info *relaycommon.RelayInfo, 
 	attempt.MarkResponse()
 	drain.WrapBody(resp)
 	return resp, nil
+}
+
+// A stream handler closes the body as soon as it read [DONE], usually before
+// the end of the chunked body arrived. The next request on the same
+// keep-alive connection must still get its whole reply.
+func TestUpstreamDrainClosedAfterDoneLeavesTheConnectionUsable(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/next" {
+			_, _ = io.WriteString(w, `{"ok":true}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[]}\n\ndata: [DONE]\n\n")
+		w.(http.Flusher).Flush()
+		// The terminating chunk follows a moment later, soon enough for
+		// net/http to keep the connection.
+		time.Sleep(5 * time.Millisecond)
+	}))
+	t.Cleanup(upstream.Close)
+	client := &http.Client{Transport: &http.Transport{MaxConnsPerHost: 1}, Timeout: 2 * time.Second}
+	var reused atomic.Int32
+
+	for round := range 20 {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+		info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
+		drainRelayInfo(info)
+		req, err := http.NewRequestWithContext(ctx.Request.Context(), http.MethodPost, upstream.URL+"/stream", strings.NewReader(`{}`))
+		require.NoError(t, err)
+		info.MarkUpstreamStart()
+		attempt := info.UpstreamAttempt()
+		req, drain := PrepareUpstreamDrain(ctx, info, req)
+		require.NotNil(t, drain)
+		resp, err := drain.Do(req.WithContext(attempt.Trace(req.Context())), client.Do, attempt.RequestSent)
+		require.NoError(t, err)
+		attempt.MarkResponse()
+		drain.WrapBody(resp)
+		reply := make([]byte, 4096)
+		n, _ := io.ReadAtLeast(resp.Body, reply, len("data: [DONE]"))
+		require.Contains(t, string(reply[:n]), "[DONE]")
+
+		done := make(chan string, 1)
+		go func() {
+			_ = resp.Body.Close()
+			trace := &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) {
+				if info.Reused {
+					reused.Add(1)
+				}
+			}}
+			nextReq, _ := http.NewRequestWithContext(httptrace.WithClientTrace(context.Background(), trace), http.MethodGet, upstream.URL+"/next", nil)
+			next, err := client.Do(nextReq)
+			if err != nil {
+				done <- err.Error()
+				return
+			}
+			body, _ := io.ReadAll(next.Body)
+			_ = next.Body.Close()
+			done <- string(body)
+		}()
+		select {
+		case body := <-done:
+			assert.JSONEq(t, `{"ok":true}`, body, "round %d", round)
+		case <-time.After(3 * time.Second):
+			require.FailNow(t, "closing the stream or the next request on its connection hung", "round %d", round)
+		}
+	}
+	assert.Positive(t, reused.Load(), "a stream that ended in time keeps its connection")
 }
 
 func waitAbnormalRecord(t *testing.T) model.AbnormalCharge {
@@ -433,6 +502,35 @@ func TestDrainUsageParserReadsNonStreamReplies(t *testing.T) {
 			parser := &drainUsageParser{}
 			parser.feed([]byte(tt.body[:10]))
 			parser.feed([]byte(tt.body[10:]))
+			usage := effectiveBillingUsage(parser.result())
+			require.NotNil(t, usage)
+			assert.Equal(t, 1_000, usage.PromptTokens)
+			assert.Equal(t, 500, usage.CompletionTokens)
+		})
+	}
+}
+
+// A non-stream reply longer than the kept start of the body still yields
+// its usage, which every format writes after the long content; a "usage"
+// inside the content does not count.
+func TestDrainUsageParserReadsTheUsageAtTheEndOfAHugeReply(t *testing.T) {
+	filler := strings.Repeat("x", maxDrainLine) + `\"usage\":{\"prompt_tokens\":9}`
+	for _, tt := range []struct {
+		name string
+		body string
+	}{
+		{name: "openai chat", body: `{"id":"c","choices":[{"message":{"content":"` + filler + `"}}],"usage":{"prompt_tokens":1000,"completion_tokens":500,"total_tokens":1500}}`},
+		{name: "openai responses", body: `{"object":"response","output":[{"content":[{"text":"` + filler + `"}]}],"usage":{"input_tokens":1000,"output_tokens":500,"total_tokens":1500}}`},
+		{name: "claude message", body: `{"id":"m","type":"message","content":[{"type":"text","text":"` + filler + `"}],"usage":{"input_tokens":1000,"output_tokens":500}}`},
+		{name: "gemini", body: `{"candidates":[{"content":{"parts":[{"text":"` + filler + `"}]}}],"usageMetadata":{"promptTokenCount":1000,"candidatesTokenCount":500,"totalTokenCount":1500}}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			parser := &drainUsageParser{}
+			for body := []byte(tt.body); len(body) > 0; {
+				n := min(len(body), 32<<10)
+				parser.feed(body[:n])
+				body = body[n:]
+			}
 			usage := effectiveBillingUsage(parser.result())
 			require.NotNil(t, usage)
 			assert.Equal(t, 1_000, usage.PromptTokens)

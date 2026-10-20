@@ -7615,6 +7615,16 @@
     "Upstream charged {{number}}": "Facturé par l’amont {{number}}",
     "Charge whatever upstream billed for abandoned requests": "Facturer ce que l’amont a facturé pour les requêtes abandonnées",
     "When on, a user always pays what upstream billed for a request that ended early, and the switches above no longer waive it; only a request that failed before upstream answered stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.": "Activé, un utilisateur paie toujours ce que l’amont a facturé pour une requête terminée prématurément, et les interrupteurs ci-dessus ne l’exonèrent plus ; seule une requête qui a échoué avant la réponse de l’amont reste gratuite. Sur les canaux qui continuent à lire l’amont (Sub2API par défaut), l’usage déclaré par l’amont est facturé ensuite, le solde peut donc devenir négatif. Les requêtes non streamées des canaux Sub2API et New API sont alors aussi lues jusqu’au bout, car ces amonts les facturent en entier. S’applique que l’alignement officiel soit activé ou non, et remplace son remboursement d’un client parti.",
-    "Charged the usage upstream billed for a request that ended early: {{amount}}": "Facturation de l’usage facturé par l’amont pour une requête terminée prématurément : {{amount}}"
+    "Charged the usage upstream billed for a request that ended early: {{amount}}": "Facturation de l’usage facturé par l’amont pour une requête terminée prématurément : {{amount}}",
+    "Abnormal request views": "Vues des requêtes anormales",
+    "By user": "Par utilisateur",
+    "All records": "Tous les enregistrements",
+    "All statuses": "Tous les statuts",
+    "Any ending": "Toute fin",
+    "Filter by user": "Filtrer par utilisateur",
+    "All users, or search by username or user ID": "Tous les utilisateurs, ou rechercher par nom ou ID",
+    "Pick one user to choose records to recover.": "Choisissez un utilisateur pour sélectionner les enregistrements à recouvrer.",
+    "Show all users": "Afficher tous les utilisateurs",
+    "Show only the records of {{username}}": "Afficher seulement les enregistrements de {{username}}"
   }
 }

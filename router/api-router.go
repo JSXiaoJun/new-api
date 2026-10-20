@@ -168,6 +168,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/:id", controller.GetUser)
 				adminRoute.GET("/:id/quota/log", controller.GetUserQuotaLogs)
 				adminRoute.GET("/abnormal_charges", controller.GetAbnormalChargeUsers)
+				adminRoute.GET("/abnormal_charges/records", controller.GetAbnormalChargeRecords)
 				adminRoute.GET("/:id/abnormal_charges", controller.GetUserAbnormalCharges)
 				adminRoute.POST("/:id/abnormal_charges/recover", controller.RecoverUserAbnormalCharges)
 				adminRoute.PUT("/:id/strict_billing", controller.SetUserStrictBilling)

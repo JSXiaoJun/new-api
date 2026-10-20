@@ -7615,6 +7615,16 @@
     "Upstream charged {{number}}": "Upstream đã tính phí {{number}}",
     "Charge whatever upstream billed for abandoned requests": "Tính đúng số upstream đã tính cho yêu cầu bị bỏ dở",
     "When on, a user always pays what upstream billed for a request that ended early, and the switches above no longer waive it; only a request that failed before upstream answered stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.": "Khi bật, người dùng luôn trả đúng số upstream đã tính cho yêu cầu kết thúc sớm, và các công tắc ở trên không còn miễn phí nữa; chỉ yêu cầu thất bại trước khi upstream phản hồi là miễn phí. Trên kênh tiếp tục đọc upstream (mặc định với Sub2API), mức sử dụng upstream báo cáo sẽ được tính sau, nên số dư có thể thành số âm. Yêu cầu không phát trực tuyến trên kênh Sub2API và New API cũng sẽ được đọc đến hết, vì các upstream này tính phí toàn bộ. Có hiệu lực dù có bật căn chỉnh theo bản chính thức hay không, và thay thế việc hoàn tiền cho máy khách đã rời đi.",
-    "Charged the usage upstream billed for a request that ended early: {{amount}}": "Tính mức sử dụng upstream đã tính cho yêu cầu kết thúc sớm: {{amount}}"
+    "Charged the usage upstream billed for a request that ended early: {{amount}}": "Tính mức sử dụng upstream đã tính cho yêu cầu kết thúc sớm: {{amount}}",
+    "Abnormal request views": "Chế độ xem yêu cầu bất thường",
+    "By user": "Theo người dùng",
+    "All records": "Tất cả bản ghi",
+    "All statuses": "Mọi trạng thái",
+    "Any ending": "Mọi cách kết thúc",
+    "Filter by user": "Lọc theo người dùng",
+    "All users, or search by username or user ID": "Tất cả người dùng, hoặc tìm theo tên hay ID",
+    "Pick one user to choose records to recover.": "Chọn một người dùng để đánh dấu bản ghi cần thu hồi.",
+    "Show all users": "Hiện tất cả người dùng",
+    "Show only the records of {{username}}": "Chỉ xem bản ghi của {{username}}"
   }
 }

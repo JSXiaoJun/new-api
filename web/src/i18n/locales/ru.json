@@ -7615,6 +7615,16 @@
     "Upstream charged {{number}}": "Списано апстримом: {{number}}",
     "Charge whatever upstream billed for abandoned requests": "Взимать то, что списал апстрим за брошенные запросы",
     "When on, a user always pays what upstream billed for a request that ended early, and the switches above no longer waive it; only a request that failed before upstream answered stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.": "Если включено, за досрочно завершённый запрос пользователь всегда платит то, что списал апстрим, и переключатели выше больше его не освобождают; бесплатным остаётся только запрос, завершившийся ошибкой до ответа апстрима. На каналах, которые дочитывают апстрим (по умолчанию Sub2API), использование, о котором сообщил апстрим, списывается позже, поэтому баланс может стать отрицательным. Непотоковые запросы каналов Sub2API и New API тогда тоже дочитываются, потому что эти апстримы тарифицируют их полностью. Действует независимо от соответствия официальной версии и отменяет её возврат клиенту, который ушёл.",
-    "Charged the usage upstream billed for a request that ended early: {{amount}}": "Списано использование, которое апстрим тарифицировал за досрочно завершённый запрос: {{amount}}"
+    "Charged the usage upstream billed for a request that ended early: {{amount}}": "Списано использование, которое апстрим тарифицировал за досрочно завершённый запрос: {{amount}}",
+    "Abnormal request views": "Представления аномальных запросов",
+    "By user": "По пользователям",
+    "All records": "Все записи",
+    "All statuses": "Все статусы",
+    "Any ending": "Любое завершение",
+    "Filter by user": "Фильтр по пользователю",
+    "All users, or search by username or user ID": "Все пользователи или поиск по имени или ID",
+    "Pick one user to choose records to recover.": "Выберите одного пользователя, чтобы отметить записи для взыскания.",
+    "Show all users": "Показать всех пользователей",
+    "Show only the records of {{username}}": "Только записи {{username}}"
   }
 }

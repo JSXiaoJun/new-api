@@ -21,7 +21,7 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 
 import type {
   AbnormalChargeRecord,
-  AbnormalChargeRecordStatus,
+  AbnormalChargeRecordQuery,
   AbnormalChargeUser,
   AbnormalRecovery,
   ApiPage,
@@ -46,18 +46,16 @@ export async function getAbnormalChargeUsers(
   return requireServerSuccess(res.data).data
 }
 
-export async function getUserAbnormalCharges(
-  userId: number,
-  params: {
-    days: number
-    status: AbnormalChargeRecordStatus
-    p: number
-    page_size: number
-  },
+/**
+ * Lists abnormal request records of every user the admin may manage, newest
+ * first. `user_id` pins one user; `keyword` matches a username or user ID.
+ */
+export async function getAbnormalChargeRecords(
+  params: AbnormalChargeRecordQuery,
   signal?: AbortSignal
 ): Promise<ApiPage<AbnormalChargeRecord>> {
   const res = await api.get<ApiResult<ApiPage<AbnormalChargeRecord>>>(
-    `/api/user/${userId}/abnormal_charges`,
+    '/api/user/abnormal_charges/records',
     { params, signal, ...queryConfig }
   )
   return requireServerSuccess(res.data).data

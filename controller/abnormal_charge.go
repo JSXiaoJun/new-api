@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -82,20 +83,25 @@ func abnormalChargeTargetUser(c *gin.Context) (*model.User, bool) {
 	return user, true
 }
 
-// GetUserAbnormalCharges lists one user's abnormal request records.
-func GetUserAbnormalCharges(c *gin.Context) {
-	user, ok := abnormalChargeTargetUser(c)
-	if !ok {
-		return
-	}
+var abnormalChargeCases = []string{
+	"client_before_response", "client_during_response", "upstream_during_response", "upstream_before_response",
+}
+
+// listAbnormalCharges answers a records page for the given filter, reading
+// the period, status, case and page from the query.
+func listAbnormalCharges(c *gin.Context, filter model.AbnormalChargeFilter) {
 	since, ok := abnormalChargeSince(c)
 	pageInfo := common.GetPageQuery(c)
-	status := c.Query("status")
-	if !ok || !validAbnormalChargePage(pageInfo) || (status != "" && status != "pending" && status != "recovered") {
+	filter.Status, filter.Case = c.Query("status"), c.Query("case")
+	if !ok || !validAbnormalChargePage(pageInfo) ||
+		(filter.Status != "" && filter.Status != "pending" && filter.Status != "recovered") ||
+		(filter.Case != "" && !slices.Contains(abnormalChargeCases, filter.Case)) {
 		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
-	records, total, err := model.ListAbnormalCharges(user.Id, since, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	filter.Since = since
+	filter.OperatorRole = c.GetInt("role")
+	records, total, err := model.ListAbnormalCharges(filter, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -103,6 +109,31 @@ func GetUserAbnormalCharges(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(records)
 	common.ApiSuccess(c, pageInfo)
+}
+
+// GetAbnormalChargeRecords lists abnormal request records of every user the
+// operator may manage, optionally of one user (user_id) or users matching a
+// keyword.
+func GetAbnormalChargeRecords(c *gin.Context) {
+	filter := model.AbnormalChargeFilter{Keyword: c.Query("keyword")}
+	if raw := c.Query("user_id"); raw != "" {
+		id, err := strconv.Atoi(raw)
+		if err != nil || id <= 0 {
+			common.ApiErrorT(c, "Invalid parameters")
+			return
+		}
+		filter.UserId = id
+	}
+	listAbnormalCharges(c, filter)
+}
+
+// GetUserAbnormalCharges lists one user's abnormal request records.
+func GetUserAbnormalCharges(c *gin.Context) {
+	user, ok := abnormalChargeTargetUser(c)
+	if !ok {
+		return
+	}
+	listAbnormalCharges(c, model.AbnormalChargeFilter{UserId: user.Id})
 }
 
 type recoverAbnormalChargesRequest struct {

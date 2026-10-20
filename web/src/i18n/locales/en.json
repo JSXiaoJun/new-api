@@ -7615,6 +7615,16 @@
     "Upstream charged {{number}}": "Upstream charged {{number}}",
     "Charge whatever upstream billed for abandoned requests": "Charge whatever upstream billed for abandoned requests",
     "When on, a user always pays what upstream billed for a request that ended early, and the switches above no longer waive it; only a request that failed before upstream answered stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.": "When on, a user always pays what upstream billed for a request that ended early, and the switches above no longer waive it; only a request that failed before upstream answered stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.",
-    "Charged the usage upstream billed for a request that ended early: {{amount}}": "Charged the usage upstream billed for a request that ended early: {{amount}}"
+    "Charged the usage upstream billed for a request that ended early: {{amount}}": "Charged the usage upstream billed for a request that ended early: {{amount}}",
+    "Abnormal request views": "Abnormal request views",
+    "By user": "By user",
+    "All records": "All records",
+    "All statuses": "All statuses",
+    "Any ending": "Any ending",
+    "Filter by user": "Filter by user",
+    "All users, or search by username or user ID": "All users, or search by username or user ID",
+    "Pick one user to choose records to recover.": "Pick one user to choose records to recover.",
+    "Show all users": "Show all users",
+    "Show only the records of {{username}}": "Show only the records of {{username}}"
   }
 }

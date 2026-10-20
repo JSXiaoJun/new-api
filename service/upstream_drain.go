@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,9 +24,24 @@ import (
 
 const (
 	upstreamDrainKey = "upstream_drain"
-	// maxDrainLine bounds one buffered SSE line while draining.
+	// maxDrainLine bounds one buffered SSE line, and the start of a non-stream
+	// body, while draining.
 	maxDrainLine = 4 << 20
+	// drainTailSize is how much of the end of a longer non-stream body is kept
+	// to find its usage, which every relayed format writes last.
+	drainTailSize = 64 << 10
+	// upstreamChargeAttempts bounds the tries of one automatic charge; each
+	// try claims the record before debiting, so a retry never charges twice.
+	upstreamChargeAttempts = 3
+	// drainCloseGrace is how long a body the handler closed may take to
+	// end before its upstream read is cancelled, as net/http waits after an
+	// early close.
+	drainCloseGrace = 50 * time.Millisecond
 )
+
+// claudeMessageHead matches the start of a Claude Messages body, whose type
+// comes before its content.
+var claudeMessageHead = regexp.MustCompile(`^\s*\{[^{]*?"type"\s*:\s*"message"`)
 
 // UpstreamDrainEnabled reports whether a channel keeps reading a request's
 // reply after the client left. Sub2API bills every abandoned stream, so its
@@ -260,9 +276,15 @@ func (b *drainBody) Close() error {
 			_ = b.reader.CloseWithError(context.Canceled)
 			return
 		}
+		// Only the pump reads or closes the upstream body: closing it here
+		// while the pump is still reading lets net/http signal the end of
+		// this body twice, and the extra signal hangs the next request on
+		// the same keep-alive connection. The pump stops at its next chunk;
+		// the end of a finished stream usually arrives within the grace, so
+		// the connection is reused, and a stalled upstream is cancelled.
 		b.abandoned.Store(true)
 		_ = b.reader.Close()
-		_ = b.raw.Close()
+		time.AfterFunc(drainCloseGrace, b.request.cancel)
 	})
 	return nil
 }
@@ -421,8 +443,19 @@ func (d *upstreamDrain) finish() {
 // request's settled charge and marks the record recovered. The user sees an
 // ordinary consume entry; why it was charged stays admin-only.
 func chargeUpstreamDifference(ctx *gin.Context, info *relaycommon.RelayInfo, record *model.AbnormalCharge) {
-	recovery, err := model.RecoverAbnormalCharges(record.UserId, 0, common.RoleRootUser, []int64{record.Id}, 0, 0)
+	var recovery *model.AbnormalChargeRecovery
+	var err error
+	for attempt := range upstreamChargeAttempts {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
+		}
+		recovery, err = model.RecoverAbnormalCharges(record.UserId, 0, common.RoleRootUser, []int64{record.Id}, 0, 0)
+		if err == nil || errors.Is(err, model.ErrNoAbnormalChargeToRecover) || errors.Is(err, model.ErrWalletQuotaLimitExceeded) {
+			break
+		}
+	}
 	if err != nil {
+		// The record stays pending, so the review page can still recover it.
 		logger.LogError(ctx, common.LogText("failed to charge the upstream billed difference (userId=%d, quota=%d): %s",
 			record.UserId, record.ForgoneQuota, err.Error()))
 		return
@@ -491,13 +524,16 @@ func noteUpstreamDrainSettlement(c *gin.Context, info *relaycommon.RelayInfo, ch
 // relayed formats: OpenAI chat, OpenAI Responses, Claude Messages and Gemini.
 type drainUsageParser struct {
 	line []byte
-	// whole keeps the start of the body for a non-stream JSON reply.
-	whole  []byte
-	sse    bool
-	openAI *dto.Usage
-	resp   *dto.Usage
-	claude *dto.ClaudeUsage
-	gemini *dto.GeminiUsageMetadata
+	// whole keeps the start of the body for a non-stream JSON reply, and
+	// tail the end of a body longer than that.
+	whole     []byte
+	tail      []byte
+	truncated bool
+	sse       bool
+	openAI    *dto.Usage
+	resp      *dto.Usage
+	claude    *dto.ClaudeUsage
+	gemini    *dto.GeminiUsageMetadata
 }
 
 type drainUsageEvent struct {
@@ -522,8 +558,16 @@ func (u *drainRawUsage) UnmarshalJSON(data []byte) error {
 }
 
 func (p *drainUsageParser) feed(data []byte) {
-	if !p.sse && len(p.whole)+len(data) <= maxDrainLine {
-		p.whole = append(p.whole, data...)
+	if !p.sse {
+		if !p.truncated && len(p.whole)+len(data) <= maxDrainLine {
+			p.whole = append(p.whole, data...)
+		} else {
+			p.truncated = true
+			p.tail = append(p.tail, data...)
+			if extra := len(p.tail) - drainTailSize; extra > 0 {
+				p.tail = append(p.tail[:0], p.tail[extra:]...)
+			}
+		}
 	}
 	for len(data) > 0 {
 		index := bytes.IndexByte(data, '\n')
@@ -599,6 +643,82 @@ func (p *drainUsageParser) mergeClaude(usage *dto.ClaudeUsage) {
 	}
 }
 
+// tailUsageEvent rebuilds the usage event of a body too long to keep whole
+// from the last top-level usage object in its tail.
+func (p *drainUsageParser) tailUsageEvent(event *drainUsageEvent) bool {
+	key, value := lastJSONObjectField(p.tail, "usage", "usageMetadata")
+	if value == nil {
+		return false
+	}
+	if key == "usageMetadata" {
+		return common.Unmarshal(value, &event.UsageMetadata) == nil && event.UsageMetadata != nil
+	}
+	event.Usage = &drainRawUsage{raw: value}
+	if claudeMessageHead.Match(p.whole[:min(len(p.whole), 4<<10)]) {
+		event.Type = "message"
+	}
+	return true
+}
+
+// lastJSONObjectField finds the last `"<key>": {...}` among the keys in data
+// and returns the key and its object, or nil when none is complete.
+func lastJSONObjectField(data []byte, keys ...string) (string, []byte) {
+	bestAt, bestKey := -1, ""
+	var best []byte
+	for _, key := range keys {
+		needle := []byte(`"` + key + `"`)
+		for end := len(data); end > 0; {
+			at := bytes.LastIndex(data[:end], needle)
+			if at < 0 {
+				break
+			}
+			end = at
+			if at <= bestAt || (at > 0 && data[at-1] == '\\') {
+				continue
+			}
+			rest := bytes.TrimLeft(data[at+len(needle):], " \t\r\n")
+			if len(rest) == 0 || rest[0] != ':' {
+				continue
+			}
+			if object := leadingJSONObject(bytes.TrimLeft(rest[1:], " \t\r\n")); object != nil {
+				bestAt, bestKey, best = at, key, object
+				break
+			}
+		}
+	}
+	return bestKey, best
+}
+
+// leadingJSONObject returns the balanced JSON object data starts with.
+func leadingJSONObject(data []byte) []byte {
+	if len(data) == 0 || data[0] != '{' {
+		return nil
+	}
+	depth, inString, escaped := 0, false, false
+	for i, b := range data {
+		switch {
+		case escaped:
+			escaped = false
+		case inString:
+			if b == '\\' {
+				escaped = true
+			} else if b == '"' {
+				inString = false
+			}
+		case b == '"':
+			inString = true
+		case b == '{':
+			depth++
+		case b == '}':
+			depth--
+			if depth == 0 {
+				return data[:i+1]
+			}
+		}
+	}
+	return nil
+}
+
 // result returns the usage upstream reported, as a billing usage settlement
 // prices the same way, or nil when the stream carried none.
 func (p *drainUsageParser) result() *dto.Usage {
@@ -609,10 +729,12 @@ func (p *drainUsageParser) result() *dto.Usage {
 	if !p.sse && len(p.whole) > 0 {
 		// A non-stream reply is one JSON body in any of the relayed formats.
 		var event drainUsageEvent
-		if common.Unmarshal(bytes.TrimSpace(p.whole), &event) == nil {
+		if !p.truncated && common.Unmarshal(bytes.TrimSpace(p.whole), &event) == nil {
+			p.observeEvent(&event)
+		} else if p.truncated && p.tailUsageEvent(&event) {
 			p.observeEvent(&event)
 		}
-		p.whole = nil
+		p.whole, p.tail = nil, nil
 	}
 	var billing *dto.BillingUsage
 	switch {
