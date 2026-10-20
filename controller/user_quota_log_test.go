@@ -138,6 +138,51 @@ func TestQuotaCreditsAPIIncludesAdministratorAndRefundIncreases(t *testing.T) {
 	assert.Equal(t, "admin_add", credit.Source)
 }
 
+func TestQuotaCreditsAPIFiltersCreditsAboveMinDelta(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	user := model.User{Id: 42, Username: "credit-filter-user", Role: common.RoleCommonUser}
+	require.NoError(t, db.Create(&user).Error)
+	for _, delta := range []int{2499999, 2500000, 2500001, 9000000} {
+		require.NoError(t, model.IncreaseUserQuota(user.Id, delta, true, model.QuotaCreditMeta{Source: "wallet_refund"}))
+	}
+
+	cases := []struct {
+		name        string
+		query       string
+		wantSuccess bool
+		wantDeltas  []int64
+	}{
+		{name: "no threshold lists every credit", query: "", wantSuccess: true, wantDeltas: []int64{9000000, 2500001, 2500000, 2499999}},
+		{name: "threshold excludes equal credits", query: "&min_delta=2500000", wantSuccess: true, wantDeltas: []int64{9000000, 2500001}},
+		{name: "zero lists every credit", query: "&min_delta=0", wantSuccess: true, wantDeltas: []int64{9000000, 2500001, 2500000, 2499999}},
+		{name: "negative threshold is rejected", query: "&min_delta=-1"},
+		{name: "decimal threshold is rejected", query: "&min_delta=2.5"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := performUserQuotaLogsRequest(t, "42", "?view=credits"+tc.query, common.RoleAdminUser)
+			var response struct {
+				Success bool
+				Data    struct {
+					Total int
+					Items []model.QuotaCredit
+				}
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			require.Equal(t, tc.wantSuccess, response.Success)
+			if !tc.wantSuccess {
+				return
+			}
+			deltas := make([]int64, 0, len(response.Data.Items))
+			for _, credit := range response.Data.Items {
+				deltas = append(deltas, credit.Delta)
+			}
+			assert.Equal(t, len(tc.wantDeltas), response.Data.Total)
+			assert.Equal(t, tc.wantDeltas, deltas)
+		})
+	}
+}
+
 func TestTransferAffQuotaRecordsOnlyCommittedWalletCredits(t *testing.T) {
 	db := setupManageUserTestDB(t)
 	confirmPaymentComplianceForTest(t)
@@ -170,7 +215,7 @@ func TestTransferAffQuotaRecordsOnlyCommittedWalletCredits(t *testing.T) {
 	require.Len(t, logs, 1)
 	assert.Contains(t, logs[0].Content, "Invitation reward transferred to wallet, received ")
 	assert.Contains(t, logs[0].Other, `"key":"Invitation reward transferred to wallet, received {{quota}}"`)
-	credits, total, err := model.GetUserQuotaCredits(user.Id, 0, 20)
+	credits, total, err := model.GetUserQuotaCredits(user.Id, 0, 0, 20)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, total)
 	require.Len(t, credits, 1)

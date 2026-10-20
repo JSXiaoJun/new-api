@@ -37,6 +37,7 @@ const usersSearchSchema = z.object({
     .catch([]),
   group: z.array(z.string()).optional().catch([]),
   inviter: z.string().optional().catch(''),
+  minQuota: z.string().optional().catch(''),
 })
 
 export const Route = createFileRoute('/_authenticated/users/')({

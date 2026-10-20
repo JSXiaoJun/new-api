@@ -206,7 +206,7 @@ describe('User quota history menu', () => {
       expect(api.get).toHaveBeenCalledWith(
         '/api/user/82/quota/log',
         expect.objectContaining({
-          params: { p: 1, page_size: 10, view: 'credits' },
+          params: { p: 1, page_size: 10, view: 'credits', min_delta: 2500000 },
         })
       )
       expect(api.get).not.toHaveBeenCalledWith(
@@ -248,7 +248,7 @@ describe('User quota history menu', () => {
       expect(api.get).toHaveBeenCalledWith(
         '/api/user/82/quota/log',
         expect.objectContaining({
-          params: { p: 2, page_size: 10, view: 'credits' },
+          params: { p: 2, page_size: 10, view: 'credits', min_delta: 2500000 },
         })
       )
       await user.click(within(dialog).getByRole('button', { name: 'Close' }))
@@ -282,13 +282,13 @@ describe('User quota history menu', () => {
       expect(api.get).toHaveBeenCalledWith(
         '/api/user/82/quota/log',
         expect.objectContaining({
-          params: { p: 1, page_size: 10, view: 'credits' },
+          params: { p: 1, page_size: 10, view: 'credits', min_delta: 2500000 },
         })
       )
       expect(api.get).not.toHaveBeenCalledWith(
         '/api/user/82/quota/log',
         expect.objectContaining({
-          params: { p: 2, page_size: 10, view: 'credits' },
+          params: { p: 2, page_size: 10, view: 'credits', min_delta: 2500000 },
         })
       )
     }

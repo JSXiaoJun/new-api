@@ -49,10 +49,16 @@ func RecordQuotaCredit(tx *gorm.DB, credit QuotaCredit) error {
 	return tx.Create(&credit).Error
 }
 
-func GetUserQuotaCredits(userId, startIdx, num int) ([]*QuotaCredit, int64, error) {
+// GetUserQuotaCredits lists a user's credits newest first. A positive minDelta
+// keeps only credits strictly larger than it; credits are always positive, so
+// zero lists every credit.
+func GetUserQuotaCredits(userId int, minDelta int64, startIdx, num int) ([]*QuotaCredit, int64, error) {
 	credits := make([]*QuotaCredit, 0)
 	var total int64
 	query := DB.Model(&QuotaCredit{}).Where("user_id = ?", userId)
+	if minDelta > 0 {
+		query = query.Where("delta > ?", minDelta)
+	}
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}

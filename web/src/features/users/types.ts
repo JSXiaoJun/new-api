@@ -150,6 +150,8 @@ export interface SearchUsersParams {
   keyword?: string
   group?: string
   inviter_id?: number
+  /** Remaining quota floor in quota units, inclusive */
+  min_quota?: number
   role?: string
   status?: string
   p?: number

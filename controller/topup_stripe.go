@@ -304,7 +304,8 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 		return
 	}
 
-	err := model.Recharge(referenceId, customerId, callerIp)
+	paidAmount, paidCurrency := stripeChargedAmount(event.GetObjectValue("amount_total"), event.GetObjectValue("currency"))
+	err := model.Recharge(referenceId, customerId, callerIp, paidAmount, paidCurrency)
 	if err != nil {
 		logger.LogError(ctx, common.LogText("Stripe top-up processing failed trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
 		return
@@ -313,6 +314,38 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 	total, _ := strconv.ParseFloat(event.GetObjectValue("amount_total"), 64)
 	currency := strings.ToUpper(event.GetObjectValue("currency"))
 	logger.LogInfo(ctx, common.LogText("Stripe top-up succeeded trade_no=%s amount_total=%.2f currency=%s event_type=%s client_ip=%s", referenceId, total/100, currency, string(event.Type), callerIp))
+}
+
+// Stripe amounts are integers in the currency's smallest unit; these
+// currencies have no minor unit or three decimal places.
+// https://docs.stripe.com/currencies#minor-units
+var (
+	stripeZeroDecimalCurrencies = map[string]bool{
+		"BIF": true, "CLP": true, "DJF": true, "GNF": true, "JPY": true, "KMF": true,
+		"KRW": true, "MGA": true, "PYG": true, "RWF": true, "UGX": true, "VND": true,
+		"VUV": true, "XAF": true, "XOF": true, "XPF": true,
+	}
+	stripeThreeDecimalCurrencies = map[string]bool{
+		"BHD": true, "JOD": true, "KWD": true, "OMR": true, "TND": true,
+	}
+)
+
+// stripeChargedAmount converts a checkout session's amount_total into a
+// decimal amount and an upper-case currency code. It returns empty strings
+// when Stripe did not report a valid total.
+func stripeChargedAmount(amountTotal string, currency string) (string, string) {
+	total, err := strconv.ParseInt(strings.TrimSpace(amountTotal), 10, 64)
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	if err != nil || total < 0 || currency == "" {
+		return "", ""
+	}
+	places := int32(2)
+	if stripeZeroDecimalCurrencies[currency] {
+		places = 0
+	} else if stripeThreeDecimalCurrencies[currency] {
+		places = 3
+	}
+	return decimal.New(total, -places).StringFixed(places), currency
 }
 
 func sessionExpired(ctx context.Context, event stripe.Event) {

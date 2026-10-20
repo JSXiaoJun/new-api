@@ -441,8 +441,9 @@ func GetAllUsers(pageInfo *common.PageInfo, sortOptions ...UserSortOptions) (use
 }
 
 // SearchUsers filters users by keyword, group, role and status. A positive
-// inviterId limits the result to users who registered with that user's code.
-func SearchUsers(keyword string, group string, role *int, status *int, inviterId int, startIdx int, num int, sortOptions ...UserSortOptions) ([]*User, int64, error) {
+// inviterId limits the result to users who registered with that user's code,
+// and a non-nil minQuota to users whose remaining quota is at least that value.
+func SearchUsers(keyword string, group string, role *int, status *int, inviterId int, minQuota *int, startIdx int, num int, sortOptions ...UserSortOptions) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -488,6 +489,9 @@ func SearchUsers(keyword string, group string, role *int, status *int, inviterId
 	}
 	if inviterId > 0 {
 		query = query.Where("inviter_id = ?", inviterId)
+	}
+	if minQuota != nil {
+		query = query.Where("quota >= ?", *minQuota)
 	}
 	if role != nil {
 		query = query.Where("role = ?", *role)

@@ -115,7 +115,7 @@ describe('User quota history dialog', () => {
     expect(api.get).toHaveBeenCalledWith(
       '/api/user/282/quota/log',
       expect.objectContaining({
-        params: { p: 1, page_size: 10, view: 'credits' },
+        params: { p: 1, page_size: 10, view: 'credits', min_delta: 2500000 },
         signal: expect.any(AbortSignal),
       })
     )
@@ -148,7 +148,7 @@ describe('User quota history dialog', () => {
       expect(api.get).toHaveBeenLastCalledWith(
         '/api/user/282/quota/log',
         expect.objectContaining({
-          params: { p: 2, page_size: 10, view: 'credits' },
+          params: { p: 2, page_size: 10, view: 'credits', min_delta: 2500000 },
         })
       )
     )
@@ -164,7 +164,7 @@ describe('User quota history dialog', () => {
       expect(api.get).toHaveBeenLastCalledWith(
         '/api/user/282/quota/log',
         expect.objectContaining({
-          params: { p: 1, page_size: 10, view: 'credits' },
+          params: { p: 1, page_size: 10, view: 'credits', min_delta: 2500000 },
         })
       )
     )
@@ -187,7 +187,7 @@ describe('User quota history dialog', () => {
       expect(api.get).toHaveBeenLastCalledWith(
         '/api/user/282/quota/log',
         expect.objectContaining({
-          params: { p: 1, page_size: 20, view: 'credits' },
+          params: { p: 1, page_size: 20, view: 'credits', min_delta: 2500000 },
         })
       )
     )
@@ -466,7 +466,7 @@ describe('User quota history dialog', () => {
     expect(api.get).toHaveBeenLastCalledWith(
       '/api/user/282/quota/log',
       expect.objectContaining({
-        params: { p: 2, page_size: 10, view: 'credits' },
+        params: { p: 2, page_size: 10, view: 'credits', min_delta: 2500000 },
       })
     )
     expect(
@@ -518,7 +518,7 @@ describe('User quota history dialog', () => {
     expect(api.get).toHaveBeenLastCalledWith(
       '/api/user/303/quota/log',
       expect.objectContaining({
-        params: { p: 1, page_size: 10, view: 'credits' },
+        params: { p: 1, page_size: 10, view: 'credits', min_delta: 2500000 },
       })
     )
     await act(async () =>
@@ -564,5 +564,234 @@ describe('User quota history dialog', () => {
     expect(screen.getByText(`${longName} (User ID: 282)`)).toHaveClass(
       'break-all'
     )
+  })
+
+  test('credit amount filter starts at 5, restarts at page one when changed, and lists every credit when cleared', async () => {
+    vi.mocked(api.get).mockResolvedValue(creditResponse([creditRecord], 25))
+    const user = userEvent.setup()
+    render(
+      <UserQuotaHistoryDialog open onOpenChange={vi.fn()} user={targetUser} />,
+      { wrapper: Wrapper }
+    )
+    const input = await screen.findByRole('textbox', {
+      name: 'Credit amount greater than (USD)',
+    })
+    expect(input).toHaveValue('5')
+    await screen.findByText(creditRecord.reference)
+    await user.click(screen.getByRole('button', { name: 'Go to next page' }))
+    await waitFor(() => expect(screen.getByText('Page 2 of 3')).toBeVisible())
+
+    await user.clear(input)
+    await user.type(input, '20')
+
+    await waitFor(
+      () =>
+        expect(api.get).toHaveBeenLastCalledWith(
+          '/api/user/282/quota/log',
+          expect.objectContaining({
+            params: {
+              p: 1,
+              page_size: 10,
+              view: 'credits',
+              min_delta: 10000000,
+            },
+          })
+        ),
+      { timeout: 2000 }
+    )
+    expect(api.get).not.toHaveBeenCalledWith(
+      '/api/user/282/quota/log',
+      expect.objectContaining({
+        params: expect.objectContaining({ p: 2, min_delta: 10000000 }),
+      })
+    )
+
+    await user.clear(input)
+
+    await waitFor(
+      () =>
+        expect(vi.mocked(api.get).mock.lastCall?.[1]?.params).toEqual({
+          p: 1,
+          page_size: 10,
+          view: 'credits',
+          min_delta: undefined,
+        }),
+      { timeout: 2000 }
+    )
+  })
+
+  // 1e15 USD is beyond the quota the browser can send exactly.
+  test.each(['x', '000000000000000'])(
+    'the invalid credit amount 5%s is flagged and keeps the last valid filter',
+    async (suffix) => {
+      const user = userEvent.setup()
+      render(
+        <UserQuotaHistoryDialog
+          open
+          onOpenChange={vi.fn()}
+          user={targetUser}
+        />,
+        { wrapper: Wrapper }
+      )
+      const input = await screen.findByRole('textbox', {
+        name: 'Credit amount greater than (USD)',
+      })
+      await screen.findByText(creditRecord.reference)
+
+      await user.type(input, suffix)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Enter a valid amount'
+      )
+      expect(input).toHaveAttribute('aria-invalid', 'true')
+      expect(screen.getByText(creditRecord.reference)).toBeVisible()
+      for (const [, config] of vi.mocked(api.get).mock.calls) {
+        expect(config?.params).toMatchObject({ min_delta: 2500000 })
+      }
+    }
+  )
+
+  test('the credit amount filter is hidden on historical logs', async () => {
+    const user = userEvent.setup()
+    render(
+      <UserQuotaHistoryDialog open onOpenChange={vi.fn()} user={targetUser} />,
+      { wrapper: Wrapper }
+    )
+    await screen.findByText(creditRecord.reference)
+    vi.mocked(api.get).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: { items: [legacyRecord], total: 1, page: 1, page_size: 10 },
+      },
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Historical logs' }))
+
+    await screen.findByRole('cell', { name: legacyRecord.content })
+    expect(
+      screen.queryByRole('textbox', { name: /Credit amount greater than/ })
+    ).not.toBeInTheDocument()
+    expect(api.get).toHaveBeenLastCalledWith(
+      '/api/user/282/quota/log',
+      expect.objectContaining({
+        params: { p: 1, page_size: 10, view: 'legacy' },
+      })
+    )
+  })
+
+  const topUpKey =
+    'Online top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}'
+  test('historical logs show the paid amount next to the credited quota of a top-up and only the quota of an administrator credit', async () => {
+    const user = userEvent.setup()
+    render(
+      <UserQuotaHistoryDialog open onOpenChange={vi.fn()} user={targetUser} />,
+      { wrapper: Wrapper }
+    )
+    await screen.findByText(creditRecord.reference)
+    vi.mocked(api.get).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          items: [
+            {
+              ...legacyRecord,
+              id: 31,
+              other: JSON.stringify({
+                content_parts: [
+                  {
+                    key: topUpKey,
+                    params: { quota: '¥70.000000', amount: '10.000000' },
+                  },
+                ],
+              }),
+            },
+            {
+              ...legacyRecord,
+              id: 32,
+              other: JSON.stringify({
+                op: {
+                  action: 'user.quota_add',
+                  params: { quota: 5000000, from: 0, to: 5000000 },
+                },
+                admin_info: { admin_id: 1, admin_username: 'quota-admin' },
+              }),
+            },
+          ],
+          total: 2,
+          page: 1,
+          page_size: 10,
+        },
+      },
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Historical logs' }))
+
+    const table = await screen.findByRole('table', { name: 'Historical logs' })
+    const headers = within(table)
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent)
+    expect(headers).toEqual([
+      'Time',
+      'Type',
+      'Quota change',
+      'Paid Amount',
+      'Details',
+      'Operator Admin',
+    ])
+    const [, topUp, credit] = within(table).getAllByRole('row')
+    expect(
+      within(topUp)
+        .getAllByRole('cell')
+        .map((cell) => cell.textContent)
+        .slice(2, 4)
+    ).toEqual(['+¥70', '10'])
+    expect(
+      within(credit)
+        .getAllByRole('cell')
+        .map((cell) => cell.textContent)
+        .slice(2, 4)
+    ).toEqual(['+$10', '-'])
+  })
+
+  test('historical top-ups render their structured message instead of the stored English text', async () => {
+    const user = userEvent.setup()
+    render(
+      <UserQuotaHistoryDialog open onOpenChange={vi.fn()} user={targetUser} />,
+      { wrapper: Wrapper }
+    )
+    await screen.findByText(creditRecord.reference)
+    vi.mocked(api.get).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          items: [
+            {
+              ...legacyRecord,
+              content: 'Stored English text',
+              other: JSON.stringify({
+                content_parts: [
+                  {
+                    key: topUpKey,
+                    params: { quota: '$7.000000', amount: '7.00' },
+                  },
+                ],
+              }),
+            },
+          ],
+          total: 1,
+          page: 1,
+          page_size: 10,
+        },
+      },
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Historical logs' }))
+
+    expect(
+      await screen.findByRole('cell', {
+        name: 'Online top-up succeeded, amount added: $7.000000, payment amount: 7.00',
+      })
+    ).toBeVisible()
+    expect(screen.queryByText('Stored English text')).not.toBeInTheDocument()
   })
 })

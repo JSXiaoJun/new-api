@@ -24,11 +24,14 @@ import { Empty, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import {
   parseLogOther,
   renderAuditContent,
+  renderLogContent,
 } from '@/features/usage-logs/lib/format'
+import { toIntlLocale } from '@/i18n/languages'
 import { formatQuotaWithCurrency } from '@/lib/currency'
-import { formatTimestampToDate } from '@/lib/format'
+import { formatNumber, formatTimestampToDate } from '@/lib/format'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
+import { getHistoricalWalletChange } from '../../lib/wallet-change'
 import type { UserQuotaCredit, UserQuotaLog } from '../../types'
 
 function CreditSource(props: { source: string }) {
@@ -159,11 +162,13 @@ export function UserQuotaLegacyTable(props: {
   records: UserQuotaLog[]
   busy: boolean
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  useSystemConfigStore((state) => state.config.currency)
   return (
     <StaticDataTable<UserQuotaLog>
       className='rounded-none border-0'
-      tableClassName='min-w-[760px] table-fixed [&_th]:whitespace-normal'
+      tableClassName='min-w-[860px] table-fixed [&_th]:whitespace-normal'
       tableProps={{
         'aria-label': t('Historical logs'),
         'aria-busy': props.busy,
@@ -202,17 +207,23 @@ export function UserQuotaLegacyTable(props: {
         },
         {
           id: 'quota',
-          header: t('Recorded quota (raw)'),
-          className: 'w-32',
+          header: t('Quota change'),
+          className: 'w-36',
+          cellClassName: 'whitespace-normal break-all tabular-nums',
+          cell: (record) =>
+            getHistoricalWalletChange(record).quota ?? t('Unknown amount'),
+        },
+        {
+          id: 'paid',
+          header: t('Paid Amount'),
+          className: 'w-28',
           cellClassName: 'whitespace-normal break-all tabular-nums',
           cell: (record) => {
-            if (
-              record.quota !== 0 &&
-              (record.type === 2 || record.type === 6)
-            ) {
-              return String(record.quota)
-            }
-            return t('Unknown amount')
+            const paid = getHistoricalWalletChange(record).paid
+            if (paid === null) return '-'
+            if (paid === 'unrecorded') return t('Not recorded')
+            const amount = formatNumber(paid.amount, locale)
+            return paid.currency ? `${amount} ${paid.currency}` : amount
           },
         },
         {
@@ -220,10 +231,15 @@ export function UserQuotaLegacyTable(props: {
           header: t('Details'),
           cellClassName:
             'whitespace-normal break-words [overflow-wrap:anywhere]',
-          cell: (record) =>
-            renderAuditContent(parseLogOther(record.other), t) ||
-            record.content ||
-            '-',
+          cell: (record) => {
+            const other = parseLogOther(record.other)
+            return (
+              renderAuditContent(other, t) ||
+              renderLogContent(other, t) ||
+              record.content ||
+              '-'
+            )
+          },
         },
         {
           id: 'operator',

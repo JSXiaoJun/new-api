@@ -18,12 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
 import { Alert, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -32,6 +34,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useDebounce } from '@/hooks/use-debounce'
+import { getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
+import { parseQuotaFromDollars } from '@/lib/format'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { getUserQuotaLogs } from '../../api'
 import type {
@@ -44,6 +50,21 @@ import {
   UserQuotaLegacyTable,
 } from './user-quota-history-tables'
 
+// Small settlement refunds crowd out top-ups and administrator credits, so
+// the credit list starts at this amount in the configured display currency.
+const DEFAULT_MIN_CREDIT_AMOUNT = '5'
+
+// Empty lists every credit. The quota must reach the server exactly.
+function isCreditAmount(value: string) {
+  if (value === '') return true
+  const amount = Number(value)
+  return (
+    /^\d+(\.\d+)?$/.test(value) &&
+    Number.isFinite(amount) &&
+    Number.isSafeInteger(parseQuotaFromDollars(amount))
+  )
+}
+
 interface UserQuotaHistoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -52,8 +73,27 @@ interface UserQuotaHistoryDialogProps {
 
 export function UserQuotaHistoryDialog(props: UserQuotaHistoryDialogProps) {
   const { t } = useTranslation()
+  const minCreditInputId = useId()
   const [view, setView] = useState<UserQuotaHistoryView>('credits')
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10 })
+  const [minCreditInput, setMinCreditInput] = useState(
+    DEFAULT_MIN_CREDIT_AMOUNT
+  )
+  const [validMinCredit, setValidMinCredit] = useState(
+    DEFAULT_MIN_CREDIT_AMOUNT
+  )
+  const minCreditAmount = useDebounce(validMinCredit, 500)
+  const [appliedMinCredit, setAppliedMinCredit] = useState(minCreditAmount)
+  if (appliedMinCredit !== minCreditAmount) {
+    setAppliedMinCredit(minCreditAmount)
+    setPagination((current) => ({ ...current, page: 1 }))
+  }
+  useSystemConfigStore((state) => state.config.currency)
+  const isMinCreditInputValid = isCreditAmount(minCreditInput.trim())
+  const minDelta =
+    minCreditAmount === ''
+      ? undefined
+      : parseQuotaFromDollars(Number(minCreditAmount))
   const query = useQuery<
     | { view: 'credits'; page: UserQuotaCreditsPage }
     | { view: 'legacy'; page: UserQuotaLogsPage }
@@ -64,6 +104,7 @@ export function UserQuotaHistoryDialog(props: UserQuotaHistoryDialogProps) {
       view,
       pagination.page,
       pagination.pageSize,
+      view === 'credits' ? minDelta : undefined,
     ],
     enabled: props.open,
     placeholderData: (previousData, previousQuery) =>
@@ -89,7 +130,12 @@ export function UserQuotaHistoryDialog(props: UserQuotaHistoryDialogProps) {
       }
       const result = await getUserQuotaLogs(
         props.user.id,
-        { p: pagination.page, page_size: pagination.pageSize, view: 'credits' },
+        {
+          p: pagination.page,
+          page_size: pagination.pageSize,
+          view: 'credits',
+          min_delta: minDelta,
+        },
         signal
       )
       if (!result.success || !result.data) {
@@ -212,6 +258,48 @@ export function UserQuotaHistoryDialog(props: UserQuotaHistoryDialogProps) {
             'Wallet credit records begin after auditing is enabled. Unrecorded or deleted history cannot be recovered.'
           )}
         </p>
+        {view === 'credits' ? (
+          <div className='flex flex-wrap items-center gap-2'>
+            <Label htmlFor={minCreditInputId} className='text-sm font-normal'>
+              {t('Credit amount greater than ({{currency}})', {
+                currency: isCurrencyDisplayEnabled()
+                  ? getCurrencyLabel()
+                  : t('Tokens'),
+              })}
+            </Label>
+            <div className='w-full sm:w-36'>
+              <Input
+                id={minCreditInputId}
+                inputMode='decimal'
+                aria-invalid={!isMinCreditInputValid}
+                aria-describedby={
+                  isMinCreditInputValid
+                    ? undefined
+                    : `${minCreditInputId}-error`
+                }
+                placeholder={t('All amounts')}
+                value={minCreditInput}
+                onChange={(event) => {
+                  const next = event.target.value
+                  setMinCreditInput(next)
+                  if (isCreditAmount(next.trim())) {
+                    setValidMinCredit(next.trim())
+                  }
+                }}
+                className='h-8'
+              />
+            </div>
+            {!isMinCreditInputValid && (
+              <p
+                id={`${minCreditInputId}-error`}
+                role='alert'
+                className='text-destructive w-full text-xs'
+              >
+                {t('Enter a valid amount')}
+              </p>
+            )}
+          </div>
+        ) : null}
         {query.isError ? (
           <Alert variant='destructive'>
             <AlertTitle>{t('Failed to load quota records')}</AlertTitle>

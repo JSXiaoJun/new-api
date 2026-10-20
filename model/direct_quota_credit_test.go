@@ -42,7 +42,7 @@ func TestTopUpCreditAuditIsAtomicAndRecordedOnce(t *testing.T) {
 			return err
 		}},
 		{"stripe", PaymentProviderStripe, 30, 0, true, func(tradeNo string) error {
-			return Recharge(tradeNo, "customer", "127.0.0.1")
+			return Recharge(tradeNo, "customer", "127.0.0.1", "", "")
 		}},
 		{"creem", PaymentProviderCreem, 2, 0, true, func(tradeNo string) error {
 			return RechargeCreem(tradeNo, "", "", "127.0.0.1")
@@ -104,6 +104,51 @@ func TestTopUpCreditAuditIsAtomicAndRecordedOnce(t *testing.T) {
 	}
 }
 
+func TestStripeTopUpLogRecordsTheChargedAmount(t *testing.T) {
+	oldQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 10
+	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
+
+	for _, tt := range []struct {
+		name         string
+		paidAmount   string
+		paidCurrency string
+		wantParams   map[string]any
+	}{
+		{"charged total", "146.00", "CNY", map[string]any{"amount": "146.00", "currency": "CNY"}},
+		{"total not reported", "", "", map[string]any{"amount": "-"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			truncateTables(t)
+			user := insertUserForPaymentGuardTest(t, 702, 7)
+			order := &TopUp{
+				UserId: user.Id, TradeNo: "stripe-paid-" + tt.paidCurrency,
+				Amount: 20, Money: 20, PaymentProvider: PaymentProviderStripe,
+				PaymentMethod: PaymentMethodStripe, Status: common.TopUpStatusPending,
+			}
+			require.NoError(t, DB.Create(order).Error)
+
+			require.NoError(t, Recharge(order.TradeNo, "customer", "127.0.0.1", tt.paidAmount, tt.paidCurrency))
+
+			// The wallet is credited from Money, whatever the charge was.
+			assert.Equal(t, 7+200, getUserQuotaForPaymentGuardTest(t, user.Id))
+			var log Log
+			require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", user.Id, LogTypeTopup).First(&log).Error)
+			var other struct {
+				ContentParts []struct {
+					Key    string         `json:"key"`
+					Params map[string]any `json:"params"`
+				} `json:"content_parts"`
+			}
+			require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+			require.NotEmpty(t, other.ContentParts)
+			params := other.ContentParts[0].Params
+			delete(params, "quota")
+			assert.Equal(t, tt.wantParams, params)
+		})
+	}
+}
+
 func TestRedemptionAuditFailureRollsBackRedemptionAndWallet(t *testing.T) {
 	userId, key := setupRedeemFixture(t, 500)
 	rejectDirectQuotaCreditWrites(t)
@@ -153,7 +198,7 @@ func TestZeroRedemptionSucceedsWithoutCreditRecord(t *testing.T) {
 	require.NoError(t, DB.Where("name = ?", "redeem-test").First(&redemption).Error)
 	assert.Equal(t, common.RedemptionCodeStatusUsed, redemption.Status)
 	assert.Equal(t, userId, redemption.UsedUserId)
-	_, total, err := GetUserQuotaCredits(userId, 0, 10)
+	_, total, err := GetUserQuotaCredits(userId, 0, 0, 10)
 	require.NoError(t, err)
 	assert.Zero(t, total)
 }
@@ -173,7 +218,7 @@ func TestZeroCheckinSucceedsWithoutCreditRecord(t *testing.T) {
 	var saved Checkin
 	require.NoError(t, DB.First(&saved, checkin.Id).Error)
 	assert.Zero(t, saved.QuotaAwarded)
-	_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
+	_, total, err := GetUserQuotaCredits(user.Id, 0, 0, 10)
 	require.NoError(t, err)
 	assert.Zero(t, total)
 }

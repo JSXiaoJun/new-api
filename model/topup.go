@@ -622,7 +622,10 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 	return false, nil
 }
 
-func Recharge(referenceId string, customerId string, callerIp string) (err error) {
+// Recharge credits a completed Stripe checkout. paidAmount and paidCurrency
+// are what Stripe charged; TopUp.Money is the quota base, not the charge.
+// An empty paidAmount logs the payment as unknown.
+func Recharge(referenceId string, customerId string, callerIp string, paidAmount string, paidCurrency string) (err error) {
 	if referenceId == "" {
 		return errors.New("payment order number not provided")
 	}
@@ -682,7 +685,12 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		return errors.New("top-up failed")
 	}
 
-	RecordTopupLog(topUp.UserId, common.NewMessage("Online top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}", map[string]any{"quota": logger.FormatQuota(quota), "amount": topUp.Amount}), callerIp, topUp.PaymentMethod, PaymentMethodStripe, bonusNote)
+	paid := map[string]any{"quota": logger.FormatQuota(quota), "amount": "-"}
+	if paidAmount != "" {
+		paid["amount"] = paidAmount
+		paid["currency"] = paidCurrency
+	}
+	RecordTopupLog(topUp.UserId, common.NewMessage("Online top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}", paid), callerIp, topUp.PaymentMethod, PaymentMethodStripe, bonusNote)
 	inviterReward.record(topUp.UserId)
 
 	return nil

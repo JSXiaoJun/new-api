@@ -93,7 +93,7 @@ func TestWalletCreditHydrationBetweenCommitAndAckDoesNotDoubleCredit(t *testing.
 			assert.False(t, ok)
 			FlushWalletJournals()
 			assert.Equal(t, 110, getUserQuotaFromDB(t, user.Id))
-			_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
+			_, total, err := GetUserQuotaCredits(user.Id, 0, 0, 10)
 			require.NoError(t, err)
 			assert.EqualValues(t, 1, total)
 		})
@@ -125,7 +125,7 @@ func TestWalletAckFailureRecoveryDoesNotReplayCredit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 80, quota)
 	assert.Equal(t, 80, getUserQuotaFromDB(t, user.Id))
-	_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
+	_, total, err := GetUserQuotaCredits(user.Id, 0, 0, 10)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, total)
 }
@@ -148,7 +148,7 @@ func TestWalletJournalSurvivesNewClientAndConcurrentFlush(t *testing.T) {
 	}
 	wg.Wait()
 	assert.Equal(t, 25, getUserQuotaFromDB(t, user.Id))
-	_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
+	_, total, err := GetUserQuotaCredits(user.Id, 0, 0, 10)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, total)
 }
@@ -248,7 +248,7 @@ func TestWalletOverrideDrainsPendingDebitsAndAuditsActualIncrease(t *testing.T) 
 	assert.Equal(t, 20, adjustment.Before)
 	FlushWalletJournals()
 	assert.Equal(t, 50, getUserQuotaFromDB(t, user.Id))
-	rows, total, err := GetUserQuotaCredits(user.Id, 0, 10)
+	rows, total, err := GetUserQuotaCredits(user.Id, 0, 0, 10)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total)
 	assert.EqualValues(t, 30, rows[0].Delta)
@@ -329,7 +329,7 @@ func TestWalletPaymentProvidersDrainPendingDebitsWithoutReplayingCredit(t *testi
 				case PaymentProviderEpay:
 					_, err = RechargeEpay(order.TradeNo, "alipay", "")
 				case PaymentProviderStripe:
-					err = Recharge(order.TradeNo, "customer", "")
+					err = Recharge(order.TradeNo, "customer", "", "", "")
 				case PaymentProviderCreem:
 					err = RechargeCreem(order.TradeNo, "", "", "")
 				case PaymentProviderWaffo:
@@ -348,7 +348,7 @@ func TestWalletPaymentProvidersDrainPendingDebitsWithoutReplayingCredit(t *testi
 			require.NoError(t, err)
 			assert.Equal(t, 30, quota)
 			assert.Equal(t, 30, getUserQuotaFromDB(t, user.Id))
-			_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
+			_, total, err := GetUserQuotaCredits(user.Id, 0, 0, 10)
 			require.NoError(t, err)
 			assert.EqualValues(t, 1, total)
 		})
@@ -427,7 +427,7 @@ func TestWalletIntegerBoundariesDoNotTurnChargesIntoCredits(t *testing.T) {
 			FlushWalletJournals()
 			// The reservation and the overdraft each took MaxQuota.
 			assert.Equal(t, -common.MaxQuota, getUserQuotaFromDB(t, user.Id))
-			_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
+			_, total, err := GetUserQuotaCredits(user.Id, 0, 0, 10)
 			require.NoError(t, err)
 			assert.Zero(t, total)
 
@@ -436,7 +436,7 @@ func TestWalletIntegerBoundariesDoNotTurnChargesIntoCredits(t *testing.T) {
 			require.Error(t, DecreaseUserQuota(floor.Id, 2, false))
 			FlushWalletJournals()
 			assert.Equal(t, -common.MaxWalletQuota+1, getUserQuotaFromDB(t, floor.Id))
-			_, total, err = GetUserQuotaCredits(floor.Id, 0, 10)
+			_, total, err = GetUserQuotaCredits(floor.Id, 0, 0, 10)
 			require.NoError(t, err)
 			assert.Zero(t, total)
 		})
@@ -481,7 +481,7 @@ func TestWalletEnrollmentRollbackRecoversWithoutApplyingFailedCredit(t *testing.
 	assert.Equal(t, 100, quota)
 	require.NoError(t, IncreaseUserQuota(user.Id, 10, true))
 	assert.Equal(t, 110, getUserQuotaFromDB(t, user.Id))
-	_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
+	_, total, err := GetUserQuotaCredits(user.Id, 0, 0, 10)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, total)
 }
@@ -605,7 +605,7 @@ func TestWalletRedisCommandReplayIsIdempotentAcrossCheckpoint(t *testing.T) {
 		FlushWalletJournals()
 	}
 	assert.Equal(t, 110, getUserQuotaFromDB(t, user.Id))
-	_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
+	_, total, err := GetUserQuotaCredits(user.Id, 0, 0, 10)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, total)
 }
@@ -657,7 +657,7 @@ func TestWalletConcurrentSQLConnectionsCommitJournalOnce(t *testing.T) {
 	quota, err := GetUserQuota(user.Id, false)
 	require.NoError(t, err)
 	assert.Equal(t, 30, quota)
-	_, total, err := GetUserQuotaCredits(user.Id, 0, 10)
+	_, total, err := GetUserQuotaCredits(user.Id, 0, 0, 10)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, total)
 }

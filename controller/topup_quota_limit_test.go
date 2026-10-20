@@ -201,3 +201,23 @@ func TestStripeCreditedQuotaIncludesGroupRatio(t *testing.T) {
 	require.NoError(t, common.UpdateTopupGroupRatioByJSONString(`{"free":0}`))
 	assert.True(t, decimal.NewFromInt(500000).Equal(getStripeCreditedQuota(1, "free")))
 }
+
+func TestStripeChargedAmountUsesTheCurrencyMinorUnit(t *testing.T) {
+	for _, tc := range []struct {
+		total, currency          string
+		wantAmount, wantCurrency string
+	}{
+		{"14600", "cny", "146.00", "CNY"},
+		{"5000", "jpy", "5000", "JPY"},
+		{"12345", "kwd", "12.345", "KWD"},
+		{"0", "usd", "0.00", "USD"},
+		{"", "usd", "", ""},
+		{"-100", "usd", "", ""},
+		{"1.5", "usd", "", ""},
+		{"100", "", "", ""},
+	} {
+		amount, currency := stripeChargedAmount(tc.total, tc.currency)
+		assert.Equal(t, tc.wantAmount, amount, "amount_total=%q currency=%q", tc.total, tc.currency)
+		assert.Equal(t, tc.wantCurrency, currency, "amount_total=%q currency=%q", tc.total, tc.currency)
+	}
+}

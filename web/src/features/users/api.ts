@@ -79,6 +79,7 @@ export async function searchUsers(
     keyword = '',
     group = '',
     inviter_id,
+    min_quota,
     role = '',
     status = '',
     p = 1,
@@ -90,6 +91,7 @@ export async function searchUsers(
   queryParams.set('keyword', keyword)
   queryParams.set('group', group)
   if (inviter_id) queryParams.set('inviter_id', String(inviter_id))
+  if (min_quota !== undefined) queryParams.set('min_quota', String(min_quota))
   if (role) queryParams.set('role', role)
   if (status) queryParams.set('status', status)
   queryParams.set('p', String(p))
@@ -110,7 +112,13 @@ export async function getUser(id: number): Promise<ApiResponse<User>> {
 
 export function getUserQuotaLogs(
   userId: number,
-  params: { p: number; page_size: number; view?: 'credits' },
+  // min_delta keeps only credits strictly larger than it, in quota units.
+  params: {
+    p: number
+    page_size: number
+    view?: 'credits'
+    min_delta?: number
+  },
   signal?: AbortSignal
 ): Promise<ApiResponse<UserQuotaCreditsPage>>
 export function getUserQuotaLogs(
@@ -120,7 +128,12 @@ export function getUserQuotaLogs(
 ): Promise<ApiResponse<UserQuotaLogsPage>>
 export async function getUserQuotaLogs(
   userId: number,
-  params: { p: number; page_size: number; view?: UserQuotaHistoryView },
+  params: {
+    p: number
+    page_size: number
+    view?: UserQuotaHistoryView
+    min_delta?: number
+  },
   signal?: AbortSignal
 ): Promise<ApiResponse<UserQuotaCreditsPage | UserQuotaLogsPage>> {
   const res = await api.get(`/api/user/${userId}/quota/log`, {

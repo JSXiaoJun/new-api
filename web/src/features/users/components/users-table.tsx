@@ -32,10 +32,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
+import { getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
+import { parseQuotaFromDollars } from '@/lib/format'
 import {
   createServerError,
   requireServerSuccess,
 } from '@/lib/server-error-message'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { getGroups, getUsers, searchUsers } from '../api'
 import {
@@ -64,6 +67,18 @@ function isDisabledUserRow(user: User) {
   return isUserDeleted(user) || user.status === USER_STATUS.DISABLED
 }
 
+// An amount in the configured display currency (or tokens), possibly negative,
+// whose quota the server can receive exactly.
+function isQuotaAmount(value: string) {
+  if (value === '') return true
+  const amount = Number(value)
+  return (
+    /^-?\d+(\.\d+)?$/.test(value) &&
+    Number.isFinite(amount) &&
+    Number.isSafeInteger(parseQuotaFromDollars(amount))
+  )
+}
+
 export function UsersTable() {
   const { t } = useTranslation()
   const columns = useUsersColumns()
@@ -89,8 +104,26 @@ export function UsersTable() {
       { columnId: 'role', searchKey: 'role', type: 'array' },
       { columnId: 'group', searchKey: 'group', type: 'array' },
       { columnId: '_inviterSearch', searchKey: 'inviter', type: 'string' },
+      { columnId: '_minQuotaSearch', searchKey: 'minQuota', type: 'string' },
     ],
   })
+  useSystemConfigStore((state) => state.config.currency)
+  const {
+    value: minQuotaFilter,
+    inputValue: minQuotaFilterInput,
+    setInputValue: setMinQuotaFilterInput,
+  } = useDebouncedColumnFilter({
+    columnFilters,
+    columnId: '_minQuotaSearch',
+    onColumnFiltersChange,
+  })
+  const minQuotaAmount = minQuotaFilter.trim()
+  const isMinQuotaInputValid = isQuotaAmount(minQuotaFilterInput.trim())
+  const isMinQuotaValid = isQuotaAmount(minQuotaAmount)
+  const minQuota =
+    minQuotaAmount !== '' && isMinQuotaValid
+      ? parseQuotaFromDollars(Number(minQuotaAmount))
+      : undefined
   const {
     value: inviterFilter,
     inputValue: inviterFilterInput,
@@ -166,17 +199,19 @@ export function UsersTable() {
       roleFilter,
       groupFilter,
       inviterId,
+      minQuota,
       sortParams,
       refreshTrigger,
     ],
-    enabled: isInviterIdValid,
+    enabled: isInviterIdValid && isMinQuotaValid,
     queryFn: async () => {
       const hasFilter = globalFilter?.trim()
       const hasColumnFilter =
         statusFilter.length > 0 ||
         roleFilter.length > 0 ||
         Boolean(groupFilter) ||
-        Boolean(inviterId)
+        Boolean(inviterId) ||
+        minQuota !== undefined
       const params = {
         p: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
@@ -192,6 +227,7 @@ export function UsersTable() {
               role: roleFilter[0] ?? '',
               group: groupFilter,
               inviter_id: inviterId === '' ? undefined : Number(inviterId),
+              min_quota: minQuota,
             })
           : await getUsers(params)
 
@@ -260,29 +296,58 @@ export function UsersTable() {
         searchPlaceholder: t('Filter by username, name, email or API key...'),
         searchDebounceMs: 500,
         additionalSearch: (
-          <div className='w-full sm:w-[180px]'>
-            <Input
-              aria-label={t('Inviter user ID')}
-              aria-invalid={!isInviterInputValid}
-              aria-describedby={
-                isInviterInputValid ? undefined : 'users-inviter-id-error'
-              }
-              inputMode='numeric'
-              placeholder={t('Search users invited by user ID...')}
-              value={inviterFilterInput}
-              onChange={(event) => setInviterFilterInput(event.target.value)}
-              className='w-full'
-            />
-            {!isInviterInputValid && (
-              <p
-                id='users-inviter-id-error'
-                role='alert'
-                className='text-destructive mt-1 text-xs'
-              >
-                {t('Enter a valid user ID')}
-              </p>
-            )}
-          </div>
+          <>
+            <div className='w-full sm:w-[180px]'>
+              <Input
+                aria-label={t('Inviter user ID')}
+                aria-invalid={!isInviterInputValid}
+                aria-describedby={
+                  isInviterInputValid ? undefined : 'users-inviter-id-error'
+                }
+                inputMode='numeric'
+                placeholder={t('Search users invited by user ID...')}
+                value={inviterFilterInput}
+                onChange={(event) => setInviterFilterInput(event.target.value)}
+                className='w-full'
+              />
+              {!isInviterInputValid && (
+                <p
+                  id='users-inviter-id-error'
+                  role='alert'
+                  className='text-destructive mt-1 text-xs'
+                >
+                  {t('Enter a valid user ID')}
+                </p>
+              )}
+            </div>
+            <div className='w-full sm:w-[180px]'>
+              <Input
+                aria-label={t('Minimum remaining quota')}
+                aria-invalid={!isMinQuotaInputValid}
+                aria-describedby={
+                  isMinQuotaInputValid ? undefined : 'users-min-quota-error'
+                }
+                inputMode='decimal'
+                placeholder={t('Quota at least ({{currency}})...', {
+                  currency: isCurrencyDisplayEnabled()
+                    ? getCurrencyLabel()
+                    : t('Tokens'),
+                })}
+                value={minQuotaFilterInput}
+                onChange={(event) => setMinQuotaFilterInput(event.target.value)}
+                className='w-full'
+              />
+              {!isMinQuotaInputValid && (
+                <p
+                  id='users-min-quota-error'
+                  role='alert'
+                  className='text-destructive mt-1 text-xs'
+                >
+                  {t('Enter a valid amount')}
+                </p>
+              )}
+            </div>
+          </>
         ),
         filters: [
           {

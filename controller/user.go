@@ -374,9 +374,18 @@ func SearchUsers(c *gin.Context) {
 		}
 		inviterId = parsed
 	}
+	var minQuota *int
+	if minQuotaStr := strings.TrimSpace(c.Query("min_quota")); minQuotaStr != "" {
+		parsed, err := strconv.Atoi(minQuotaStr)
+		if err != nil {
+			common.ApiErrorT(c, "Invalid minimum quota")
+			return
+		}
+		minQuota = &parsed
+	}
 	pageInfo := common.GetPageQuery(c)
 	sortOptions := model.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
-	users, total, err := model.SearchUsers(keyword, group, role, status, inviterId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
+	users, total, err := model.SearchUsers(keyword, group, role, status, inviterId, minQuota, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
 	if err != nil {
 		common.ApiError(c, err)
 		return

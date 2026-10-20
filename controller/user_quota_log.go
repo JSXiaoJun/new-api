@@ -2,6 +2,7 @@ package controller
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -41,7 +42,15 @@ func GetUserQuotaLogs(c *gin.Context) {
 		return
 	}
 	if view == "credits" {
-		credits, total, err := model.GetUserQuotaCredits(id, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		var minDelta int64
+		if minDeltaStr := strings.TrimSpace(c.Query("min_delta")); minDeltaStr != "" {
+			minDelta, err = strconv.ParseInt(minDeltaStr, 10, 64)
+			if err != nil || minDelta < 0 {
+				common.ApiErrorT(c, "Invalid parameters")
+				return
+			}
+		}
+		credits, total, err := model.GetUserQuotaCredits(id, minDelta, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 		if err != nil {
 			common.ApiError(c, err)
 			return
