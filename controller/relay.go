@@ -151,6 +151,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 	defer func() {
 		newAPIError = relay.RefundFailedRequestBilling(c, relayInfo, newAPIError)
+		service.FinishUpstreamDrain(c, relayInfo, newAPIError != nil)
 	}()
 
 	retryParam := &service.RetryParam{
@@ -502,6 +503,11 @@ func executeTaskSubmissionWith(
 	stage := "start"
 	defer func() {
 		if !durable && relayInfo.Billing != nil {
+			// Upstream already accepted a submit whose caller left: the refund
+			// is uncollected revenue to review.
+			if result != nil && c.Request.Context().Err() != nil {
+				service.RecordAbnormalTaskRefund(c, relayInfo, relayInfo.Billing.GetPreConsumedQuota())
+			}
 			diagnostics.refund(stage)
 			relayInfo.Billing.Refund(c)
 		}

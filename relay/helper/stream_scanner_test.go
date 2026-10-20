@@ -598,3 +598,43 @@ func TestNewStreamScannerCallerLimit(t *testing.T) {
 	assert.Equal(t, "data: ok", scanner.Text())
 	require.NoError(t, scanner.Err())
 }
+
+// cancelledReadBody hands out one chunk, then fails every read with the
+// client's cancellation once the client context is done, as a body that
+// keeps reading upstream for billing does.
+type cancelledReadBody struct {
+	clientCtx context.Context
+	sent      bool
+}
+
+func (b *cancelledReadBody) Read(p []byte) (int, error) {
+	if !b.sent {
+		b.sent = true
+		return copy(p, "data: {\"id\":\"1\"}\n\n"), nil
+	}
+	<-b.clientCtx.Done()
+	return 0, context.Canceled
+}
+
+func (b *cancelledReadBody) Close() error { return nil }
+
+func TestStreamScannerHandler_ReadCancelledByAGoneClientIsTheClientLeaving(t *testing.T) {
+	c, resp, info := setupStreamTest(t, strings.NewReader(""))
+	clientCtx, disconnect := context.WithCancel(c.Request.Context())
+	c.Request = c.Request.WithContext(clientCtx)
+	resp.Body = &cancelledReadBody{clientCtx: clientCtx}
+
+	received := make(chan struct{}, 1)
+	go func() {
+		<-received
+		disconnect()
+	}()
+	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+		select {
+		case received <- struct{}{}:
+		default:
+		}
+	})
+
+	assert.Equal(t, relaycommon.StreamEndReasonClientGone, info.StreamStatus.EndReason)
+}

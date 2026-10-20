@@ -38,6 +38,7 @@ const allCharged: AbnormalBillingValues = {
   charge_client_disconnect_during_response: true,
   charge_upstream_interrupt_during_response: true,
   continue_after_cloudflare_truncation: true,
+  match_upstream_charge: false,
 }
 
 const alignLabel = 'Align abnormal billing with official new-api'
@@ -183,6 +184,32 @@ describe('abnormal billing control section', () => {
     expect(put).toHaveBeenCalledWith('/api/option/', {
       key: 'abnormal_billing_setting.continue_after_cloudflare_truncation',
       value: 'false',
+    })
+  })
+
+  it('saves the upstream match switch alone and keeps it usable under the official alignment', async () => {
+    const put = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true } })
+    const user = userEvent.setup()
+    render(<Fixture values={{ ...allCharged, align_with_official: true }} />)
+
+    const match = screen.getByRole('switch', {
+      name: 'Charge whatever upstream billed for abandoned requests',
+    })
+    expect(match).not.toBeChecked()
+    expect(match).not.toHaveAttribute('aria-disabled', 'true')
+    await user.click(match)
+    const save = screen.getByRole('button', {
+      name: 'Save abnormal billing settings',
+    })
+    await user.click(save)
+
+    await waitFor(() => expect(save).toBeDisabled())
+    expect(put).toHaveBeenCalledTimes(1)
+    expect(put).toHaveBeenCalledWith('/api/option/', {
+      key: 'abnormal_billing_setting.match_upstream_charge',
+      value: 'true',
     })
   })
 

@@ -441,9 +441,11 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 
 	waived := false
 	if quota > 0 {
+		chargeCase := classifyAbnormalCharge(ctx, relayInfo)
 		var waiverReason *common.Message
-		waived, waiverReason = abnormalChargeWaiver(classifyAbnormalCharge(ctx, relayInfo))
+		waived, waiverReason = abnormalChargeWaiver(ctx, relayInfo, chargeCase)
 		if waived {
+			recordAbnormalCharge(ctx, relayInfo, chargeCase, model.AbnormalChargeOutcomeWaived, quota)
 			quota = 0
 			logContent = append(logContent, waiverReason)
 		}

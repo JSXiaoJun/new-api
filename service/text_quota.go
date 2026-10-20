@@ -405,6 +405,55 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 	return "openai"
 }
 
+// pricedTextUsage is the charge the text settlement computes for one usage,
+// before any abnormal-request waiver.
+type pricedTextUsage struct {
+	summary              textQuotaSummary
+	billingUsage         *dto.Usage
+	tieredResult         *billingexpr.TieredResult
+	tieredBillingApplied bool
+}
+
+// priceTextUsage prices a normalized usage with the request's frozen prices.
+// It writes nothing except the quota clamp note on relayInfo.
+func priceTextUsage(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, billingUsage *dto.Usage) pricedTextUsage {
+	summary := calculateTextQuotaSummary(ctx, relayInfo, billingUsage)
+	priced := pricedTextUsage{summary: summary, billingUsage: billingUsage}
+	snap := relayInfo.TieredBillingSnapshot
+	// Providers normally estimate missing usage before settlement. Preserve the
+	// same prompt estimate when a fixed-price expression reaches us without it;
+	// its conditions must still run and may select a token-priced fallback.
+	if billingUsage == nil && snap != nil && billingexpr.UsesFixedPricingByHash(snap.ExprString, snap.ExprHash) {
+		billingUsage = &dto.Usage{PromptTokens: summary.PromptTokens, CompletionTokens: summary.CompletionTokens, TotalTokens: summary.TotalTokens}
+		priced.billingUsage = billingUsage
+	}
+	if billingUsage == nil {
+		return priced
+	}
+	var tieredUsedVars map[string]bool
+	if snap != nil {
+		tieredUsedVars = billingexpr.UsedVarsByHash(snap.ExprString, snap.ExprHash)
+	}
+	tieredTokens := BuildTieredTokenParams(billingUsage, summary.IsClaudeUsageSemantic, tieredUsedVars)
+	tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, tieredTokens)
+	if !tieredOk {
+		return priced
+	}
+	priced.tieredBillingApplied = true
+	priced.tieredResult = tieredRes
+	priced.summary.Quota = composeTieredTextQuota(relayInfo, priced.summary, tieredQuota, tieredRes)
+	priced.summary.FixedPriceBilling = isFixedPriceSettlement(relayInfo, tieredRes)
+	if priced.summary.FixedPriceBilling {
+		priced.summary.AudioInputPrice = 0
+	}
+	// Tiered settlement replaces the preliminary estimate, so apply the
+	// frozen scheduled discount to the actual integer charge as well.
+	if tieredRes != nil {
+		priced.summary.Quota = ApplyBillingDiscount(relayInfo, priced.summary.Quota)
+	}
+	return priced
+}
+
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []*common.Message) {
 	originUsage := usage
 	billingUsage := effectiveBillingUsage(usage)
@@ -417,40 +466,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 
 	adminRejectReason := common.GetContextKeyString(ctx, constant.ContextKeyAdminRejectReason)
-	summary := calculateTextQuotaSummary(ctx, relayInfo, billingUsage)
-
-	var tieredResult *billingexpr.TieredResult
-	var tieredTokens billingexpr.TokenParams
-	tieredBillingApplied := false
-	snap := relayInfo.TieredBillingSnapshot
-	// Providers normally estimate missing usage before settlement. Preserve the
-	// same prompt estimate when a fixed-price expression reaches us without it;
-	// its conditions must still run and may select a token-priced fallback.
-	if billingUsage == nil && snap != nil && billingexpr.UsesFixedPricingByHash(snap.ExprString, snap.ExprHash) {
-		billingUsage = &dto.Usage{PromptTokens: summary.PromptTokens, CompletionTokens: summary.CompletionTokens, TotalTokens: summary.TotalTokens}
-	}
-	if billingUsage != nil {
-		var tieredUsedVars map[string]bool
-		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
-			tieredUsedVars = billingexpr.UsedVarsByHash(snap.ExprString, snap.ExprHash)
-		}
-		tieredTokens = BuildTieredTokenParams(billingUsage, summary.IsClaudeUsageSemantic, tieredUsedVars)
-		tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, tieredTokens)
-		if tieredOk {
-			tieredBillingApplied = true
-			tieredResult = tieredRes
-			summary.Quota = composeTieredTextQuota(relayInfo, summary, tieredQuota, tieredRes)
-			summary.FixedPriceBilling = isFixedPriceSettlement(relayInfo, tieredRes)
-			if summary.FixedPriceBilling {
-				summary.AudioInputPrice = 0
-			}
-			// Tiered settlement replaces the preliminary estimate, so apply the
-			// frozen scheduled discount to the actual integer charge as well.
-			if tieredRes != nil {
-				summary.Quota = ApplyBillingDiscount(relayInfo, summary.Quota)
-			}
-		}
-	}
+	priced := priceTextUsage(ctx, relayInfo, billingUsage)
+	summary, billingUsage := priced.summary, priced.billingUsage
+	tieredResult, tieredBillingApplied := priced.tieredResult, priced.tieredBillingApplied
 
 	for _, item := range summary.ToolSurchargeItems {
 		q := decimal.NewFromFloat(item.Price).
@@ -471,9 +489,11 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	waived := false
 	if summary.Quota > 0 {
+		chargeCase := classifyAbnormalCharge(ctx, relayInfo)
 		var waiverReason *common.Message
-		waived, waiverReason = abnormalChargeWaiver(classifyAbnormalCharge(ctx, relayInfo))
+		waived, waiverReason = abnormalChargeWaiver(ctx, relayInfo, chargeCase)
 		if waived {
+			recordAbnormalCharge(ctx, relayInfo, chargeCase, model.AbnormalChargeOutcomeWaived, summary.Quota)
 			summary.Quota = 0
 			extraContent = append(extraContent, waiverReason)
 		}
@@ -496,6 +516,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, common.LogText("error settling billing: %s", err.Error()))
 	}
+	noteUpstreamDrainSettlement(ctx, relayInfo, summary.Quota)
 
 	logModel := summary.ModelName
 	if strings.HasPrefix(logModel, "gpt-4-gizmo") {

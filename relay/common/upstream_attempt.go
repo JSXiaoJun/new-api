@@ -29,6 +29,7 @@ const (
 // so every field is guarded by mu.
 type UpstreamAttempt struct {
 	mu             sync.Mutex
+	frozen         bool
 	startedAt      time.Time
 	requestSentAt  time.Time
 	responseAt     time.Time
@@ -70,9 +71,20 @@ func (a *UpstreamAttempt) MarkRequestSent() {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.requestSentAt.IsZero() {
+	if a.requestSentAt.IsZero() && !a.frozen {
 		a.requestSentAt = time.Now()
 	}
+}
+
+// Freeze stops later transport progress from changing the attempt, after the
+// client abandoned it and its reply continues only in the background.
+func (a *UpstreamAttempt) Freeze() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.frozen = true
 }
 
 // MarkResponse records that upstream started answering.
@@ -82,7 +94,7 @@ func (a *UpstreamAttempt) MarkResponse() {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.responseAt.IsZero() {
+	if a.responseAt.IsZero() && !a.frozen {
 		a.responseAt = time.Now()
 	}
 }
@@ -122,6 +134,17 @@ func (a *UpstreamAttempt) Responded() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return !a.responseAt.IsZero()
+}
+
+// RequestSent reports whether the whole request reached the upstream
+// transport.
+func (a *UpstreamAttempt) RequestSent() bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !a.requestSentAt.IsZero() || !a.responseAt.IsZero()
 }
 
 // Failure returns the first transport failure recorded for the attempt.

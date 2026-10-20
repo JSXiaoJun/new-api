@@ -44,6 +44,7 @@ export type AbnormalBillingValues = {
   charge_client_disconnect_during_response: boolean
   charge_upstream_interrupt_during_response: boolean
   continue_after_cloudflare_truncation: boolean
+  match_upstream_charge: boolean
 }
 
 const ALIGN_SWITCH_NAME = 'align_with_official'
@@ -88,6 +89,12 @@ const SWITCHES: Array<{
       'Keep reading upstream after a Cloudflare truncation and charge actual usage',
     descriptionKey:
       'Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api. This switch works whether or not the official alignment is on.',
+  },
+  {
+    name: 'match_upstream_charge',
+    labelKey: 'Charge whatever upstream billed for abandoned requests',
+    descriptionKey:
+      'When on, a user always pays what upstream billed for a request that ended early, and the switches above no longer waive it; only a request that failed before upstream answered stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.',
   },
 ]
 

@@ -37,6 +37,7 @@ func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
 	common.OptionMap[billing_setting.PeakPricingOptionKey] = "{}"
+	common.OptionMap[billing_setting.StrictBillingUsersOptionKey] = "[]"
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -272,6 +273,13 @@ func validateOptionValue(key string, value string) error {
 	if err := billing_setting.ValidateAbnormalBillingOption(key, value); err != nil {
 		return err
 	}
+	if err := billing_setting.ValidateAbnormalRequestOption(key, value); err != nil {
+		return err
+	}
+	if key == billing_setting.StrictBillingUsersOptionKey {
+		_, err := billing_setting.ParseStrictBillingUsers(value)
+		return err
+	}
 	if key == setting.FirstTokenDisplayRulesOptionKey {
 		return setting.ValidateFirstTokenDisplayRulesJSON(value)
 	}
@@ -385,6 +393,11 @@ func updateOptionMap(key string, value string) (err error) {
 		}
 		InvalidatePricingCache()
 		ratio_setting.InvalidateExposedDataCache()
+	}
+	if key == billing_setting.StrictBillingUsersOptionKey {
+		if err := billing_setting.LoadStrictBillingUsers(value); err != nil {
+			return err
+		}
 	}
 	if key == retiredThemeOptionKey || key == legacyAccessTokenRetireAtKey {
 		common.OptionMapRWMutex.Lock()

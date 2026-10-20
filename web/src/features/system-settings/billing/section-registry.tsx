@@ -26,6 +26,7 @@ import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 import { AbnormalBillingSection } from './abnormal-billing-section'
+import { AbnormalRequestsSection } from './abnormal-requests/abnormal-requests-section'
 import { DiscountSettingsSection } from './discount-settings-section'
 
 const getModelDefaults = (settings: BillingSettings) => ({
@@ -240,6 +241,28 @@ const BILLING_SECTIONS = [
             settings[
               'abnormal_billing_setting.continue_after_cloudflare_truncation'
             ],
+          match_upstream_charge:
+            settings['abnormal_billing_setting.match_upstream_charge'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'abnormal-requests',
+    titleKey: 'Abnormal Requests',
+    build: (settings: BillingSettings) => (
+      <AbnormalRequestsSection
+        defaultValues={{
+          abnormal_request_setting: {
+            flag_hourly_count:
+              settings['abnormal_request_setting.flag_hourly_count'],
+            flag_ratio_percent:
+              settings['abnormal_request_setting.flag_ratio_percent'],
+            flag_min_requests:
+              settings['abnormal_request_setting.flag_min_requests'],
+            flag_forgone_quota:
+              settings['abnormal_request_setting.flag_forgone_quota'],
+          },
         }}
       />
     ),

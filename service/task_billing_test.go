@@ -53,6 +53,7 @@ func TestMain(m *testing.M) {
 		&model.Task{},
 		&model.User{},
 		&model.QuotaCredit{},
+		&model.AbnormalCharge{},
 		&model.Token{},
 		&model.Log{},
 		&model.Channel{},
@@ -82,6 +83,7 @@ func truncate(t *testing.T) {
 		require.NoError(t, model.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.QuotaCredit{}).Error)
 		model.DB.Exec("DELETE FROM tokens")
 		model.DB.Exec("DELETE FROM logs")
+		model.DB.Exec("DELETE FROM abnormal_charges")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM midjourneys")
 		model.DB.Exec("DELETE FROM top_ups")

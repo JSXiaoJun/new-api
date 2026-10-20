@@ -3,6 +3,7 @@ package helper
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -303,7 +304,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		}
 
 		if err := scanner.Err(); err != nil {
-			if err != io.EOF {
+			// A read cancelled because the client left is the client leaving,
+			// not an upstream connection error.
+			if errors.Is(err, context.Canceled) && c.Request.Context().Err() != nil {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
+			} else if err != io.EOF {
 				logger.LogError(c, common.LogText("scanner error: %s", err.Error()))
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, err)
 			}

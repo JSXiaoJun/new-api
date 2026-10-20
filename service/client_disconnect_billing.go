@@ -80,8 +80,9 @@ func (w *detachedClientWriter) Unwrap() http.ResponseWriter {
 //
 // The returned release func must be called when the request ends.
 func DetachProxiedClientCancellation(c *gin.Context) func() {
-	if !common.CloudflareDisconnectBillingEnabled || !billing_setting.ContinueAfterCloudflareTruncation() ||
-		c == nil || c.Request == nil || c.Writer == nil || c.GetHeader("Cf-Ray") == "" {
+	if !common.CloudflareDisconnectBillingEnabled || c == nil || c.Request == nil || c.Writer == nil ||
+		c.GetHeader("Cf-Ray") == "" ||
+		!billing_setting.ContinueAfterCloudflareTruncation() && !billing_setting.IsStrictBillingUser(c.GetInt("id")) {
 		return func() {}
 	}
 	clientCtx := c.Request.Context()
@@ -163,14 +164,14 @@ func ClientRequestCanceled(c *gin.Context) bool {
 // Billing.Refund afterwards; Refund is a no-op on a settled session and acts
 // as a fallback if settlement did not complete.
 //
+// Under the official alignment the request is settled at zero, which leaves
+// the same balance as the full refund upstream new-api makes, so the waived
+// prompt charge is logged and kept for recovery.
+//
 // Per-call priced and free models keep the previous full-refund behavior,
 // since there is no token count to charge proportionally.
 func SettleClientDisconnectBilling(c *gin.Context, info *relaycommon.RelayInfo) bool {
 	if info == nil || info.Billing == nil || info.ChannelMeta == nil || !ClientRequestCanceled(c) {
-		return false
-	}
-	// Upstream new-api refunds the whole reservation of a failed request.
-	if billing_setting.AbnormalBillingAlignsWithOfficial() {
 		return false
 	}
 	// MarkUpstreamStart is only called right before the upstream HTTP call,
@@ -201,13 +202,14 @@ func SettleClientDisconnectBilling(c *gin.Context, info *relaycommon.RelayInfo) 
 	}
 	// Settlement reads the case back and records the waiver itself.
 	c.Set(abnormalChargeCaseKey, chargeCase)
+	c.Set(abnormalRequestFailedKey, true)
 	usage := &dto.Usage{
 		PromptTokens: promptTokens,
 		InputTokens:  promptTokens,
 		TotalTokens:  promptTokens,
 	}
 	var content []*common.Message
-	if waived, _ := abnormalChargeWaiver(chargeCase); !waived {
+	if waived, _ := abnormalChargeWaiver(c, info, chargeCase); !waived {
 		content = append(content, common.NewMessage("Client disconnected after the request reached the upstream, billed by usage"))
 	}
 	PostTextConsumeQuota(c, info, usage, content)

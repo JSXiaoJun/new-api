@@ -527,6 +527,8 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'user.quota_add': 'Increased user quota by {{quota}}',
   'user.quota_subtract': 'Decreased user quota by {{quota}}',
   'user.quota_override': 'Overrode user quota from {{from}} to {{to}}',
+  'user.strict_billing':
+    'Turned on strict billing for user {{username}} (ID: {{id}})',
   'user.binding_clear': 'Cleared {{bindingType}} binding for user {{username}}',
   'user.2fa_disable': 'Force-disabled two-factor authentication for the user',
   'user.passkey_register': 'Registered a passkey',
@@ -681,5 +683,11 @@ export function renderAuditContent(
     return `${quotaOperation.summary} · ${quotaOperation.description}`
   }
   const params = { ...op.params }
+  if (op.action === 'user.strict_billing' && params.enabled === false) {
+    return t(
+      'Turned off strict billing for user {{username}} (ID: {{id}})',
+      params
+    )
+  }
   return t(template, params)
 }

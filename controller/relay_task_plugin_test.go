@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -32,11 +33,12 @@ import (
 )
 
 type taskSubmissionTestBilling struct {
-	events     *[]string
-	settleErr  error
-	reserveErr error
-	onSettle   func()
-	refunds    int
+	events      *[]string
+	settleErr   error
+	reserveErr  error
+	onSettle    func()
+	refunds     int
+	preConsumed int
 }
 
 func (b *taskSubmissionTestBilling) Settle(int) error {
@@ -53,7 +55,7 @@ func (b *taskSubmissionTestBilling) Refund(*gin.Context) {
 }
 
 func (b *taskSubmissionTestBilling) NeedsRefund() bool        { return b.refunds == 0 }
-func (b *taskSubmissionTestBilling) GetPreConsumedQuota() int { return 0 }
+func (b *taskSubmissionTestBilling) GetPreConsumedQuota() int { return b.preConsumed }
 func (b *taskSubmissionTestBilling) Reserve(int) error {
 	*b.events = append(*b.events, "reserve")
 	return b.reserveErr
@@ -434,20 +436,28 @@ func TestExecuteTaskSubmissionDisconnectAfterDurableInsertDoesNotRefund(t *testi
 // With the official billing alignment on, the submit is cancelled with its
 // caller and refunded, as upstream new-api does.
 func TestDetachedTaskSubmissionLifecycle(t *testing.T) {
+	const reserved = 4_321
 	for _, tc := range []struct {
-		name         string
-		disconnect   bool
-		attemptFails bool
-		aligned      bool
-		wantCode     string
-		wantEvents   []string
-		wantTasks    int64
-		wantAttempts int
+		name             string
+		disconnect       bool
+		attemptFails     bool
+		aligned          bool
+		strict           bool
+		match            bool
+		acceptAfterLeave bool
+		wantCode         string
+		wantEvents       []string
+		wantTasks        int64
+		wantAttempts     int
+		wantRecorded     int
 	}{
-		{"disconnect during submit persists and settles", true, false, false, "", []string{"reserve", "insert", "settle"}, 1, 1},
-		{"failed attempt after disconnect is not retried", true, true, false, "request_cancelled", []string{"refund"}, 0, 1},
-		{"connected caller outlives the detach timeout", false, false, false, "", []string{"reserve", "insert", "settle"}, 1, 1},
-		{"official alignment refunds a submit whose caller left", true, false, true, "request_cancelled", []string{"refund"}, 0, 1},
+		{name: "disconnect during submit persists and settles", disconnect: true, wantEvents: []string{"reserve", "insert", "settle"}, wantTasks: 1, wantAttempts: 1},
+		{name: "failed attempt after disconnect is not retried", disconnect: true, attemptFails: true, wantCode: "request_cancelled", wantEvents: []string{"refund"}, wantAttempts: 1},
+		{name: "connected caller outlives the detach timeout", wantEvents: []string{"reserve", "insert", "settle"}, wantTasks: 1, wantAttempts: 1},
+		{name: "official alignment refunds a submit whose caller left", disconnect: true, aligned: true, wantCode: "request_cancelled", wantEvents: []string{"refund"}, wantAttempts: 1},
+		{name: "official alignment records the refund of a submit upstream accepted", disconnect: true, aligned: true, acceptAfterLeave: true, wantCode: "request_cancelled", wantEvents: []string{"refund"}, wantAttempts: 1, wantRecorded: reserved},
+		{name: "a strict billing user keeps the detached submit under the official alignment", disconnect: true, aligned: true, strict: true, wantEvents: []string{"reserve", "insert", "settle"}, wantTasks: 1, wantAttempts: 1},
+		{name: "matching upstream charges keeps the detached submit under the official alignment", disconnect: true, aligned: true, match: true, wantEvents: []string{"reserve", "insert", "settle"}, wantTasks: 1, wantAttempts: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.aligned {
@@ -456,6 +466,17 @@ func TestDetachedTaskSubmissionLifecycle(t *testing.T) {
 				t.Cleanup(func() {
 					require.NoError(t, config.UpdateConfigFromMap(alignSettings, map[string]string{"align_with_official": "false"}))
 				})
+			}
+			if tc.match {
+				matchSettings := config.GlobalConfig.Get("abnormal_billing_setting")
+				require.NoError(t, config.UpdateConfigFromMap(matchSettings, map[string]string{"match_upstream_charge": "true"}))
+				t.Cleanup(func() {
+					require.NoError(t, config.UpdateConfigFromMap(matchSettings, map[string]string{"match_upstream_charge": "false"}))
+				})
+			}
+			if tc.strict {
+				require.NoError(t, billing_setting.LoadStrictBillingUsers("[1]"))
+				t.Cleanup(func() { require.NoError(t, billing_setting.LoadStrictBillingUsers("[]")) })
 			}
 			events := make([]string, 0, 3)
 			database := setupTaskSubmissionDatabase(t, true, &events)
@@ -470,8 +491,9 @@ func TestDetachedTaskSubmissionLifecycle(t *testing.T) {
 				common.RetryTimes = previousRetryTimes
 				constant.TaskSubmitTimeoutSeconds = previousTimeout
 			})
-			billing := &taskSubmissionTestBilling{events: &events}
+			billing := &taskSubmissionTestBilling{events: &events, preConsumed: reserved}
 			c := taskSubmissionTestContext()
+			c.Set("id", 1)
 			clientContext, disconnect := context.WithCancel(c.Request.Context())
 			defer disconnect()
 			c.Request = c.Request.WithContext(clientContext)
@@ -486,7 +508,7 @@ func TestDetachedTaskSubmissionLifecycle(t *testing.T) {
 				} else {
 					time.Sleep(1500 * time.Millisecond)
 				}
-				if err := c.Request.Context().Err(); err != nil {
+				if err := c.Request.Context().Err(); err != nil && !tc.acceptAfterLeave {
 					return nil, service.TaskErrorWrapperLocal(err, "do_request_failed", http.StatusInternalServerError)
 				}
 				if tc.attemptFails {
@@ -510,6 +532,17 @@ func TestDetachedTaskSubmissionLifecycle(t *testing.T) {
 			var count int64
 			require.NoError(t, database.Model(&model.Task{}).Where("task_id = ?", "task_public").Count(&count).Error)
 			assert.Equal(t, tc.wantTasks, count)
+			var records []model.AbnormalCharge
+			require.NoError(t, database.Find(&records).Error)
+			if tc.wantRecorded == 0 {
+				assert.Empty(t, records)
+				return
+			}
+			require.Len(t, records, 1)
+			assert.Equal(t, tc.wantRecorded, records[0].ForgoneQuota)
+			assert.True(t, records[0].IsTask)
+			assert.True(t, records[0].UserCaused)
+			assert.Equal(t, model.AbnormalChargeOutcomeRefunded, records[0].Outcome)
 		})
 	}
 }
@@ -550,11 +583,13 @@ func setupTaskSubmissionDatabase(t *testing.T, migrate bool, events *[]string) *
 	previousDB := model.DB
 	var models []any
 	if migrate {
-		models = append(models, &model.Task{})
+		models = append(models, &model.Task{}, &model.AbnormalCharge{})
 	}
 	database, _ := openTaskDialectDatabase(t, models...)
-	require.NoError(t, database.Callback().Create().Before("gorm:create").Register("test:task-submit-order", func(*gorm.DB) {
-		*events = append(*events, "insert")
+	require.NoError(t, database.Callback().Create().Before("gorm:create").Register("test:task-submit-order", func(db *gorm.DB) {
+		if _, isTask := db.Statement.Model.(*model.Task); isTask {
+			*events = append(*events, "insert")
+		}
 	}))
 	model.DB = database
 	t.Cleanup(func() { model.DB = previousDB })

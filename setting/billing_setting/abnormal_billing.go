@@ -29,6 +29,12 @@ type AbnormalBillingSetting struct {
 	ChargeClientDisconnectDuringResponse  bool `json:"charge_client_disconnect_during_response"`
 	ChargeUpstreamInterruptDuringResponse bool `json:"charge_upstream_interrupt_during_response"`
 	ContinueAfterCloudflareTruncation     bool `json:"continue_after_cloudflare_truncation"`
+	// MatchUpstreamCharge charges a user, after the fact, whatever the
+	// channel's upstream billed for a request the user abandoned, whatever
+	// the switches above waived. It needs channels that keep reading upstream
+	// after the client leaves; it also makes non-stream requests on Sub2API
+	// and New API channels keep reading, since those upstreams bill them.
+	MatchUpstreamCharge bool `json:"match_upstream_charge"`
 }
 
 var abnormalBillingSetting = AbnormalBillingSetting{
@@ -52,6 +58,12 @@ func AbnormalBillingAlignsWithOfficial() bool {
 	return abnormalBillingSetting.AlignWithOfficial
 }
 
+// MatchUpstreamCharge reports whether abandoned requests are charged what
+// upstream billed.
+func MatchUpstreamCharge() bool {
+	return abnormalBillingSetting.MatchUpstreamCharge
+}
+
 // ContinueAfterCloudflareTruncation reports whether a relay keeps reading
 // upstream after Cloudflare truncated the client connection.
 func ContinueAfterCloudflareTruncation() bool {
@@ -70,7 +82,8 @@ func ValidateAbnormalBillingOption(key, value string) error {
 		"charge_client_disconnect_before_response",
 		"charge_client_disconnect_during_response",
 		"charge_upstream_interrupt_during_response",
-		"continue_after_cloudflare_truncation":
+		"continue_after_cloudflare_truncation",
+		"match_upstream_charge":
 	default:
 		return fmt.Errorf("unknown abnormal billing option %q", key)
 	}

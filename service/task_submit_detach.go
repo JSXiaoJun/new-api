@@ -21,8 +21,12 @@ const taskCallerContextKey = "task_caller_context"
 func DetachTaskSubmission(c *gin.Context) func() {
 	clientRequest := c.Request
 	callerContext := clientRequest.Context()
-	// Upstream new-api cancels the submit with its caller and refunds it.
-	if callerContext.Err() != nil || billing_setting.AbnormalBillingAlignsWithOfficial() {
+	// Upstream new-api cancels the submit with its caller and refunds it; a
+	// strict billing user, or matching what upstream charged, keeps the
+	// detached submit and its charge.
+	if callerContext.Err() != nil ||
+		billing_setting.AbnormalBillingAlignsWithOfficial() && !billing_setting.MatchUpstreamCharge() &&
+			!billing_setting.IsStrictBillingUser(c.GetInt("id")) {
 		return func() {}
 	}
 	timeout := time.Duration(constant.TaskSubmitTimeoutSeconds) * time.Second
