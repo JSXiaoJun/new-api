@@ -32,6 +32,7 @@ const recentSuccessHistoryHours = 7 * 24
 func Init() {
 	go flushLoop()
 	go liveCleanupLoop()
+	go liveFlushLoop()
 }
 
 // RecordRelayResult samples one finished relay exactly once, at the request
@@ -128,7 +129,6 @@ func Record(sample Sample) {
 	recordLive(sample, now)
 	gopool.Go(func() {
 		recordRedis(key, sample)
-		recordLiveRedis(sample, now)
 	})
 }
 

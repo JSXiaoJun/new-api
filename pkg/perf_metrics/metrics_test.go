@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -437,6 +440,141 @@ func TestLiveStatusReportsUsableGroupsWithTraffic(t *testing.T) {
 	assert.Less(t, gpt.Minutes[0].Ts, gpt.Minutes[1].Ts)
 	require.NotNil(t, gpt.Minutes[0].SuccessRate)
 	assert.Equal(t, 0.0, *gpt.Minutes[0].SuccessRate)
+}
+
+// useLiveMiniRedis points the live metrics at a fresh in-memory Redis and
+// resets every piece of live state when the test ends.
+func useLiveMiniRedis(t *testing.T) *miniredis.Miniredis {
+	t.Helper()
+	oldEnabled, oldClient := common.RedisEnabled, common.RDB
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	common.RedisEnabled, common.RDB = true, client
+	t.Cleanup(func() {
+		_ = client.Close()
+		common.RedisEnabled, common.RDB = oldEnabled, oldClient
+		liveMinutes.Clear()
+		liveCacheMu.Lock()
+		clear(liveCache)
+		liveCacheMu.Unlock()
+		liveStatusFetchFailedAt = time.Time{}
+	})
+	return server
+}
+
+func setLiveRedisCounts(server *miniredis.Miniredis, minuteTs int64, group string, modelName string, requests int, successes int) {
+	requestKey, successKey := liveRedisKeys(minuteTs)
+	field := group + liveRedisFieldSep + modelName
+	server.HSet(requestKey, field, strconv.Itoa(requests))
+	server.HSet(successKey, field, strconv.Itoa(successes))
+}
+
+func TestLiveRedisFlushSendsEachCountOnce(t *testing.T) {
+	server := useLiveMiniRedis(t)
+	now := time.Unix(1_800_000_030, 0)
+	requestKey, successKey := liveRedisKeys(liveMinuteStart(now.Unix()))
+	field := "pro" + liveRedisFieldSep + "gpt"
+
+	recordLiveSamples(now, "pro", "gpt", 3, 1)
+	flushLiveRedis(now)
+	flushLiveRedis(now)
+	assert.Equal(t, "4", server.HGet(requestKey, field), "a second flush with nothing new adds nothing")
+	assert.Equal(t, "3", server.HGet(successKey, field))
+	assert.Positive(t, server.TTL(requestKey))
+	assert.Positive(t, server.TTL(successKey))
+
+	server.Close()
+	recordLiveSamples(now, "pro", "gpt", 1, 1)
+	flushLiveRedis(now)
+	require.NoError(t, server.Restart())
+	assert.Equal(t, "4", server.HGet(requestKey, field), "a failed flush adds nothing")
+	flushLiveRedis(now.Add(liveFlushInterval))
+	assert.Equal(t, "6", server.HGet(requestKey, field), "counts held back by the failure are sent once Redis is back")
+	assert.Equal(t, "4", server.HGet(successKey, field))
+
+	old := now.Add(-liveFlushHorizon - 2*time.Minute)
+	recordLiveSamples(old, "pro", "gpt", 1, 0)
+	flushLiveRedis(now)
+	oldKey, _ := liveRedisKeys(liveMinuteStart(old.Unix()))
+	assert.False(t, server.Exists(oldKey), "minutes past the flush horizon are not sent")
+}
+
+func TestLiveStatusReusesRedisMinutesUntilTheyCanChange(t *testing.T) {
+	server := useLiveMiniRedis(t)
+	now := time.Unix(1_800_000_030, 0)
+	current := liveMinuteStart(now.Unix())
+	settled := current - 30*liveBucketSeconds
+	groups := map[string]string{"pro": ""}
+	setLiveRedisCounts(server, settled, "pro", "gpt", 4, 0)
+	setLiveRedisCounts(server, current, "pro", "gpt", 4, 4)
+
+	first := QueryLiveStatus(now, groups)
+	require.Len(t, first.Groups, 1)
+	require.NotNil(t, first.Groups[0].WindowSuccessRate)
+	assert.Equal(t, 50.0, *first.Groups[0].WindowSuccessRate)
+
+	commands := server.CommandCount()
+	again := QueryLiveStatus(now.Add(5*time.Second), groups)
+	assert.Equal(t, commands, server.CommandCount(), "a reload within the cache TTL does not read Redis")
+	assert.Equal(t, first.Groups, again.Groups)
+
+	setLiveRedisCounts(server, settled, "pro", "gpt", 4, 4)
+	setLiveRedisCounts(server, current, "pro", "gpt", 8, 4)
+	later := QueryLiveStatus(now.Add(liveCacheTTL+time.Second), groups)
+	require.Len(t, later.Groups, 1)
+	require.NotNil(t, later.Groups[0].WindowSuccessRate)
+	// The settled minute keeps 0 of 4 from the first read; the current minute
+	// is read again and now holds 4 of 8.
+	assert.Equal(t, 33.33, *later.Groups[0].WindowSuccessRate)
+	require.NotNil(t, later.Groups[0].ShortSuccessRate)
+	assert.Equal(t, 50.0, *later.Groups[0].ShortSuccessRate)
+}
+
+func TestLiveSuccessRatesReadFlushedCountsFromRedis(t *testing.T) {
+	useLiveMiniRedis(t)
+	now := time.Unix(1_800_000_000, 0)
+	logAt := now.Add(-5 * time.Minute)
+	recordLiveSamples(logAt.Add(-2*time.Minute), "pro", "gpt", 6, 1)
+	recordLiveSamples(logAt, "pro", "gpt", 2, 1)
+	recordLiveSamples(logAt, "pro", "claude", 9, 0)
+	flushLiveRedis(now)
+	liveMinutes.Clear()
+
+	result := QueryLiveSuccessRates(now, []LiveComparePoint{
+		{CreatedAt: logAt.Unix(), Group: "pro", ModelName: "gpt"},
+		{CreatedAt: logAt.Unix(), Group: "pro", ModelName: "missing"},
+	}, map[string]string{"pro": ""})
+
+	require.Len(t, result.SuccessRates, 2)
+	require.NotNil(t, result.SuccessRates[0], "only Redis holds the counts now")
+	assert.Equal(t, 80.0, *result.SuccessRates[0])
+	assert.Nil(t, result.SuccessRates[1])
+}
+
+func TestLiveSuccessRatesStopAtTheMinuteBudget(t *testing.T) {
+	oldRedis := common.RedisEnabled
+	common.RedisEnabled = false
+	t.Cleanup(func() {
+		common.RedisEnabled = oldRedis
+		liveMinutes.Clear()
+	})
+	now := time.Unix(1_800_000_000, 0)
+	// Each point reads its own five minutes, so 30 points use the whole budget.
+	points := make([]LiveComparePoint, 0, 31)
+	for i := range 31 {
+		at := now.Add(-time.Duration(i*10+5) * time.Minute)
+		recordLiveSamples(at, "pro", "gpt", 3, 0)
+		points = append(points, LiveComparePoint{CreatedAt: at.Unix(), Group: "pro", ModelName: "gpt"})
+	}
+
+	rates := QueryLiveSuccessRates(now, points, map[string]string{"pro": ""}).SuccessRates
+
+	require.Len(t, rates, 31)
+	for i := range 30 {
+		require.NotNil(t, rates[i])
+		assert.Equal(t, 100.0, *rates[i])
+	}
+	assert.Nil(t, rates[30], "a point past the minute budget gets no rate")
 }
 
 func TestPruneLiveMinutesDropsExpiredMinutes(t *testing.T) {

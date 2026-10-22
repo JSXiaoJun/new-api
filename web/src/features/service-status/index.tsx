@@ -33,7 +33,7 @@ import { cn } from '@/lib/utils'
 import { getLiveServiceStatus } from './api'
 import { StatusGroupCard } from './components/status-group-card'
 
-const REFRESH_INTERVAL_MS = 30_000
+const REFRESH_INTERVAL_MS = 60_000
 
 export function ServiceStatus() {
   const { t } = useTranslation()
