@@ -56,6 +56,9 @@ const headerNavSchema = z.object({
   rankingsEnabled: z.boolean(),
   rankingsRequireAuth: z.boolean(),
   rankingsAdminOnly: z.boolean(),
+  statusEnabled: z.boolean(),
+  statusRequireAuth: z.boolean(),
+  statusAdminOnly: z.boolean(),
   docs: z.boolean(),
   about: z.boolean(),
 })
@@ -94,6 +97,18 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.rankings?.adminOnly === undefined
       ? HEADER_NAV_DEFAULT.rankings.adminOnly
       : Boolean(config.rankings.adminOnly),
+  statusEnabled:
+    config.status?.enabled === undefined
+      ? HEADER_NAV_DEFAULT.status.enabled
+      : Boolean(config.status.enabled),
+  statusRequireAuth:
+    config.status?.requireAuth === undefined
+      ? HEADER_NAV_DEFAULT.status.requireAuth
+      : Boolean(config.status.requireAuth),
+  statusAdminOnly:
+    config.status?.adminOnly === undefined
+      ? HEADER_NAV_DEFAULT.status.adminOnly
+      : Boolean(config.status.adminOnly),
   docs:
     config.docs === undefined ? HEADER_NAV_DEFAULT.docs : Boolean(config.docs),
   about:
@@ -136,6 +151,12 @@ export function HeaderNavigationSection({
         enabled: values.rankingsEnabled,
         requireAuth: values.rankingsRequireAuth,
         adminOnly: values.rankingsAdminOnly,
+      },
+      status: {
+        ...(config.status ?? HEADER_NAV_DEFAULT.status),
+        enabled: values.statusEnabled,
+        requireAuth: values.statusRequireAuth,
+        adminOnly: values.statusAdminOnly,
       },
     }
 
@@ -184,12 +205,12 @@ export function HeaderNavigationSection({
   const accessModules: Array<{
     enabledKey: keyof HeaderNavFormValues
     requireAuthKey: keyof HeaderNavFormValues
-    requireAuthDependsOn: 'pricingEnabled' | 'rankingsEnabled'
+    requireAuthDependsOn: 'pricingEnabled' | 'rankingsEnabled' | 'statusEnabled'
     title: string
     description: string
     requireAuthTitle: string
     requireAuthDescription: string
-    adminOnlyKey?: 'rankingsAdminOnly'
+    adminOnlyKey?: 'rankingsAdminOnly' | 'statusAdminOnly'
     adminOnlyTitle?: string
     adminOnlyDescription?: string
   }> = [
@@ -218,6 +239,24 @@ export function HeaderNavigationSection({
       adminOnlyTitle: t('Only administrators can view rankings'),
       adminOnlyDescription: t(
         'When enabled, only administrators can access the rankings page.'
+      ),
+    },
+    {
+      enabledKey: 'statusEnabled',
+      requireAuthKey: 'statusRequireAuth',
+      requireAuthDependsOn: 'statusEnabled',
+      title: t('Service Status'),
+      description: t(
+        'Live success rates of each group and model over the last hour.'
+      ),
+      requireAuthTitle: t('Require login to view service status'),
+      requireAuthDescription: t(
+        'Visitors must authenticate before accessing the service status page.'
+      ),
+      adminOnlyKey: 'statusAdminOnly',
+      adminOnlyTitle: t('Only administrators can view service status'),
+      adminOnlyDescription: t(
+        'When enabled, only administrators can access the service status page.'
       ),
     },
   ]

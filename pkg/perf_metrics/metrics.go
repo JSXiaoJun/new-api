@@ -31,6 +31,7 @@ const recentSuccessHistoryHours = 7 * 24
 
 func Init() {
 	go flushLoop()
+	go liveCleanupLoop()
 }
 
 // RecordRelayResult samples one finished relay exactly once, at the request
@@ -116,15 +117,18 @@ func Record(sample Sample) {
 		sample.LatencyMs = 0
 	}
 
+	now := time.Now()
 	key := bucketKey{
 		model:    sample.Model,
 		group:    sample.Group,
-		bucketTs: bucketStart(time.Now().Unix()),
+		bucketTs: bucketStart(now.Unix()),
 	}
 	actual, _ := hotBuckets.LoadOrStore(key, &atomicBucket{})
 	actual.(*atomicBucket).add(sample)
+	recordLive(sample, now)
 	gopool.Go(func() {
 		recordRedis(key, sample)
+		recordLiveRedis(sample, now)
 	})
 }
 

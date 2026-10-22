@@ -26,13 +26,14 @@ export type ModuleAccess = {
   adminOnly: boolean
 }
 
-export type HeaderNavModule = 'rankings' | 'pricing'
+export type HeaderNavModule = 'rankings' | 'pricing' | 'status'
 
 export type HeaderNavModules = {
   home: boolean
   console: boolean
   pricing: ModuleAccess
   rankings: ModuleAccess
+  status: ModuleAccess
   docs: boolean
   about: boolean
   [key: string]: boolean | ModuleAccess
@@ -43,6 +44,7 @@ const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
   console: true,
   pricing: { enabled: true, requireAuth: false, adminOnly: false },
   rankings: { enabled: true, requireAuth: false, adminOnly: false },
+  status: { enabled: true, requireAuth: false, adminOnly: false },
   docs: true,
   about: true,
 }
@@ -50,6 +52,7 @@ const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
 const DEFAULTS: Record<HeaderNavModule, ModuleAccess> = {
   pricing: DEFAULT_HEADER_NAV_MODULES.pricing,
   rankings: DEFAULT_HEADER_NAV_MODULES.rankings,
+  status: DEFAULT_HEADER_NAV_MODULES.status,
 }
 
 function cloneHeaderNavDefaults(): HeaderNavModules {
@@ -57,6 +60,7 @@ function cloneHeaderNavDefaults(): HeaderNavModules {
     ...DEFAULT_HEADER_NAV_MODULES,
     pricing: { ...DEFAULT_HEADER_NAV_MODULES.pricing },
     rankings: { ...DEFAULT_HEADER_NAV_MODULES.rankings },
+    status: { ...DEFAULT_HEADER_NAV_MODULES.status },
   }
 }
 
@@ -124,6 +128,10 @@ export function parseHeaderNavModules(raw: unknown): HeaderNavModules {
     }
     if (key === 'rankings') {
       result.rankings = parseAccess(value, result.rankings)
+      return
+    }
+    if (key === 'status') {
+      result.status = parseAccess(value, result.status)
       return
     }
 

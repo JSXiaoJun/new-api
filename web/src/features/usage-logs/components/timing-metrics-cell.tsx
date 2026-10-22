@@ -25,6 +25,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  formatUptimePct,
+  getSuccessRateTextClass,
+} from '@/features/performance-metrics/lib/format'
 import { useStatus } from '@/hooks/use-status'
 import { formatUseTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -39,6 +43,7 @@ import {
   latencyBarClasses,
   latencyTextClasses,
 } from '../lib/latency'
+import type { PlatformSuccessRate } from '../lib/success-rate'
 import {
   getTerminationEndedByLabel,
   getTerminationPhaseLabel,
@@ -186,6 +191,8 @@ interface StreamTpsCellProps {
   termination?: LogOtherData['termination']
   /** Upstream safety policy code; takes the place of the termination and rate. */
   policyBlock?: string
+  /** Success rate of all users' requests around a failed request. */
+  platformSuccessRate?: PlatformSuccessRate | null
   className?: string
 }
 
@@ -299,6 +306,42 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
             {tpsLabel}
           </span>
         )}
+      {props.platformSuccessRate != null && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  className='cursor-help px-0.5 whitespace-nowrap'
+                  tabIndex={0}
+                >
+                  <span className='text-muted-foreground'>
+                    {t('Platform success rate within {{minutes}} minutes', {
+                      minutes: props.platformSuccessRate.windowMinutes,
+                    })}
+                  </span>{' '}
+                  <span
+                    className={cn(
+                      'font-medium tabular-nums',
+                      getSuccessRateTextClass(props.platformSuccessRate.rate)
+                    )}
+                  >
+                    {formatUptimePct(props.platformSuccessRate.rate)}
+                  </span>
+                </span>
+              }
+            />
+            <TooltipContent>
+              <p className='max-w-64 text-xs'>
+                {t(
+                  'Success rate of requests from all users to this model in this group, in the {{minutes}} minutes around this request',
+                  { minutes: props.platformSuccessRate.windowMinutes }
+                )}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
     </div>
   )
 }

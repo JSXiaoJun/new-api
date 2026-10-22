@@ -21,6 +21,7 @@ import { createServerError } from '@/lib/server-error-message'
 
 import type { UsageLog } from './data/schema'
 import { buildQueryParams } from './lib/query-params'
+import type { SuccessRatePoint } from './lib/success-rate'
 import { parseTaskArtifactsResponse } from './lib/task-artifacts'
 import type {
   GetDrawingLogsParams,
@@ -183,4 +184,21 @@ export async function getTaskArtifacts(taskId: string) {
     taskArtifactRequestConfig
   )
   return parseTaskArtifactsResponse(response.data)
+}
+
+type LogSuccessRatesResponse = {
+  success: boolean
+  message?: string
+  data: {
+    window_minutes: number
+    /** Aligned with the requested points; null where no rate is known. */
+    success_rates: Array<number | null>
+  }
+}
+
+export async function getLogSuccessRates(
+  points: SuccessRatePoint[]
+): Promise<LogSuccessRatesResponse> {
+  const res = await api.post('/api/log/success_rate', { points })
+  return res.data
 }

@@ -356,3 +356,99 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 		})
 	}
 }
+
+func recordLiveSamples(at time.Time, group string, modelName string, successes int, failures int) {
+	for i := range successes + failures {
+		recordLive(Sample{Group: group, Model: modelName, Success: i < successes}, at)
+	}
+}
+
+func TestLiveSuccessRatesAroundUsageLogs(t *testing.T) {
+	oldRedis := common.RedisEnabled
+	common.RedisEnabled = false
+	t.Cleanup(func() {
+		common.RedisEnabled = oldRedis
+		liveMinutes.Clear()
+	})
+	now := time.Unix(1_800_000_000, 0)
+	logAt := now.Add(-10 * time.Minute)
+	recordLiveSamples(logAt.Add(-2*time.Minute), "pro", "gpt", 6, 1)
+	recordLiveSamples(logAt, "pro", "gpt", 2, 1)
+	recordLiveSamples(logAt.Add(3*time.Minute), "pro", "gpt", 0, 50)
+	recordLiveSamples(logAt, "pro", "rare", 1, 1)
+	recordLiveSamples(logAt, "hidden", "gpt", 5, 0)
+	recordLiveSamples(now.Add(-25*time.Hour), "pro", "gpt", 5, 0)
+
+	result := QueryLiveSuccessRates(now, []LiveComparePoint{
+		{CreatedAt: logAt.Unix(), Group: "pro", ModelName: "gpt"},
+		{CreatedAt: logAt.Unix(), Group: "pro", ModelName: "rare"},
+		{CreatedAt: logAt.Unix(), Group: "hidden", ModelName: "gpt"},
+		{CreatedAt: now.Add(-25 * time.Hour).Unix(), Group: "pro", ModelName: "gpt"},
+		{CreatedAt: now.Add(time.Hour).Unix(), Group: "pro", ModelName: "gpt"},
+	}, map[string]string{"pro": ""})
+
+	assert.Equal(t, 5, result.WindowMinutes)
+	rates := result.SuccessRates
+	require.Len(t, rates, 5)
+	require.NotNil(t, rates[0], "minutes within two of the log count, the burst three minutes later does not")
+	assert.Equal(t, 80.0, *rates[0])
+	assert.Nil(t, rates[1], "fewer than the minimum samples")
+	assert.Nil(t, rates[2], "group the viewer cannot use")
+	assert.Nil(t, rates[3], "older than retention")
+	assert.Nil(t, rates[4], "in the future")
+}
+
+func TestLiveStatusReportsUsableGroupsWithTraffic(t *testing.T) {
+	oldRedis := common.RedisEnabled
+	common.RedisEnabled = false
+	t.Cleanup(func() {
+		common.RedisEnabled = oldRedis
+		liveMinutes.Clear()
+	})
+	now := time.Unix(1_800_000_030, 0)
+	recordLiveSamples(now, "pro", "gpt", 3, 1)
+	recordLiveSamples(now.Add(-30*time.Minute), "pro", "gpt", 0, 4)
+	recordLiveSamples(now.Add(-30*time.Minute), "pro", "claude", 1, 0)
+	recordLiveSamples(now.Add(-61*time.Minute), "pro", "gpt", 0, 9)
+	recordLiveSamples(now, "hidden", "gpt", 5, 0)
+
+	result := QueryLiveStatus(now, map[string]string{"pro": "Pro group", "idle": ""})
+
+	assert.Equal(t, liveMinuteStart(now.Unix()), result.WindowEnd)
+	assert.Equal(t, result.WindowEnd-59*60, result.WindowStart)
+	require.Len(t, result.Groups, 1, "groups without traffic and groups the viewer cannot use are left out")
+	group := result.Groups[0]
+	assert.Equal(t, "pro", group.Group)
+	assert.Equal(t, "Pro group", group.Description)
+	require.NotNil(t, group.ShortSuccessRate)
+	assert.Equal(t, 75.0, *group.ShortSuccessRate)
+	require.NotNil(t, group.WindowSuccessRate)
+	assert.Equal(t, 44.44, *group.WindowSuccessRate)
+
+	require.Len(t, group.Models, 2)
+	claude, gpt := group.Models[0], group.Models[1]
+	assert.Equal(t, "claude", claude.ModelName)
+	assert.Nil(t, claude.WindowSuccessRate, "a single request is too few to report")
+	assert.Equal(t, []LiveMinutePoint{{Ts: liveMinuteStart(now.Add(-30 * time.Minute).Unix())}}, claude.Minutes)
+	assert.Equal(t, "gpt", gpt.ModelName)
+	require.NotNil(t, gpt.WindowSuccessRate)
+	assert.Equal(t, 37.5, *gpt.WindowSuccessRate)
+	require.Len(t, gpt.Minutes, 2)
+	assert.Less(t, gpt.Minutes[0].Ts, gpt.Minutes[1].Ts)
+	require.NotNil(t, gpt.Minutes[0].SuccessRate)
+	assert.Equal(t, 0.0, *gpt.Minutes[0].SuccessRate)
+}
+
+func TestPruneLiveMinutesDropsExpiredMinutes(t *testing.T) {
+	t.Cleanup(func() { liveMinutes.Clear() })
+	now := time.Unix(1_800_000_000, 0)
+	recordLiveSamples(now.Add(-liveRetention-time.Minute), "pro", "gpt", 1, 0)
+	recordLiveSamples(now.Add(-time.Hour), "pro", "gpt", 1, 0)
+
+	pruneLiveMinutes(now)
+
+	_, expiredKept := liveMinutes.Load(liveMinuteStart(now.Add(-liveRetention - time.Minute).Unix()))
+	_, recentKept := liveMinutes.Load(liveMinuteStart(now.Add(-time.Hour).Unix()))
+	assert.False(t, expiredKept)
+	assert.True(t, recentKept)
+}

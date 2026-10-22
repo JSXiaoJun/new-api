@@ -85,6 +85,21 @@ export function buildTopNavLinks(
     })
   }
 
+  const status = options.modules.status
+  if (
+    status &&
+    typeof status === 'object' &&
+    status.enabled &&
+    (!status.adminOnly || options.isAdmin)
+  ) {
+    const requiresAuth = status.requireAuth && !options.isAuthed
+    links.push({
+      title: options.t('Service Status'),
+      href: '/status',
+      requiresAuth,
+    })
+  }
+
   if (options.modules.docs !== false) {
     if (options.docsLink) {
       links.push({
@@ -136,6 +151,7 @@ export function buildTopNavLinks(
  *   console: true,
  *   pricing: { enabled: true, requireAuth: false },
  *   rankings: { enabled: true, requireAuth: false, adminOnly: false },
+ *   status: { enabled: true, requireAuth: false, adminOnly: false },
  *   docs: true,
  *   about: true
  * }

@@ -50,4 +50,34 @@ describe('header navigation module access', () => {
 
     assert.equal(access.adminOnly, true)
   })
+
+  test('opens the service status page when settings predate it', () => {
+    const access = getModuleAccessFromStatus(
+      {
+        HeaderNavModules: JSON.stringify({
+          rankings: { enabled: true, requireAuth: false },
+        }),
+      },
+      'status'
+    )
+
+    assert.deepEqual(access, {
+      enabled: true,
+      requireAuth: false,
+      adminOnly: false,
+    })
+  })
+
+  test('reads service status access from status', () => {
+    const access = getModuleAccessFromStatus(
+      {
+        HeaderNavModules: JSON.stringify({
+          status: { enabled: true, requireAuth: true, adminOnly: false },
+        }),
+      },
+      'status'
+    )
+
+    assert.equal(access.requireAuth, true)
+  })
 })

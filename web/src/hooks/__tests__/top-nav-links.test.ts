@@ -61,6 +61,53 @@ describe('top navigation links', () => {
     )
   })
 
+  test('places the service status link after rankings', () => {
+    const links = buildTopNavLinks({
+      t: (key) => key,
+      modules: parseHeaderNavModules(undefined),
+      galleryLink: '',
+      infiniteCanvasLink: '',
+      isAuthed: false,
+      isAdmin: false,
+      hasPaid: false,
+    })
+
+    const rankingsIndex = links.findIndex((link) => link.href === '/rankings')
+    assert.deepEqual(links[rankingsIndex + 1], {
+      title: 'Service Status',
+      href: '/status',
+      requiresAuth: false,
+    })
+  })
+
+  test('hides an administrator-only service status link from users', () => {
+    const modules = parseHeaderNavModules(
+      JSON.stringify({
+        status: { enabled: true, requireAuth: true, adminOnly: true },
+      })
+    )
+    const options = {
+      t: (key: string) => key,
+      modules,
+      galleryLink: '',
+      infiniteCanvasLink: '',
+      isAuthed: true,
+      hasPaid: false,
+    }
+
+    const userLinks = buildTopNavLinks({ ...options, isAdmin: false })
+    const adminLinks = buildTopNavLinks({ ...options, isAdmin: true })
+
+    assert.equal(
+      userLinks.some((link) => link.href === '/status'),
+      false
+    )
+    assert.equal(
+      adminLinks.some((link) => link.href === '/status'),
+      true
+    )
+  })
+
   test('shows the gold after-sales link after About only to paid users', () => {
     const unpaidLinks = buildTopNavLinks({
       t: (key) => key,

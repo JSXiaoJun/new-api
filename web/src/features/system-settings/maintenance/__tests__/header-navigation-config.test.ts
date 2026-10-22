@@ -46,4 +46,14 @@ describe('header navigation config', () => {
 
     assert.equal(config.rankings.adminOnly, true)
   })
+
+  test('parses a disabled service status page', () => {
+    const config = parseHeaderNavModules(JSON.stringify({ status: false }))
+
+    assert.deepEqual(config.status, {
+      enabled: false,
+      requireAuth: false,
+      adminOnly: false,
+    })
+  })
 })

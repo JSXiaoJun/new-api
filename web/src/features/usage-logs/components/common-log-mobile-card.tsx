@@ -43,6 +43,7 @@ import {
   isDisplayableLogType,
   isTimingLogType,
 } from '../lib/utils'
+import { useLogSuccessRate } from './log-success-rates'
 import { ModelBadge, ResponseModelDetails } from './model-badge'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
 import { useUsageLogsContext } from './usage-logs-provider'
@@ -71,6 +72,7 @@ export function CommonLogMobileCard<TData>(props: {
   const context = useUsageLogsContext()
   const [selectedField, setSelectedField] = useState<FieldName | null>(null)
   const log = props.log
+  const platformSuccessRate = useLogSuccessRate(log.id)
   const other = parseLogOther(log.other)
   const resolvedTiming = resolveLogTiming(log.use_time || 0, other)
   const displayable = isDisplayableLogType(log.type)
@@ -209,6 +211,7 @@ export function CommonLogMobileCard<TData>(props: {
                   streamStatus={other?.stream_status}
                   termination={other?.termination}
                   policyBlock={other?.policy_block}
+                  platformSuccessRate={platformSuccessRate}
                 />
               )}
               {props.cells.has('use_time') && (

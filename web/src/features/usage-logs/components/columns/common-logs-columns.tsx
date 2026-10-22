@@ -76,6 +76,7 @@ import {
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { LogCostDisplay } from '../log-cost-display'
+import { useLogSuccessRate } from '../log-success-rates'
 import { ModelBadge } from '../model-badge'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
 import { useUsageLogsContext } from '../usage-logs-provider'
@@ -698,8 +699,9 @@ export function useCommonLogsColumns(
       {
         accessorKey: 'is_stream',
         header: t('Stream'),
-        cell: ({ row }) => {
+        cell: function StreamCell({ row }) {
           const log = row.original
+          const platformSuccessRate = useLogSuccessRate(log.id)
           if (!isTimingLogType(log.type)) return null
 
           const useTime = row.getValue('use_time') as number
@@ -719,6 +721,7 @@ export function useCommonLogsColumns(
               streamStatus={other?.stream_status}
               termination={other?.termination}
               policyBlock={other?.policy_block}
+              platformSuccessRate={platformSuccessRate}
             />
           )
         },
