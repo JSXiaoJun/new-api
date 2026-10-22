@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -55,6 +56,26 @@ type StreamStatus struct {
 	errorStatus      int
 	incompleteReason string
 	expectsTerminal  bool
+	policyBlockCode  string
+}
+
+// upstreamPolicyBlockCodes are the error codes providers and the gateways in
+// front of them (Sub2API, new-api) send when a safety policy refused the
+// request. OpenAI sends cyber_policy for Codex requests; Sub2API then blocks
+// the session with session_blocked_by_cyber_policy.
+var upstreamPolicyBlockCodes = []string{
+	"cyber_policy",
+	"session_blocked_by_cyber_policy",
+	"content_policy",
+	"content_policy_violation",
+	"content_filter",
+	"moderation_blocked",
+}
+
+// IsPolicyBlockCode reports whether an upstream error code means a safety
+// policy refused the request.
+func IsPolicyBlockCode(code string) bool {
+	return slices.Contains(upstreamPolicyBlockCodes, strings.ToLower(strings.TrimSpace(code)))
 }
 
 // StreamOutcome holds classification facts only; upstream messages never
@@ -155,6 +176,37 @@ func (s *StreamStatus) MarkFailed(code, errorType string, status int) {
 	if status != 0 {
 		s.errorStatus = status
 	}
+}
+
+// MarkPolicyBlocked records a safety policy refusal that arrived as a bare
+// error chunk. It leaves the response outcome alone, so it only labels the
+// log and never changes how the request is classified or settled.
+func (s *StreamStatus) MarkPolicyBlocked(code string) {
+	if s == nil || !IsPolicyBlockCode(code) {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.policyBlockCode == "" {
+		s.policyBlockCode = strings.TrimSpace(code)
+	}
+}
+
+// PolicyBlockCode returns the safety policy code upstream refused the request
+// with, from a failure event or a bare error chunk, or "".
+func (s *StreamStatus) PolicyBlockCode() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.policyBlockCode != "" {
+		return s.policyBlockCode
+	}
+	if IsPolicyBlockCode(s.errorCode) {
+		return strings.TrimSpace(s.errorCode)
+	}
+	return ""
 }
 
 func (s *StreamStatus) ResponseOutcome() string {

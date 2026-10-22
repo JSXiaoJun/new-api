@@ -718,6 +718,7 @@ export function useCommonLogsColumns(
               tokensPerSecond={tokensPerSecond}
               streamStatus={other?.stream_status}
               termination={other?.termination}
+              policyBlock={other?.policy_block}
             />
           )
         },

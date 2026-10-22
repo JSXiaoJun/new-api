@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -106,6 +107,77 @@ func TestAppendRelayTerminationNamesTheEndingSide(t *testing.T) {
 			assert.NotContains(t, termination, "error")
 		})
 	}
+}
+
+func TestAppendUpstreamPolicyBlockNamesTheSafetyPolicy(t *testing.T) {
+	tests := []struct {
+		name     string
+		prepare  func(info *relaycommon.RelayInfo)
+		apiErr   *types.NewAPIError
+		wantCode string
+	}{
+		{
+			name:     "responses stream failed with cyber_policy",
+			prepare:  func(info *relaycommon.RelayInfo) { info.StreamStatus.MarkFailed("cyber_policy", "", 0) },
+			wantCode: "cyber_policy",
+		},
+		{
+			name: "bare error chunk from sub2api session block",
+			prepare: func(info *relaycommon.RelayInfo) {
+				info.StreamStatus.MarkPolicyBlocked("session_blocked_by_cyber_policy")
+			},
+			wantCode: "session_blocked_by_cyber_policy",
+		},
+		{
+			name:     "error log for a refused request",
+			apiErr:   types.WithOpenAIError(types.OpenAIError{Code: "content_policy_violation", Message: "rejected"}, 400),
+			wantCode: "content_policy_violation",
+		},
+		{
+			name:    "ordinary upstream failure",
+			prepare: func(info *relaycommon.RelayInfo) { info.StreamStatus.MarkFailed("server_error", "server_error", 0) },
+			apiErr:  types.WithOpenAIError(types.OpenAIError{Code: "server_error", Message: "boom"}, 500),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{StreamStatus: relaycommon.NewStreamStatus()}
+			if tt.prepare != nil {
+				tt.prepare(info)
+			}
+			other := model.NewLogOther()
+
+			AppendUpstreamPolicyBlock(info, tt.apiErr, other)
+
+			if tt.wantCode == "" {
+				assert.NotContains(t, other.Snapshot(), "policy_block")
+				return
+			}
+			assert.Equal(t, tt.wantCode, other.Snapshot()["policy_block"])
+		})
+	}
+}
+
+func TestAppendUpstreamPolicyBlockKeepsTerminationClassification(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+	info := &relaycommon.RelayInfo{IsStream: true, StreamStatus: relaycommon.NewStreamStatus()}
+	info.MarkUpstreamStart()
+	info.UpstreamAttempt().MarkResponse()
+	info.StreamStatus.MarkFailed("cyber_policy", "", 0)
+	info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
+
+	other := model.NewLogOther()
+	AppendRelayTermination(ctx, info, other)
+	AppendUpstreamPolicyBlock(info, nil, other)
+
+	// Abnormal billing reads the termination, so the block only adds a label.
+	termination, ok := other.Snapshot()["termination"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, relaycommon.TerminationEndedByUpstream, termination["ended_by"])
+	assert.Equal(t, "response_failed", termination["reason"])
+	assert.Equal(t, "cyber_policy", other.Snapshot()["policy_block"])
 }
 
 func TestAppendRelayTerminationSkipsCompletedAttempts(t *testing.T) {

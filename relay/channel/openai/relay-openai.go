@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
@@ -140,6 +141,9 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			}
 
 			lastStreamData = data
+			// Sub2API reports a safety block on a chat stream as a bare error
+			// chunk followed by [DONE].
+			info.StreamStatus.MarkPolicyBlocked(gjson.Get(data, "error.code").String())
 			observeStreamChoices(info, data, seenStreamToolCalls, &streamFunctionCallNames)
 			if err := processTokenData(info, data, &responseTextBuilder, &toolCount); err != nil {
 				logger.LogError(c, common.LogText("error processing stream token data: %s", err.Error()))

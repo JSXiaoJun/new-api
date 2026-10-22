@@ -899,20 +899,17 @@ export const STATIC_I18N_KEYS = [
   'Provider ID',
   // Abnormal billing control switches (labels live in a constant array)
   'Align abnormal billing with official new-api',
-  'When on, abnormal requests are billed exactly like official new-api and the three switches below are ignored: a request that fails before upstream responds is refunded in full, an interrupted response is charged the usage produced so far, a relay stops as soon as the client disconnects, and a task submit whose caller disconnects is cancelled and refunded even if upstream already accepted it. The Cloudflare truncation switch still applies.',
+  'When on, abnormal requests are billed exactly like official new-api: a request that fails before upstream responds is refunded in full, an interrupted response is charged the usage produced so far, a relay stops as soon as the client disconnects, and a task submit whose caller disconnects is cancelled and refunded even if upstream already accepted it. The Cloudflare truncation switch still applies. When off, an interrupted response is also charged the usage produced so far, and a client that disconnects after the request reached upstream is charged the estimated input.',
   'Keep reading upstream after a Cloudflare truncation and charge actual usage',
   'Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api. This switch works whether or not the official alignment is on.',
-  'Charge when the client disconnects before upstream responds',
-  'The request already reached upstream but the client left before the first byte arrived. When on, the estimated input is charged; when off, the reservation is refunded in full.',
-  'Charge when the client disconnects while receiving the response',
-  'Upstream had started answering when the client left. When on, the usage produced so far is charged; when off, nothing is charged. Turning this off lets a client read output and disconnect before completion without paying.',
-  'Charge when upstream or the gateway interrupts the response midway',
-  'The upstream connection broke, the stream timed out, or the stream ended without its completion event. When on, the usage produced so far is charged; when off, nothing is charged.',
+  'Charge requests blocked by an upstream safety policy',
+  'Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, whatever the switches above say, the same as Sub2API, which does not bill these blocks. When on, it is charged by the switches above.',
   // Gateway fail reasons stored in consume log content
   'Not charged: the client disconnected before upstream responded',
   'Not charged: the client disconnected while receiving the response',
   'Not charged: upstream or the gateway interrupted the response',
   'Not charged: upstream or the gateway failed before responding',
+  'Not charged: upstream blocked the request by a safety policy',
   // Abnormal request review (labels live in constant maps)
   'No pending abnormal charges to recover',
   'Turned on strict billing for user {{username}} (ID: {{id}})',
@@ -998,6 +995,6 @@ export const STATIC_I18N_KEYS = [
   'Upstream unknown',
   'Upstream charged {{number}}',
   'Charge whatever upstream billed for abandoned requests',
-  'When on, a user always pays what upstream billed for a request that ended early, and the switches above no longer waive it; only a request that failed before upstream answered stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.',
+  'When on, a user always pays what upstream billed for a request that ended early; only a request that failed before upstream answered, or one blocked by a safety policy while the safety policy switch is off, stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.',
   'Charged the usage upstream billed for a request that ended early: {{amount}}',
 ] as const

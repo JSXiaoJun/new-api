@@ -40,49 +40,22 @@ import { useUpdateOption } from '../hooks/use-update-option'
 
 export type AbnormalBillingValues = {
   align_with_official: boolean
-  charge_client_disconnect_before_response: boolean
-  charge_client_disconnect_during_response: boolean
-  charge_upstream_interrupt_during_response: boolean
   continue_after_cloudflare_truncation: boolean
   match_upstream_charge: boolean
   charge_upstream_billed_failure: boolean
+  charge_policy_block: boolean
 }
-
-const ALIGN_SWITCH_NAME = 'align_with_official'
 
 const SWITCHES: Array<{
   name: keyof AbnormalBillingValues
   labelKey: string
   descriptionKey: string
-  ignoredWhenAligned?: boolean
 }> = [
   {
-    name: ALIGN_SWITCH_NAME,
+    name: 'align_with_official',
     labelKey: 'Align abnormal billing with official new-api',
     descriptionKey:
-      'When on, abnormal requests are billed exactly like official new-api and the three switches below are ignored: a request that fails before upstream responds is refunded in full, an interrupted response is charged the usage produced so far, a relay stops as soon as the client disconnects, and a task submit whose caller disconnects is cancelled and refunded even if upstream already accepted it. The Cloudflare truncation switch still applies.',
-  },
-  {
-    ignoredWhenAligned: true,
-    name: 'charge_client_disconnect_before_response',
-    labelKey: 'Charge when the client disconnects before upstream responds',
-    descriptionKey:
-      'The request already reached upstream but the client left before the first byte arrived. When on, the estimated input is charged; when off, the reservation is refunded in full.',
-  },
-  {
-    ignoredWhenAligned: true,
-    name: 'charge_client_disconnect_during_response',
-    labelKey: 'Charge when the client disconnects while receiving the response',
-    descriptionKey:
-      'Upstream had started answering when the client left. When on, the usage produced so far is charged; when off, nothing is charged. Turning this off lets a client read output and disconnect before completion without paying.',
-  },
-  {
-    ignoredWhenAligned: true,
-    name: 'charge_upstream_interrupt_during_response',
-    labelKey:
-      'Charge when upstream or the gateway interrupts the response midway',
-    descriptionKey:
-      'The upstream connection broke, the stream timed out, or the stream ended without its completion event. When on, the usage produced so far is charged; when off, nothing is charged.',
+      'When on, abnormal requests are billed exactly like official new-api: a request that fails before upstream responds is refunded in full, an interrupted response is charged the usage produced so far, a relay stops as soon as the client disconnects, and a task submit whose caller disconnects is cancelled and refunded even if upstream already accepted it. The Cloudflare truncation switch still applies. When off, an interrupted response is also charged the usage produced so far, and a client that disconnects after the request reached upstream is charged the estimated input.',
   },
   {
     name: 'continue_after_cloudflare_truncation',
@@ -95,13 +68,19 @@ const SWITCHES: Array<{
     name: 'match_upstream_charge',
     labelKey: 'Charge whatever upstream billed for abandoned requests',
     descriptionKey:
-      'When on, a user always pays what upstream billed for a request that ended early, and the switches above no longer waive it; only a request that failed before upstream answered stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.',
+      'When on, a user always pays what upstream billed for a request that ended early; only a request that failed before upstream answered, or one blocked by a safety policy while the safety policy switch is off, stays free. On channels that keep reading upstream (Sub2API by default), the usage upstream reported is charged afterwards, so the balance may go negative. Non-stream requests on Sub2API and New API channels are then also read to the end, because those upstreams bill them in full. Works whether or not the official alignment is on, and overrides its refund of a client that left.',
   },
   {
     name: 'charge_upstream_billed_failure',
     labelKey: 'Charge what upstream billed for a request it broke off',
     descriptionKey:
       'Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.',
+  },
+  {
+    name: 'charge_policy_block',
+    labelKey: 'Charge requests blocked by an upstream safety policy',
+    descriptionKey:
+      'Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, whatever the switches above say, the same as Sub2API, which does not bill these blocks. When on, it is charged by the switches above.',
   },
 ]
 
@@ -117,7 +96,6 @@ export function AbnormalBillingSection(props: {
   })
   const { isDirty, isSubmitting, dirtyFields } = form.formState
   const isSaving = updateOption.isPending || isSubmitting
-  const alignedWithOfficial = form.watch(ALIGN_SWITCH_NAME)
 
   async function onSubmit(values: AbnormalBillingValues) {
     const changed = SWITCHES.filter((item) => dirtyFields[item.name])
@@ -170,11 +148,7 @@ export function AbnormalBillingSection(props: {
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
-                      disabled={
-                        isSaving ||
-                        (item.ignoredWhenAligned === true &&
-                          alignedWithOfficial)
-                      }
+                      disabled={isSaving}
                     />
                   </FormControl>
                 </SettingsSwitchItem>

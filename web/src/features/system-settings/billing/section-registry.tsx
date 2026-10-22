@@ -225,18 +225,6 @@ const BILLING_SECTIONS = [
         defaultValues={{
           align_with_official:
             settings['abnormal_billing_setting.align_with_official'],
-          charge_client_disconnect_before_response:
-            settings[
-              'abnormal_billing_setting.charge_client_disconnect_before_response'
-            ],
-          charge_client_disconnect_during_response:
-            settings[
-              'abnormal_billing_setting.charge_client_disconnect_during_response'
-            ],
-          charge_upstream_interrupt_during_response:
-            settings[
-              'abnormal_billing_setting.charge_upstream_interrupt_during_response'
-            ],
           continue_after_cloudflare_truncation:
             settings[
               'abnormal_billing_setting.continue_after_cloudflare_truncation'
@@ -245,6 +233,8 @@ const BILLING_SECTIONS = [
             settings['abnormal_billing_setting.match_upstream_charge'],
           charge_upstream_billed_failure:
             settings['abnormal_billing_setting.charge_upstream_billed_failure'],
+          charge_policy_block:
+            settings['abnormal_billing_setting.charge_policy_block'],
         }}
       />
     ),

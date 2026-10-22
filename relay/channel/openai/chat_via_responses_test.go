@@ -361,6 +361,31 @@ func TestOaiChatToResponsesStreamHandlerRestoresCodexCustomToolCall(t *testing.T
 	)
 }
 
+func TestOaiResponsesToChatStreamHandlerKeepsUntypedSafetyPolicyCode(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	// Codex (and Sub2API passing it through) sends the block with a code and
+	// no error type.
+	body := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_cyber","model":"gpt-test"}}`,
+		`data: {"type":"response.failed","response":{"id":"resp_cyber","status":"failed","output":[],"error":{"code":"cyber_policy","message":"flagged for cyber policy"}}}`,
+		``,
+	}, "\n")
+	c, _, resp, info := newResponsesChatTestContext(t, body, true)
+
+	usage, apiErr := OaiResponsesToChatStreamHandler(c, info, resp)
+
+	require.Nil(t, usage)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, types.ErrorCode("cyber_policy"), apiErr.GetErrorCode())
+	assert.Equal(t, "cyber_policy", info.StreamStatus.PolicyBlockCode())
+}
+
 func requireOrderedSubstrings(t *testing.T, s string, parts ...string) {
 	t.Helper()
 

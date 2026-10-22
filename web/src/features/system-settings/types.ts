@@ -363,12 +363,10 @@ export type BillingSettings = {
   'checkin_setting.min_quota': number
   'checkin_setting.max_quota': number
   'abnormal_billing_setting.align_with_official': boolean
-  'abnormal_billing_setting.charge_client_disconnect_before_response': boolean
-  'abnormal_billing_setting.charge_client_disconnect_during_response': boolean
-  'abnormal_billing_setting.charge_upstream_interrupt_during_response': boolean
   'abnormal_billing_setting.continue_after_cloudflare_truncation': boolean
   'abnormal_billing_setting.match_upstream_charge': boolean
   'abnormal_billing_setting.charge_upstream_billed_failure': boolean
+  'abnormal_billing_setting.charge_policy_block': boolean
   'abnormal_request_setting.flag_hourly_count': number
   'abnormal_request_setting.flag_ratio_percent': number
   'abnormal_request_setting.flag_min_requests': number

@@ -281,6 +281,8 @@ export interface LogOtherData {
     elapsed_ms?: number
     client_received_data?: boolean
   }
+  // Upstream error code of a safety policy refusal (for example cyber_policy).
+  policy_block?: string
   // Violation fee fields
   violation_fee?: boolean
   violation_fee_code?: string

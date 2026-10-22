@@ -92,6 +92,7 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		AppendRelayLogAdminInfo(c, relayInfo, other)
 		AppendResponseModelLogInfo(relayInfo, other)
 		AppendRelayTermination(c, relayInfo, other)
+		AppendUpstreamPolicyBlock(relayInfo, err, other)
 		AppendTaskPluginContextAuditInfo(c, other)
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {

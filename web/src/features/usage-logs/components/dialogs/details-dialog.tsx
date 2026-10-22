@@ -1305,9 +1305,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
-        {other?.termination && (
+        {(other?.termination || other?.policy_block) && (
           <TerminationDetails
             termination={other.termination}
+            policyBlock={other.policy_block}
             transportError={
               props.isAdmin ? adminInfo?.termination_error : undefined
             }

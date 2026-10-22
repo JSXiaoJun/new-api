@@ -226,7 +226,7 @@ func SettleClientDisconnectBilling(c *gin.Context, info *relaycommon.RelayInfo) 
 // Per-call priced and free models keep the full refund.
 func SettleUpstreamBilledFailure(c *gin.Context, info *relaycommon.RelayInfo) bool {
 	if !billing_setting.ChargeUpstreamBilledFailure() || info == nil || info.Billing == nil || info.ChannelMeta == nil ||
-		ClientRequestCanceled(c) || info.PriceData.UsePrice || info.PriceData.FreeModel {
+		ClientRequestCanceled(c) || info.PriceData.UsePrice || info.PriceData.FreeModel || policyBlockIsFree(info) {
 		return false
 	}
 	usage := info.UpstreamAttempt().ReportedUsage()

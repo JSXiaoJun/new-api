@@ -261,7 +261,27 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
 	AppendRelayTermination(ctx, relayInfo, other)
+	AppendUpstreamPolicyBlock(relayInfo, nil, other)
 	return other
+}
+
+// AppendUpstreamPolicyBlock records the safety policy code upstream refused the
+// request with, so the log names the block instead of a bare disconnect or
+// error. It is public because the code names no upstream host or content.
+func AppendUpstreamPolicyBlock(relayInfo *relaycommon.RelayInfo, apiErr *types.NewAPIError, other *model.LogOther) {
+	if other == nil {
+		return
+	}
+	code := ""
+	if apiErr != nil && relaycommon.IsPolicyBlockCode(string(apiErr.GetErrorCode())) {
+		code = string(apiErr.GetErrorCode())
+	} else if relayInfo != nil {
+		code = relayInfo.StreamStatus.PolicyBlockCode()
+	}
+	if code == "" {
+		return
+	}
+	other.SetPublic("policy_block", code)
 }
 
 // AppendRelayTermination records which side ended an abnormal upstream attempt,

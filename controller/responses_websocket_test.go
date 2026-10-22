@@ -499,28 +499,29 @@ func TestResponsesInterruptedStreamHealth(t *testing.T) {
 	}
 }
 
-// TestResponsesHTTPAbnormalBillingSwitches drives real SSE relays through the
-// gateway and checks the charge each switch leaves on the wallet and token.
-func TestResponsesHTTPAbnormalBillingSwitches(t *testing.T) {
+// TestResponsesHTTPAbnormalBilling drives real SSE relays through the gateway
+// and checks the charge each abnormal end leaves on the wallet and token.
+func TestResponsesHTTPAbnormalBilling(t *testing.T) {
 	tests := []struct {
 		name          string
 		beforeAnswer  bool
-		switchKey     string
-		switchValue   string
+		policyBlock   bool
+		chargePolicy  string
 		wantCharged   bool
 		wantLogReason string
 	}{
-		{name: "client leaves before upstream answers and is charged", beforeAnswer: true, switchKey: "charge_client_disconnect_before_response", switchValue: "true", wantCharged: true, wantLogReason: "billed by usage"},
-		{name: "client leaves before upstream answers and is waived", beforeAnswer: true, switchKey: "charge_client_disconnect_before_response", switchValue: "false", wantLogReason: "Not charged: the client disconnected before upstream responded"},
-		{name: "client leaves before upstream answers with only the other switches off", beforeAnswer: true, switchKey: "charge_client_disconnect_during_response", switchValue: "false", wantCharged: true},
-		{name: "client leaves mid-stream and is waived", switchKey: "charge_client_disconnect_during_response", switchValue: "false", wantLogReason: "Not charged: the client disconnected while receiving the response"},
-		{name: "client leaves mid-stream with only the other switches off", switchKey: "charge_client_disconnect_before_response", switchValue: "false", wantCharged: true},
+		{name: "client leaves before upstream answers and is charged", beforeAnswer: true, wantCharged: true, wantLogReason: "billed by usage"},
+		{name: "client leaves mid-stream and is charged", wantCharged: true},
+		{name: "upstream blocks the stream by cyber_policy and it is free", policyBlock: true, wantLogReason: "Not charged: upstream blocked the request by a safety policy"},
+		{name: "upstream blocks the stream by cyber_policy and the switch charges it", policyBlock: true, chargePolicy: "true", wantCharged: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			key := "abnormal_billing_setting." + tt.switchKey
-			require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{key: tt.switchValue}))
-			t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{key: "true"})) })
+			if tt.chargePolicy != "" {
+				key := "abnormal_billing_setting.charge_policy_block"
+				require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{key: tt.chargePolicy}))
+				t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{key: "false"})) })
+			}
 			fixture := newResponsesWSBillingTest(t, `tier("input", p * 2)`, func(*websocket.Conn, *http.Request) {})
 			// Production estimates the prompt; disconnect settlement charges that estimate.
 			constant.CountToken = true
@@ -534,6 +535,11 @@ func TestResponsesHTTPAbnormalBillingSwitches(t *testing.T) {
 					w.(http.Flusher).Flush()
 				}
 				close(upstreamReached)
+				if tt.policyBlock {
+					// Codex and Sub2API send the block with a code and no error type.
+					_, _ = fmt.Fprint(w, "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"partial\",\"status\":\"failed\",\"output\":[],\"error\":{\"code\":\"cyber_policy\",\"message\":\"flagged\"},\"usage\":{\"input_tokens\":12,\"output_tokens\":3,\"total_tokens\":15}}}\n\n")
+					return
+				}
 				<-r.Context().Done()
 			}
 
@@ -553,7 +559,7 @@ func TestResponsesHTTPAbnormalBillingSwitches(t *testing.T) {
 				reader := bufio.NewReader(response.Body)
 				for {
 					line, err := reader.ReadString('\n')
-					if err != nil || strings.Contains(line, "response.output_text.delta") {
+					if err != nil || !tt.policyBlock && strings.Contains(line, "response.output_text.delta") {
 						break
 					}
 				}
@@ -584,6 +590,9 @@ func TestResponsesHTTPAbnormalBillingSwitches(t *testing.T) {
 			} else {
 				assert.Zero(t, log.Quota)
 				assert.Contains(t, log.Other, `"abnormal_charge_waived":true`)
+			}
+			if tt.policyBlock {
+				assert.Contains(t, log.Other, `"policy_block":"cyber_policy"`)
 			}
 			assertResponsesWSAccounting(t, fixture, []int{log.Quota})
 			if tt.wantLogReason != "" {
@@ -817,18 +826,12 @@ func TestResponsesWebSocketDialsNativeResponsesChannelTypes(t *testing.T) {
 
 func TestResponsesWebSocketDisconnectSettlesDeliveredOutputOnce(t *testing.T) {
 	for _, tt := range []struct {
-		name         string
-		chargeDuring string
-		wantQuota    int
+		name      string
+		wantQuota int
 	}{
-		{name: "the during-response switch charges", chargeDuring: "true", wantQuota: 1},
-		{name: "the during-response switch waives", chargeDuring: "false", wantQuota: 0},
+		{name: "the delivered output is charged", wantQuota: 1},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"abnormal_billing_setting.charge_client_disconnect_during_response": tt.chargeDuring}))
-			t.Cleanup(func() {
-				require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"abnormal_billing_setting.charge_client_disconnect_during_response": "true"}))
-			})
 			fixture := newResponsesWSBillingTest(t, `tier("output", c * 2)`, func(ws *websocket.Conn, _ *http.Request) {
 				if _, _, err := ws.ReadMessage(); !assert.NoError(t, err) {
 					return

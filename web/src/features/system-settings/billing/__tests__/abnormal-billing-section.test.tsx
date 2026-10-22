@@ -32,23 +32,16 @@ import {
   type AbnormalBillingValues,
 } from '../abnormal-billing-section'
 
-const allCharged: AbnormalBillingValues = {
+const defaults: AbnormalBillingValues = {
   align_with_official: false,
-  charge_client_disconnect_before_response: true,
-  charge_client_disconnect_during_response: true,
-  charge_upstream_interrupt_during_response: true,
   continue_after_cloudflare_truncation: true,
   match_upstream_charge: false,
   charge_upstream_billed_failure: false,
+  charge_policy_block: false,
 }
 
 const alignLabel = 'Align abnormal billing with official new-api'
-const beforeLabel =
-  'Charge when the client disconnects before upstream responds'
-const duringLabel =
-  'Charge when the client disconnects while receiving the response'
-const upstreamLabel =
-  'Charge when upstream or the gateway interrupts the response midway'
+const policyLabel = 'Charge requests blocked by an upstream safety policy'
 const cloudflareLabel =
   'Keep reading upstream after a Cloudflare truncation and charge actual usage'
 
@@ -85,38 +78,30 @@ afterEach(() => {
 })
 
 describe('abnormal billing control section', () => {
-  it('shows every switch with its saved value and nothing to save', () => {
-    render(
-      <Fixture
-        values={{
-          ...allCharged,
-          charge_upstream_interrupt_during_response: false,
-        }}
-      />
-    )
+  it('shows the five switches with the safety policy charge off and nothing to save', () => {
+    render(<Fixture values={defaults} />)
 
+    expect(screen.getAllByRole('switch')).toHaveLength(5)
     expect(screen.getByRole('switch', { name: alignLabel })).not.toBeChecked()
-    expect(screen.getByRole('switch', { name: beforeLabel })).toBeChecked()
+    expect(screen.getByRole('switch', { name: policyLabel })).not.toBeChecked()
     expect(
-      screen.getByRole('switch', { name: beforeLabel })
-    ).not.toHaveAttribute('aria-disabled', 'true')
-    expect(screen.getByRole('switch', { name: duringLabel })).toBeChecked()
-    expect(
-      screen.getByRole('switch', { name: upstreamLabel })
-    ).not.toBeChecked()
+      screen.queryByRole('switch', {
+        name: 'Charge when the client disconnects before upstream responds',
+      })
+    ).toBeNull()
     expect(
       screen.getByRole('button', { name: 'Save abnormal billing settings' })
     ).toBeDisabled()
   })
 
-  it('saves only the toggled switch and returns to a clean state', async () => {
+  it('saves only the toggled safety policy switch and returns to a clean state', async () => {
     const put = vi
       .spyOn(api, 'put')
       .mockResolvedValue({ data: { success: true } })
     const user = userEvent.setup()
-    render(<Fixture values={allCharged} />)
+    render(<Fixture values={defaults} />)
 
-    await user.click(screen.getByRole('switch', { name: duringLabel }))
+    await user.click(screen.getByRole('switch', { name: policyLabel }))
     const save = screen.getByRole('button', {
       name: 'Save abnormal billing settings',
     })
@@ -126,10 +111,10 @@ describe('abnormal billing control section', () => {
     await waitFor(() => expect(save).toBeDisabled())
     expect(put).toHaveBeenCalledTimes(1)
     expect(put).toHaveBeenCalledWith('/api/option/', {
-      key: 'abnormal_billing_setting.charge_client_disconnect_during_response',
-      value: 'false',
+      key: 'abnormal_billing_setting.charge_policy_block',
+      value: 'true',
     })
-    expect(screen.getByRole('switch', { name: duringLabel })).not.toBeChecked()
+    expect(screen.getByRole('switch', { name: policyLabel })).toBeChecked()
   })
 
   it('keeps a rejected switch dirty instead of reporting it as saved', async () => {
@@ -137,30 +122,24 @@ describe('abnormal billing control section', () => {
       data: { success: false, message: 'must be true or false' },
     })
     const user = userEvent.setup()
-    render(<Fixture values={allCharged} />)
+    render(<Fixture values={defaults} />)
 
-    await user.click(screen.getByRole('switch', { name: beforeLabel }))
+    await user.click(screen.getByRole('switch', { name: policyLabel }))
     const save = screen.getByRole('button', {
       name: 'Save abnormal billing settings',
     })
     await user.click(save)
 
     await waitFor(() => expect(save).toBeEnabled())
-    expect(screen.getByRole('switch', { name: beforeLabel })).not.toBeChecked()
+    expect(screen.getByRole('switch', { name: policyLabel })).toBeChecked()
   })
 
-  it('disables the three case switches while the official alignment is on', () => {
-    render(<Fixture values={{ ...allCharged, align_with_official: true }} />)
+  it('keeps every switch usable while the official alignment is on', () => {
+    render(<Fixture values={{ ...defaults, align_with_official: true }} />)
 
     expect(screen.getByRole('switch', { name: alignLabel })).toBeChecked()
-    expect(
-      screen.getByRole('switch', { name: alignLabel })
-    ).not.toHaveAttribute('aria-disabled', 'true')
-    for (const label of [beforeLabel, duringLabel, upstreamLabel]) {
-      expect(screen.getByRole('switch', { name: label })).toHaveAttribute(
-        'aria-disabled',
-        'true'
-      )
+    for (const item of screen.getAllByRole('switch')) {
+      expect(item).not.toHaveAttribute('aria-disabled', 'true')
     }
   })
 
@@ -169,7 +148,7 @@ describe('abnormal billing control section', () => {
       .spyOn(api, 'put')
       .mockResolvedValue({ data: { success: true } })
     const user = userEvent.setup()
-    render(<Fixture values={{ ...allCharged, align_with_official: true }} />)
+    render(<Fixture values={{ ...defaults, align_with_official: true }} />)
 
     const cloudflare = screen.getByRole('switch', { name: cloudflareLabel })
     expect(cloudflare).toBeChecked()
@@ -193,7 +172,7 @@ describe('abnormal billing control section', () => {
       .spyOn(api, 'put')
       .mockResolvedValue({ data: { success: true } })
     const user = userEvent.setup()
-    render(<Fixture values={{ ...allCharged, align_with_official: true }} />)
+    render(<Fixture values={{ ...defaults, align_with_official: true }} />)
 
     const match = screen.getByRole('switch', {
       name: 'Charge whatever upstream billed for abandoned requests',
@@ -219,7 +198,7 @@ describe('abnormal billing control section', () => {
       .spyOn(api, 'put')
       .mockResolvedValue({ data: { success: true } })
     const user = userEvent.setup()
-    render(<Fixture values={{ ...allCharged, align_with_official: true }} />)
+    render(<Fixture values={{ ...defaults, align_with_official: true }} />)
 
     const failure = screen.getByRole('switch', {
       name: 'Charge what upstream billed for a request it broke off',
@@ -240,21 +219,14 @@ describe('abnormal billing control section', () => {
     })
   })
 
-  it('saves the official alignment and locks the case switches once it is turned on', async () => {
+  it('saves the official alignment alone', async () => {
     const put = vi
       .spyOn(api, 'put')
       .mockResolvedValue({ data: { success: true } })
     const user = userEvent.setup()
-    render(<Fixture values={allCharged} />)
+    render(<Fixture values={defaults} />)
 
-    expect(
-      screen.getByRole('switch', { name: beforeLabel })
-    ).not.toHaveAttribute('aria-disabled', 'true')
     await user.click(screen.getByRole('switch', { name: alignLabel }))
-    expect(screen.getByRole('switch', { name: beforeLabel })).toHaveAttribute(
-      'aria-disabled',
-      'true'
-    )
     const save = screen.getByRole('button', {
       name: 'Save abnormal billing settings',
     })
@@ -274,10 +246,10 @@ describe('abnormal billing control section', () => {
       .mockResolvedValueOnce({ data: { success: true } })
       .mockResolvedValueOnce({ data: { success: false, message: 'rejected' } })
     const user = userEvent.setup()
-    render(<Fixture values={allCharged} />)
+    render(<Fixture values={defaults} />)
 
-    await user.click(screen.getByRole('switch', { name: beforeLabel }))
-    await user.click(screen.getByRole('switch', { name: upstreamLabel }))
+    await user.click(screen.getByRole('switch', { name: cloudflareLabel }))
+    await user.click(screen.getByRole('switch', { name: policyLabel }))
     const save = screen.getByRole('button', {
       name: 'Save abnormal billing settings',
     })
@@ -287,8 +259,10 @@ describe('abnormal billing control section', () => {
     await waitFor(() => expect(save).toBeEnabled())
     // Undoing only the rejected switch leaves nothing to save, which holds only
     // if the accepted switch became the new saved baseline.
-    await user.click(screen.getByRole('switch', { name: upstreamLabel }))
-    expect(screen.getByRole('switch', { name: beforeLabel })).not.toBeChecked()
+    await user.click(screen.getByRole('switch', { name: policyLabel }))
+    expect(
+      screen.getByRole('switch', { name: cloudflareLabel })
+    ).not.toBeChecked()
     expect(save).toBeDisabled()
   })
 })

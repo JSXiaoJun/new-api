@@ -32,45 +32,61 @@ import {
 import { DetailRow, DetailSection } from './dialogs/log-detail-layout'
 
 interface TerminationDetailsProps {
-  termination: RelayTermination
+  /** Absent when only a safety policy block was recorded (e.g. error logs). */
+  termination?: RelayTermination
+  /** Upstream safety policy code, which names the block in place of the side. */
+  policyBlock?: string
   /** Masked transport error; only passed for admins. */
   transportError?: string
 }
 
 export function TerminationDetails(props: TerminationDetailsProps) {
   const { t } = useTranslation()
-  const elapsedMs = props.termination.elapsed_ms
+  const termination = props.termination
+  const elapsedMs = termination?.elapsed_ms
+  const endedByLabel = props.policyBlock
+    ? t('Blocked by safety policy')
+    : getTerminationEndedByLabel(termination?.ended_by, t)
+  const endedByClass = props.policyBlock
+    ? terminationTextClass('upstream')
+    : terminationTextClass(termination?.ended_by)
   return (
     <DetailSection
       icon={<Unplug className='size-3.5' aria-hidden='true' />}
       label={t('Connection Termination')}
-      variant={props.termination.ended_by === 'client' ? 'default' : 'danger'}
+      variant={
+        termination?.ended_by === 'client' && !props.policyBlock
+          ? 'default'
+          : 'danger'
+      }
     >
       <DetailRow
         label={t('Ended By')}
         value={
-          <span
-            className={cn(
-              'font-medium',
-              terminationTextClass(props.termination.ended_by)
-            )}
-          >
-            {getTerminationEndedByLabel(props.termination.ended_by, t)}
+          <span className={cn('font-medium', endedByClass)}>
+            {endedByLabel}
           </span>
         }
       />
-      <DetailRow
-        label={t('Phase')}
-        value={getTerminationPhaseLabel(props.termination.phase, t)}
-      />
-      <DetailRow
-        label={t('Reason')}
-        value={getTerminationReasonLabel(props.termination.reason, t)}
-      />
-      {props.termination.request_sent != null && (
+      {props.policyBlock && (
+        <DetailRow label={t('Policy code')} value={props.policyBlock} mono />
+      )}
+      {termination && (
+        <>
+          <DetailRow
+            label={t('Phase')}
+            value={getTerminationPhaseLabel(termination.phase, t)}
+          />
+          <DetailRow
+            label={t('Reason')}
+            value={getTerminationReasonLabel(termination.reason, t)}
+          />
+        </>
+      )}
+      {termination?.request_sent != null && (
         <DetailRow
           label={t('Request fully sent')}
-          value={props.termination.request_sent ? t('Yes') : t('No')}
+          value={termination.request_sent ? t('Yes') : t('No')}
         />
       )}
       {elapsedMs != null && elapsedMs > 0 && (
@@ -80,10 +96,10 @@ export function TerminationDetails(props: TerminationDetailsProps) {
           mono
         />
       )}
-      {props.termination.client_received_data != null && (
+      {termination?.client_received_data != null && (
         <DetailRow
           label={t('Client received data')}
-          value={props.termination.client_received_data ? t('Yes') : t('No')}
+          value={termination.client_received_data ? t('Yes') : t('No')}
         />
       )}
       {props.transportError && (

@@ -10,25 +10,23 @@ import (
 const AbnormalBillingOptionPrefix = "abnormal_billing_setting."
 
 // AbnormalBillingSetting decides whether requests that ended abnormally are
-// still charged. Each switch only waives a charge the normal settlement would
-// make; none of them adds a charge. An upstream or gateway failure before the
-// response started is always refunded and has no switch.
+// still charged. Without the official alignment, an interrupted response is
+// charged the usage produced so far, a client that leaves after the request
+// reached upstream is charged the estimated input, and an upstream or gateway
+// failure before the response started is always refunded.
 //
-// AlignWithOfficial overrides the three switches and settles abnormal requests
-// exactly like upstream new-api: no prompt charge for a client that leaves
-// before the response, no task submit kept alive after its caller leaves, and
-// no waiver of usage produced before an interruption.
+// AlignWithOfficial settles abnormal requests exactly like upstream new-api:
+// no prompt charge for a client that leaves before the response, no task
+// submit kept alive after its caller leaves, and no waiver of usage produced
+// before an interruption.
 //
 // ContinueAfterCloudflareTruncation keeps a relay running after Cloudflare
 // cut an idle connection so the real usage is settled. Upstream new-api has
 // no such behavior; it is independent of AlignWithOfficial.
 // DB keys: abnormal_billing_setting.<json field>
 type AbnormalBillingSetting struct {
-	AlignWithOfficial                     bool `json:"align_with_official"`
-	ChargeClientDisconnectBeforeResponse  bool `json:"charge_client_disconnect_before_response"`
-	ChargeClientDisconnectDuringResponse  bool `json:"charge_client_disconnect_during_response"`
-	ChargeUpstreamInterruptDuringResponse bool `json:"charge_upstream_interrupt_during_response"`
-	ContinueAfterCloudflareTruncation     bool `json:"continue_after_cloudflare_truncation"`
+	AlignWithOfficial                 bool `json:"align_with_official"`
+	ContinueAfterCloudflareTruncation bool `json:"continue_after_cloudflare_truncation"`
 	// MatchUpstreamCharge charges a user, after the fact, whatever the
 	// channel's upstream billed for a request the user abandoned, whatever
 	// the switches above waived. It needs channels that keep reading upstream
@@ -40,13 +38,14 @@ type AbnormalBillingSetting struct {
 	// off, what upstream reported, instead of refunding it. Only the final
 	// attempt counts; earlier failed retries stay unbilled.
 	ChargeUpstreamBilledFailure bool `json:"charge_upstream_billed_failure"`
+	// ChargePolicyBlock charges a request upstream refused by a safety policy
+	// (cyber_policy and the like) by the rules above. Off, such a request is
+	// never charged, whatever the other switches say, as Sub2API does.
+	ChargePolicyBlock bool `json:"charge_policy_block"`
 }
 
 var abnormalBillingSetting = AbnormalBillingSetting{
-	ChargeClientDisconnectBeforeResponse:  true,
-	ChargeClientDisconnectDuringResponse:  true,
-	ChargeUpstreamInterruptDuringResponse: true,
-	ContinueAfterCloudflareTruncation:     true,
+	ContinueAfterCloudflareTruncation: true,
 }
 
 func init() {
@@ -75,6 +74,12 @@ func ChargeUpstreamBilledFailure() bool {
 	return abnormalBillingSetting.ChargeUpstreamBilledFailure
 }
 
+// ChargePolicyBlock reports whether a request upstream refused by a safety
+// policy is charged.
+func ChargePolicyBlock() bool {
+	return abnormalBillingSetting.ChargePolicyBlock
+}
+
 // ContinueAfterCloudflareTruncation reports whether a relay keeps reading
 // upstream after Cloudflare truncated the client connection.
 func ContinueAfterCloudflareTruncation() bool {
@@ -90,12 +95,10 @@ func ValidateAbnormalBillingOption(key, value string) error {
 	}
 	switch field {
 	case "align_with_official",
-		"charge_client_disconnect_before_response",
-		"charge_client_disconnect_during_response",
-		"charge_upstream_interrupt_during_response",
 		"continue_after_cloudflare_truncation",
 		"match_upstream_charge",
-		"charge_upstream_billed_failure":
+		"charge_upstream_billed_failure",
+		"charge_policy_block":
 	default:
 		return fmt.Errorf("unknown abnormal billing option %q", key)
 	}

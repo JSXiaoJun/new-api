@@ -219,18 +219,15 @@ func waitAbnormalRecord(t *testing.T) model.AbnormalCharge {
 // drained upstream usage only marks how much upstream charged.
 func TestUpstreamDrainRecordsWhatUpstreamChargedAfterTheClientLeft(t *testing.T) {
 	for _, tt := range []struct {
-		name        string
-		switchesOff bool
-		wantCharged int
-		wantOutcome string
+		name          string
+		policyBlocked bool
+		wantCharged   int
+		wantOutcome   string
 	}{
 		{name: "default settlement charges the usage produced so far", wantCharged: 1_020, wantOutcome: model.AbnormalChargeOutcomePartial},
-		{name: "a waived request owes everything upstream charged", switchesOff: true, wantCharged: 0, wantOutcome: model.AbnormalChargeOutcomeWaived},
+		{name: "a waived request owes everything upstream charged", policyBlocked: true, wantCharged: 0, wantOutcome: model.AbnormalChargeOutcomeWaived},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.switchesOff {
-				setAbnormalBilling(t, false, false, false)
-			}
 			upstream := newDrainUpstream(t, true, 0)
 			ctx, info, cancel := newDisconnectBillingCase(t, tokenPriced())
 			drainRelayInfo(info)
@@ -246,6 +243,9 @@ func TestUpstreamDrainRecordsWhatUpstreamChargedAfterTheClientLeft(t *testing.T)
 			require.NoError(t, resp.Body.Close())
 			info.StreamStatus = relaycommon.NewStreamStatus()
 			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, context.Canceled)
+			if tt.policyBlocked {
+				setPolicyBlock(info)
+			}
 			upstream.releaseRest()
 
 			PostTextConsumeQuota(ctx, info, &dto.Usage{PromptTokens: 1_000, CompletionTokens: 20, TotalTokens: 1_020}, nil)
@@ -290,7 +290,6 @@ func TestUpstreamDrainRecordsAClientThatLeftBeforeUpstreamAnswered(t *testing.T)
 }
 
 func TestUpstreamDrainWithoutUsageKeepsTheWaiverMarkedUnknown(t *testing.T) {
-	setAbnormalBilling(t, false, false, false)
 	upstream := newDrainUpstream(t, false, 0)
 	ctx, info, cancel := newDisconnectBillingCase(t, tokenPriced())
 	drainRelayInfo(info)
@@ -301,6 +300,7 @@ func TestUpstreamDrainWithoutUsageKeepsTheWaiverMarkedUnknown(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	info.StreamStatus = relaycommon.NewStreamStatus()
 	info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, context.Canceled)
+	setPolicyBlock(info)
 	upstream.releaseRest()
 
 	PostTextConsumeQuota(ctx, info, &dto.Usage{PromptTokens: 1_000, CompletionTokens: 20, TotalTokens: 1_020}, nil)
@@ -334,7 +334,6 @@ func TestUpstreamDrainStaysOutOfRequestsTheClientFinished(t *testing.T) {
 // The handler read the whole reply, then the client left before settlement
 // waived the charge: the record is still written with what upstream billed.
 func TestUpstreamDrainRecordsAWaiverAfterTheReplyWasRead(t *testing.T) {
-	setAbnormalBilling(t, false, false, false)
 	upstream := newDrainUpstream(t, true, 0)
 	upstream.releaseRest()
 	ctx, info, cancel := newDisconnectBillingCase(t, tokenPriced())
@@ -347,12 +346,13 @@ func TestUpstreamDrainRecordsAWaiverAfterTheReplyWasRead(t *testing.T) {
 	cancel()
 	info.StreamStatus = relaycommon.NewStreamStatus()
 	info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, context.Canceled)
+	setPolicyBlock(info)
 
 	require.NoError(t, resp.Body.Close())
 
 	PostTextConsumeQuota(ctx, info, &dto.Usage{PromptTokens: 1_000, CompletionTokens: 20, TotalTokens: 1_020}, nil)
 
-	assert.Equal(t, 0, disconnectStartQuota-getUserQuota(t, disconnectUserId), "the switches still waive the charge")
+	assert.Equal(t, 0, disconnectStartQuota-getUserQuota(t, disconnectUserId), "the safety policy block still waives the charge")
 	record := waitAbnormalRecord(t)
 	assert.Equal(t, model.UpstreamBillingBilled, record.UpstreamBilling)
 	assert.Equal(t, 1_500, record.ForgoneQuota)
@@ -369,17 +369,12 @@ func setMatchUpstreamCharge(t *testing.T) {
 // consume entry and the record is closed as recovered.
 func TestMatchUpstreamChargeCollectsWhatUpstreamBilled(t *testing.T) {
 	for _, tt := range []struct {
-		name        string
-		switchesOff bool
-		settled     int
+		name    string
+		settled int
 	}{
 		{name: "after a partial charge", settled: 1_020},
-		{name: "with every waiver switch off", switchesOff: true, settled: 1_020},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.switchesOff {
-				setAbnormalBilling(t, false, false, false)
-			}
 			setMatchUpstreamCharge(t)
 			upstream := newDrainUpstream(t, true, 0)
 			ctx, info, cancel := newDisconnectBillingCase(t, tokenPriced())
@@ -410,6 +405,31 @@ func TestMatchUpstreamChargeCollectsWhatUpstreamBilled(t *testing.T) {
 	}
 }
 
+// A request upstream blocked by a safety policy stays free under "match
+// upstream": the drained usage is only recorded, never charged afterwards.
+func TestMatchUpstreamChargeLeavesASafetyPolicyBlockFree(t *testing.T) {
+	setMatchUpstreamCharge(t)
+	upstream := newDrainUpstream(t, true, 0)
+	ctx, info, cancel := newDisconnectBillingCase(t, tokenPriced())
+	drainRelayInfo(info)
+
+	resp, err := sendDrainable(t, ctx, info, upstream.server.URL)
+	require.NoError(t, err)
+	cancel()
+	require.NoError(t, resp.Body.Close())
+	info.StreamStatus = relaycommon.NewStreamStatus()
+	info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, context.Canceled)
+	setPolicyBlock(info)
+	upstream.releaseRest()
+
+	PostTextConsumeQuota(ctx, info, &dto.Usage{PromptTokens: 1_000, CompletionTokens: 20, TotalTokens: 1_020}, nil)
+
+	record := waitAbnormalRecord(t)
+	assert.Equal(t, 1_500, record.UpstreamQuota)
+	assert.Empty(t, record.RecoveryId, "nothing is recovered from the user")
+	assert.Zero(t, disconnectStartQuota-getUserQuota(t, disconnectUserId))
+}
+
 // Without a reply to read, "match upstream" still never lets a user off the
 // usage produced before the request ended: upstream billed it too.
 func TestMatchUpstreamChargeIgnoresWaiversOnChannelsThatStopReading(t *testing.T) {
@@ -423,7 +443,6 @@ func TestMatchUpstreamChargeIgnoresWaiversOnChannelsThatStopReading(t *testing.T
 		{name: "upstream reset mid-stream", reason: relaycommon.StreamEndReasonScannerErr, endErr: io.ErrUnexpectedEOF, wantCharged: 1_200},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			setAbnormalBilling(t, false, false, false)
 			setMatchUpstreamCharge(t)
 			ctx, info, _ := newDisconnectBillingCase(t, tokenPriced())
 			info.IsStream = true

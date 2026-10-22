@@ -125,7 +125,8 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 			}
 		case "response.failed", "response.error":
 			if streamResp.Response != nil {
-				if oaiErr := streamResp.Response.GetOpenAIError(); oaiErr != nil && oaiErr.Type != "" {
+				// Codex failures such as cyber_policy carry a code but no type.
+				if oaiErr := streamResp.Response.GetOpenAIError(); oaiErr != nil && (oaiErr.Type != "" || oaiErr.Code != nil) {
 					streamErr = types.WithOpenAIError(*oaiErr, http.StatusInternalServerError)
 					break
 				}
@@ -312,7 +313,8 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			upstreamFailed = true
 			if streamResp.Response != nil {
 				failedUsage = streamResp.Response.Usage
-				if oaiErr := streamResp.Response.GetOpenAIError(); oaiErr != nil && oaiErr.Type != "" {
+				// Codex failures such as cyber_policy carry a code but no type.
+				if oaiErr := streamResp.Response.GetOpenAIError(); oaiErr != nil && (oaiErr.Type != "" || oaiErr.Code != nil) {
 					streamErr = types.WithOpenAIError(*oaiErr, http.StatusInternalServerError)
 					stopStream(sr, streamErr)
 					return

@@ -59,6 +59,50 @@ func TestOaiStreamHandlerMergesUsageAcrossFramesAndKeepsItAfterEmptyTerminalUsag
 	assert.Equal(t, 3, usage.PromptTokensDetails.CachedTokens)
 }
 
+func TestOaiStreamHandlerLabelsBareSafetyPolicyErrorChunkWithoutFailingTheStream(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	tests := []struct {
+		name     string
+		chunk    string
+		wantCode string
+	}{
+		{name: "sub2api cyber policy chunk", chunk: `{"error":{"type":"invalid_request_error","code":"cyber_policy","message":"blocked"}}`, wantCode: "cyber_policy"},
+		{name: "other upstream error chunk", chunk: `{"error":{"type":"server_error","code":"server_error","message":"boom"}}`, wantCode: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			c.Set(common.RequestIdKey, "chat-stream-policy-test")
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gpt-test"},
+				RelayMode:   relayconstant.RelayModeChatCompletions,
+				RelayFormat: types.RelayFormatOpenAI,
+				DisablePing: true,
+			}
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("data: " + tt.chunk + "\ndata: [DONE]\n")),
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			}
+
+			_, apiErr := OaiStreamHandler(c, info, resp)
+
+			require.Nil(t, apiErr)
+			assert.Equal(t, tt.wantCode, info.StreamStatus.PolicyBlockCode())
+			// The label must not change how the request is classified or settled.
+			assert.Empty(t, info.StreamStatus.ResponseOutcome())
+		})
+	}
+}
+
 func TestExtractChatStreamUsageSupportsNestedResponseDataAndAliases(t *testing.T) {
 	usage := extractChatStreamUsage(`{"data":{"response":{"usage":{"prompt_tokens":9,"completion_tokens":4,"total_tokens":13,"completion_tokens_details":{"reasoning_tokens":2}}}}}`)
 	require.NotNil(t, usage)

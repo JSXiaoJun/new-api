@@ -12,8 +12,7 @@ import (
 )
 
 // abnormalChargeCase is the billing situation of a request that did not end
-// normally. Each case maps to one administrator switch, except a failure
-// before the response started, which is always refunded.
+// normally. A failure before the response started is always refunded.
 type abnormalChargeCase int
 
 const (
@@ -84,12 +83,22 @@ func classifyAbnormalCharge(c *gin.Context, info *relaycommon.RelayInfo) abnorma
 	}
 }
 
+// policyBlockIsFree reports whether upstream refused the request by a safety
+// policy while charge_policy_block is off, so nothing may be charged for it.
+func policyBlockIsFree(info *relaycommon.RelayInfo) bool {
+	return info != nil && !billing_setting.ChargePolicyBlock() && info.StreamStatus.PolicyBlockCode() != ""
+}
+
 // abnormalChargeWaiver reports whether settlement must drop the charge and
-// the log line explaining why. A strict billing user is charged whenever the
-// user caused the abnormal end. Otherwise the official alignment waives only
-// a request that failed after the client left, which official new-api
-// refunds, and charges the usage of every other interrupted response.
+// the log line explaining why. A request upstream refused by a safety policy
+// is free unless charge_policy_block is on. A strict billing user is charged
+// whenever the user caused the abnormal end. Otherwise the official alignment
+// waives only a request that failed after the client left, which official
+// new-api refunds, and charges the usage of every other interrupted response.
 func abnormalChargeWaiver(c *gin.Context, info *relaycommon.RelayInfo, chargeCase abnormalChargeCase) (bool, *common.Message) {
+	if policyBlockIsFree(info) {
+		return true, common.NewMessage("Not charged: upstream blocked the request by a safety policy")
+	}
 	if chargeCase == abnormalChargeNone || c != nil && c.GetBool(upstreamBilledFailureKey) {
 		return false, nil
 	}
@@ -116,20 +125,7 @@ func abnormalChargeWaiver(c *gin.Context, info *relaycommon.RelayInfo, chargeCas
 			return true, common.NewMessage("Not charged: the client disconnected before upstream responded")
 		}
 	}
-	switch chargeCase {
-	case abnormalChargeClientBeforeResponse:
-		if !settings.ChargeClientDisconnectBeforeResponse {
-			return true, common.NewMessage("Not charged: the client disconnected before upstream responded")
-		}
-	case abnormalChargeClientDuringResponse:
-		if !settings.ChargeClientDisconnectDuringResponse {
-			return true, common.NewMessage("Not charged: the client disconnected while receiving the response")
-		}
-	case abnormalChargeUpstreamDuringResponse:
-		if !settings.ChargeUpstreamInterruptDuringResponse {
-			return true, common.NewMessage("Not charged: upstream or the gateway interrupted the response")
-		}
-	case abnormalChargeUpstreamBeforeResponse:
+	if chargeCase == abnormalChargeUpstreamBeforeResponse {
 		return true, common.NewMessage("Not charged: upstream or the gateway failed before responding")
 	}
 	return false, nil

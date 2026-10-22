@@ -148,6 +148,39 @@ describe('usage log connection termination', () => {
     expect(screen.queryByText('—')).toBeNull()
   })
 
+  test('details name the safety policy instead of an upstream disconnect', () => {
+    renderDetails({ ...upstreamDrop, policy_block: 'cyber_policy' }, false)
+    const label = screen.getByText('Blocked by safety policy')
+    expect(label).toHaveClass('text-red-600')
+    expect(screen.queryByText('Upstream disconnected')).toBeNull()
+    expect(
+      screen.getByText('Policy code').nextElementSibling
+    ).toHaveTextContent('cyber_policy')
+  })
+
+  test('details show a safety policy block on a log without a termination', () => {
+    renderDetails({ policy_block: 'content_policy_violation' }, false)
+    expect(screen.getByText('Connection Termination')).toBeInTheDocument()
+    expect(screen.getByText('Blocked by safety policy')).toBeInTheDocument()
+    expect(screen.queryByText('Phase')).toBeNull()
+  })
+
+  test('list cell names the safety policy in place of the ending side and rate', () => {
+    render(
+      <StreamTpsCell
+        isStream
+        tokensPerSecond={6}
+        termination={upstreamDrop.termination}
+        policyBlock='cyber_policy'
+      />
+    )
+    expect(screen.getByText('Blocked by safety policy')).toHaveClass(
+      'text-red-600'
+    )
+    expect(screen.queryByText('Upstream disconnected')).toBeNull()
+    expect(screen.queryByText('6 t/s')).toBeNull()
+  })
+
   test('list cell keeps the rate when output was produced', () => {
     render(
       <StreamTpsCell

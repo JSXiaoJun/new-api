@@ -184,6 +184,8 @@ interface StreamTpsCellProps {
   tokensPerSecond?: number | null
   streamStatus?: LogOtherData['stream_status']
   termination?: LogOtherData['termination']
+  /** Upstream safety policy code; takes the place of the termination and rate. */
+  policyBlock?: string
   className?: string
 }
 
@@ -196,7 +198,9 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
       ? `${Math.round(props.tokensPerSecond)} t/s`
       : '—'
   const termination =
-    props.tokensPerSecond == null ? props.termination : undefined
+    props.tokensPerSecond == null && !props.policyBlock
+      ? props.termination
+      : undefined
   let streamLabel = props.isStream ? t('Stream') : t('Non-stream')
   if (props.isTask) {
     streamLabel = props.isSyncTask ? t('Sync') : t('Async')
@@ -265,7 +269,30 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
           </Tooltip>
         </TooltipProvider>
       )}
+      {props.policyBlock && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  className={cn(
+                    'cursor-help px-0.5 font-medium',
+                    terminationTextClass('upstream')
+                  )}
+                  tabIndex={0}
+                >
+                  {t('Blocked by safety policy')}
+                </span>
+              }
+            />
+            <TooltipContent>
+              <p className='font-mono text-xs'>{props.policyBlock}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
       {!termination &&
+        !props.policyBlock &&
         (!props.compact ||
           (props.isStream && props.tokensPerSecond != null)) && (
           <span className='text-muted-foreground/60 px-0.5 tabular-nums'>

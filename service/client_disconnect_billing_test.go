@@ -203,21 +203,6 @@ func TestClientDisconnectOnPerCallModelKeepsRefund(t *testing.T) {
 	assert.True(t, info.Billing.(*BillingSession).NeedsRefund())
 }
 
-// setAbnormalBilling applies the three switches for one test and restores the
-// defaults (all charged) afterwards.
-func setAbnormalBilling(t *testing.T, beforeResponse, duringResponse, upstreamDuring bool) {
-	t.Helper()
-	apply := func(before, during, upstream bool) {
-		require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("abnormal_billing_setting"), map[string]string{
-			"charge_client_disconnect_before_response":  strconv.FormatBool(before),
-			"charge_client_disconnect_during_response":  strconv.FormatBool(during),
-			"charge_upstream_interrupt_during_response": strconv.FormatBool(upstream),
-		}))
-	}
-	apply(beforeResponse, duringResponse, upstreamDuring)
-	t.Cleanup(func() { apply(true, true, true) })
-}
-
 func lastConsumeLog(t *testing.T) model.Log {
 	t.Helper()
 	var log model.Log
@@ -227,18 +212,26 @@ func lastConsumeLog(t *testing.T) model.Log {
 
 const waivedMarker = `"abnormal_charge_waived":true`
 
-func TestAbnormalBillingSwitchesDecideDisconnectSettlement(t *testing.T) {
+// setPolicyBlock marks the request as refused by an upstream safety policy.
+func setPolicyBlock(info *relaycommon.RelayInfo) {
+	if info.StreamStatus == nil {
+		info.StreamStatus = relaycommon.NewStreamStatus()
+	}
+	info.StreamStatus.MarkPolicyBlocked("cyber_policy")
+}
+
+const policyBlockWaiver = "Not charged: upstream blocked the request by a safety policy"
+
+func TestAbnormalBillingDecidesDisconnectSettlement(t *testing.T) {
 	tests := []struct {
 		name         string
-		switches     [3]bool
 		arrange      func(info *relaycommon.RelayInfo)
 		wantSettled  bool
 		wantCharged  bool
 		wantContains string
 	}{
 		{
-			name:     "client leaves before upstream answers and the switch charges",
-			switches: [3]bool{true, true, true},
+			name: "client leaves before upstream answers and is charged the estimated input",
 			arrange: func(info *relaycommon.RelayInfo) {
 				info.UpstreamAttempt().MarkRequestSent()
 				info.UpstreamAttempt().Fail(context.Canceled, true)
@@ -247,45 +240,34 @@ func TestAbnormalBillingSwitchesDecideDisconnectSettlement(t *testing.T) {
 			wantContains: "Client disconnected after the request reached the upstream, billed by usage",
 		},
 		{
-			name:     "client leaves before upstream answers and the switch waives",
-			switches: [3]bool{false, true, true},
-			arrange: func(info *relaycommon.RelayInfo) {
-				info.UpstreamAttempt().MarkRequestSent()
-				info.UpstreamAttempt().Fail(context.Canceled, true)
-			},
-			wantSettled: true, wantCharged: false,
-			wantContains: "Not charged: the client disconnected before upstream responded",
-		},
-		{
-			name:     "only the before-response switch applies before upstream answers",
-			switches: [3]bool{true, false, false},
+			name: "client leaves before the request was fully sent and is charged",
 			arrange: func(info *relaycommon.RelayInfo) {
 				info.UpstreamAttempt().Fail(context.Canceled, true)
 			},
 			wantSettled: true, wantCharged: true,
 		},
 		{
-			name:     "client leaves while reading a non-stream body and the switch waives",
-			switches: [3]bool{true, false, true},
+			name: "client leaves while reading a non-stream body and is charged",
 			arrange: func(info *relaycommon.RelayInfo) {
 				info.UpstreamAttempt().MarkRequestSent()
 				info.UpstreamAttempt().MarkResponse()
 				info.UpstreamAttempt().Fail(context.Canceled, true)
 			},
-			wantSettled: true, wantCharged: false,
-			wantContains: "Not charged: the client disconnected while receiving the response",
+			wantSettled: true, wantCharged: true,
 		},
 		{
-			name:     "an untracked failure after upstream answered uses the during-response switch",
-			switches: [3]bool{true, false, true},
+			name: "a client leaving a request upstream blocked by a safety policy is not charged",
 			arrange: func(info *relaycommon.RelayInfo) {
+				info.UpstreamAttempt().MarkRequestSent()
 				info.UpstreamAttempt().MarkResponse()
+				info.UpstreamAttempt().Fail(context.Canceled, true)
+				setPolicyBlock(info)
 			},
 			wantSettled: true, wantCharged: false,
+			wantContains: policyBlockWaiver,
 		},
 		{
-			name:     "upstream failure before answering stays refunded even with every switch on",
-			switches: [3]bool{true, true, true},
+			name: "upstream failure before answering stays refunded",
 			arrange: func(info *relaycommon.RelayInfo) {
 				info.UpstreamAttempt().MarkRequestSent()
 				info.UpstreamAttempt().Fail(io.ErrUnexpectedEOF, false)
@@ -295,7 +277,6 @@ func TestAbnormalBillingSwitchesDecideDisconnectSettlement(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setAbnormalBilling(t, tt.switches[0], tt.switches[1], tt.switches[2])
 			ctx, info, cancel := newDisconnectBillingCase(t, tokenPriced())
 			info.MarkUpstreamStart()
 			tt.arrange(info)
@@ -329,7 +310,7 @@ func TestAbnormalBillingSwitchesDecideDisconnectSettlement(t *testing.T) {
 	}
 }
 
-func TestAbnormalBillingSwitchesDecideStreamSettlement(t *testing.T) {
+func TestAbnormalBillingDecidesStreamSettlement(t *testing.T) {
 	streamEndedBy := func(reason relaycommon.StreamEndReason, endErr error, completed bool) func(info *relaycommon.RelayInfo) {
 		return func(info *relaycommon.RelayInfo) {
 			info.StreamStatus = relaycommon.NewStreamStatus()
@@ -342,23 +323,45 @@ func TestAbnormalBillingSwitchesDecideStreamSettlement(t *testing.T) {
 	}
 	clientGone := streamEndedBy(relaycommon.StreamEndReasonClientGone, context.Canceled, false)
 	upstreamReset := streamEndedBy(relaycommon.StreamEndReasonScannerErr, io.ErrUnexpectedEOF, false)
+	// Codex sends cyber_policy as response.failed; Sub2API's chat streams send
+	// it as a bare error chunk that leaves the stream looking complete.
+	responseFailedByPolicy := func(info *relaycommon.RelayInfo) {
+		info.StreamStatus = relaycommon.NewStreamStatus()
+		info.StreamStatus.RequireTerminal()
+		info.StreamStatus.MarkFailed("cyber_policy", "", 0)
+		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
+	}
+	bareChunkPolicyBlock := func(info *relaycommon.RelayInfo) {
+		streamEndedBy(relaycommon.StreamEndReasonDone, nil, false)(info)
+		setPolicyBlock(info)
+	}
 	tests := []struct {
-		name        string
-		switches    [3]bool
-		arrange     func(info *relaycommon.RelayInfo)
-		wantCharged bool
+		name         string
+		chargePolicy bool
+		matchCharge  bool
+		strictUser   bool
+		arrange      func(info *relaycommon.RelayInfo)
+		wantCharged  bool
 	}{
-		{name: "client leaves mid-stream and the switch charges", switches: [3]bool{false, true, false}, arrange: clientGone, wantCharged: true},
-		{name: "client leaves mid-stream and the switch waives", switches: [3]bool{true, false, true}, arrange: clientGone, wantCharged: false},
-		{name: "client leaving after the completion event is always charged", switches: [3]bool{false, false, false}, arrange: streamEndedBy(relaycommon.StreamEndReasonClientGone, context.Canceled, true), wantCharged: true},
-		{name: "upstream resets mid-stream and the switch charges", switches: [3]bool{false, false, true}, arrange: upstreamReset, wantCharged: true},
-		{name: "upstream resets mid-stream and the switch waives", switches: [3]bool{true, true, false}, arrange: upstreamReset, wantCharged: false},
-		{name: "stream ending without its completion event uses the upstream switch", switches: [3]bool{true, true, false}, arrange: streamEndedBy(relaycommon.StreamEndReasonEOF, nil, false), wantCharged: false},
-		{name: "a completed stream is charged with every switch off", switches: [3]bool{false, false, false}, arrange: streamEndedBy(relaycommon.StreamEndReasonDone, nil, true), wantCharged: true},
+		{name: "client leaves mid-stream and is charged the usage so far", arrange: clientGone, wantCharged: true},
+		{name: "client leaving after the completion event is charged", arrange: streamEndedBy(relaycommon.StreamEndReasonClientGone, context.Canceled, true), wantCharged: true},
+		{name: "upstream resets mid-stream and is charged the usage so far", arrange: upstreamReset, wantCharged: true},
+		{name: "stream ending without its completion event is charged", arrange: streamEndedBy(relaycommon.StreamEndReasonEOF, nil, false), wantCharged: true},
+		{name: "a completed stream is charged", arrange: streamEndedBy(relaycommon.StreamEndReasonDone, nil, true), wantCharged: true},
+		{name: "response failed by a safety policy is free by default", arrange: responseFailedByPolicy, wantCharged: false},
+		{name: "a bare safety policy error chunk is free by default", arrange: bareChunkPolicyBlock, wantCharged: false},
+		{name: "a safety policy block stays free under match upstream", matchCharge: true, arrange: responseFailedByPolicy, wantCharged: false},
+		{name: "a safety policy block stays free for a strict billing user", strictUser: true, arrange: responseFailedByPolicy, wantCharged: false},
+		{name: "a safety policy block is charged once its switch is on", chargePolicy: true, arrange: responseFailedByPolicy, wantCharged: true},
+		{name: "a bare safety policy chunk is charged once its switch is on", chargePolicy: true, arrange: bareChunkPolicyBlock, wantCharged: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setAbnormalBilling(t, tt.switches[0], tt.switches[1], tt.switches[2])
+			setAbnormalOption(t, "charge_policy_block", tt.chargePolicy, false)
+			setAbnormalOption(t, "match_upstream_charge", tt.matchCharge, false)
+			if tt.strictUser {
+				setStrictBillingUser(t, disconnectUserId)
+			}
 			ctx, info, _ := newDisconnectBillingCase(t, tokenPriced())
 			info.IsStream = true
 			info.MarkUpstreamStart()
@@ -379,6 +382,7 @@ func TestAbnormalBillingSwitchesDecideStreamSettlement(t *testing.T) {
 			assert.Zero(t, charged)
 			assert.Zero(t, getTokenUsedQuota(t, disconnectTokenId))
 			assert.Contains(t, log.Other, waivedMarker)
+			assert.Contains(t, log.Content, policyBlockWaiver)
 		})
 	}
 }
@@ -429,10 +433,9 @@ func TestCloudflareTruncationContinuesUnderOfficialAlignment(t *testing.T) {
 }
 
 // With the official alignment on, a failed request is refunded in full and an
-// interrupted one is charged its usage, whatever the three switches say.
-func TestOfficialAlignedBillingIgnoresAbnormalSwitches(t *testing.T) {
-	t.Run("client leaving before upstream answers is refunded even when the switch charges", func(t *testing.T) {
-		setAbnormalBilling(t, true, true, true)
+// interrupted one is charged its usage.
+func TestOfficialAlignedBillingSettlesAbnormalRequests(t *testing.T) {
+	t.Run("client leaving before upstream answers is refunded though the default charges it", func(t *testing.T) {
 		defaultCharge := defaultClientLeftBeforeResponseCharge(t)
 		require.Positive(t, defaultCharge)
 
@@ -471,11 +474,10 @@ func TestOfficialAlignedBillingIgnoresAbnormalSwitches(t *testing.T) {
 		reason relaycommon.StreamEndReason
 		endErr error
 	}{
-		{name: "client leaving mid-stream is charged even when its switch waives", reason: relaycommon.StreamEndReasonClientGone, endErr: context.Canceled},
-		{name: "upstream reset mid-stream is charged even when its switch waives", reason: relaycommon.StreamEndReasonScannerErr, endErr: io.ErrUnexpectedEOF},
+		{name: "client leaving mid-stream is charged its usage", reason: relaycommon.StreamEndReasonClientGone, endErr: context.Canceled},
+		{name: "upstream reset mid-stream is charged its usage", reason: relaycommon.StreamEndReasonScannerErr, endErr: io.ErrUnexpectedEOF},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			setAbnormalBilling(t, false, false, false)
 			setOfficialAlignedBilling(t)
 			ctx, info, _ := newDisconnectBillingCase(t, tokenPriced())
 			info.IsStream = true
@@ -537,8 +539,8 @@ func setStrictBillingUser(t *testing.T, userId int) {
 	t.Cleanup(func() { require.NoError(t, billing_setting.LoadStrictBillingUsers("[]")) })
 }
 
-// A waived charge is recorded with the case that waived it; only cases the
-// user caused may later be recovered from the user.
+// A waived charge is recorded with the case of the abnormal end; only cases
+// the user caused may later be recovered from the user.
 func TestAbnormalChargeWaiversAreRecorded(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
@@ -551,7 +553,6 @@ func TestAbnormalChargeWaiversAreRecorded(t *testing.T) {
 		{name: "upstream reset mid-stream", reason: relaycommon.StreamEndReasonScannerErr, endErr: io.ErrUnexpectedEOF, wantCase: "upstream_during_response"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			setAbnormalBilling(t, false, false, false)
 			ctx, info, _ := newDisconnectBillingCase(t, tokenPriced())
 			info.IsStream = true
 			info.MarkUpstreamStart()
@@ -560,6 +561,7 @@ func TestAbnormalChargeWaiversAreRecorded(t *testing.T) {
 			info.StreamStatus = relaycommon.NewStreamStatus()
 			info.StreamStatus.RequireTerminal()
 			info.StreamStatus.SetEndReason(tt.reason, tt.endErr)
+			setPolicyBlock(info)
 			ctx.Set("token_name", "abnormal-token")
 
 			PostTextConsumeQuota(ctx, info, &dto.Usage{PromptTokens: 1_000, CompletionTokens: 200, TotalTokens: 1_200}, nil)
@@ -584,8 +586,7 @@ func TestAbnormalChargeWaiversAreRecorded(t *testing.T) {
 }
 
 // A strict billing user is charged for every abnormal end the user caused,
-// whatever the switches and the official alignment say; an upstream fault is
-// still waived by its switch.
+// whatever the official alignment says; a safety policy block stays free.
 func TestStrictBillingUserIsChargedForUserCausedAbnormalEnds(t *testing.T) {
 	streamEndedBy := func(reason relaycommon.StreamEndReason, endErr error) func(*relaycommon.RelayInfo) {
 		return func(info *relaycommon.RelayInfo) {
@@ -602,12 +603,14 @@ func TestStrictBillingUserIsChargedForUserCausedAbnormalEnds(t *testing.T) {
 		arrange     func(*relaycommon.RelayInfo)
 		wantCharged int
 	}{
-		{name: "client left mid-stream with its switch off", arrange: streamEndedBy(relaycommon.StreamEndReasonClientGone, context.Canceled), wantCharged: 1_200},
+		{name: "client left mid-stream", arrange: streamEndedBy(relaycommon.StreamEndReasonClientGone, context.Canceled), wantCharged: 1_200},
 		{name: "client left mid-stream under the official alignment", aligned: true, arrange: streamEndedBy(relaycommon.StreamEndReasonClientGone, context.Canceled), wantCharged: 1_200},
-		{name: "upstream reset mid-stream stays waived", arrange: streamEndedBy(relaycommon.StreamEndReasonScannerErr, io.ErrUnexpectedEOF), wantCharged: 0},
+		{name: "client left a stream upstream blocked by a safety policy", arrange: func(info *relaycommon.RelayInfo) {
+			streamEndedBy(relaycommon.StreamEndReasonClientGone, context.Canceled)(info)
+			setPolicyBlock(info)
+		}, wantCharged: 0},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			setAbnormalBilling(t, false, false, false)
 			if tt.aligned {
 				setOfficialAlignedBilling(t)
 			}
@@ -624,7 +627,6 @@ func TestStrictBillingUserIsChargedForUserCausedAbnormalEnds(t *testing.T) {
 	}
 
 	t.Run("client left before upstream answered under the official alignment", func(t *testing.T) {
-		setAbnormalBilling(t, true, true, true)
 		defaultCharge := defaultClientLeftBeforeResponseCharge(t)
 		setOfficialAlignedBilling(t)
 		setStrictBillingUser(t, disconnectUserId)
@@ -645,23 +647,23 @@ func TestStrictBillingUserIsChargedForUserCausedAbnormalEnds(t *testing.T) {
 	})
 }
 
-func TestAbnormalBillingSwitchesUseTheCloudflareTruncationMoment(t *testing.T) {
+func TestCloudflareTruncatedRelayIsChargedActualUsage(t *testing.T) {
 	tests := []struct {
 		name           string
 		respondedFirst bool
-		chargeBefore   bool
-		chargeDuring   bool
+		policyBlocked  bool
 		wantCharged    bool
 	}{
-		{name: "truncated before upstream answered with the before switch off", chargeBefore: false, chargeDuring: true, wantCharged: false},
-		{name: "truncated before upstream answered with the before switch on", chargeBefore: true, chargeDuring: false, wantCharged: true},
-		{name: "truncated while upstream was answering with the during switch off", respondedFirst: true, chargeBefore: true, chargeDuring: false, wantCharged: false},
-		{name: "truncated while upstream was answering with the during switch on", respondedFirst: true, chargeBefore: false, chargeDuring: true, wantCharged: true},
+		{name: "truncated before upstream answered", wantCharged: true},
+		{name: "truncated while upstream was answering", respondedFirst: true, wantCharged: true},
+		{name: "truncated on a request upstream blocked by a safety policy", respondedFirst: true, policyBlocked: true, wantCharged: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setAbnormalBilling(t, tt.chargeBefore, tt.chargeDuring, true)
 			ctx, info, _ := newDisconnectBillingCase(t, tokenPriced())
+			if tt.policyBlocked {
+				setPolicyBlock(info)
+			}
 			info.MarkUpstreamStart()
 			info.UpstreamAttempt().MarkRequestSent()
 			info.UpstreamAttempt().MarkResponse()
@@ -697,18 +699,20 @@ func TestAbnormalBillingSwitchesUseTheCloudflareTruncationMoment(t *testing.T) {
 func TestUpstreamBilledFailureSettlement(t *testing.T) {
 	reported := &dto.Usage{PromptTokens: 1_000, CompletionTokens: 1, TotalTokens: 1_001}
 	tests := []struct {
-		name        string
-		on          bool
-		perCall     bool
-		clientLeft  bool
-		switchesOff bool
-		retried     bool
-		usage       *dto.Usage
-		wantCharged int
+		name          string
+		on            bool
+		perCall       bool
+		clientLeft    bool
+		policyBlocked bool
+		chargePolicy  bool
+		retried       bool
+		usage         *dto.Usage
+		wantCharged   int
 	}{
 		{name: "switch off keeps the full refund", usage: reported},
 		{name: "switch on charges the usage upstream reported", on: true, usage: reported, wantCharged: 1_001},
-		{name: "switch on with the waiver switches off still charges", on: true, switchesOff: true, usage: reported, wantCharged: 1_001},
+		{name: "a safety policy block keeps the full refund", on: true, policyBlocked: true, usage: reported},
+		{name: "a safety policy block is charged once its switch is on", on: true, policyBlocked: true, chargePolicy: true, usage: reported, wantCharged: 1_001},
 		{name: "nothing reported is refunded", on: true},
 		{name: "zero usage is refunded", on: true, usage: &dto.Usage{}},
 		{name: "a per-call model is refunded", on: true, perCall: true, usage: reported},
@@ -718,9 +722,7 @@ func TestUpstreamBilledFailureSettlement(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setAbnormalOption(t, "charge_upstream_billed_failure", tt.on, false)
-			if tt.switchesOff {
-				setAbnormalBilling(t, false, false, false)
-			}
+			setAbnormalOption(t, "charge_policy_block", tt.chargePolicy, false)
 			priceData := tokenPriced()
 			if tt.perCall {
 				priceData.UsePrice = true
@@ -735,6 +737,9 @@ func TestUpstreamBilledFailureSettlement(t *testing.T) {
 			info.StreamStatus = relaycommon.NewStreamStatus()
 			info.StreamStatus.RequireTerminal()
 			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonHandlerStop, io.ErrUnexpectedEOF)
+			if tt.policyBlocked {
+				info.StreamStatus.MarkFailed("cyber_policy", "", 0)
+			}
 			if tt.retried {
 				info.MarkUpstreamStart()
 			}

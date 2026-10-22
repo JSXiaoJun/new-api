@@ -434,7 +434,7 @@ func (d *upstreamDrain) finish() {
 	record.ChargedQuota = charged
 	record.ForgoneQuota = upstreamQuota - charged
 	writeAbnormalCharge(ctx, record)
-	if billing_setting.MatchUpstreamCharge() && record.Id > 0 {
+	if billing_setting.MatchUpstreamCharge() && record.Id > 0 && !policyBlockIsFree(&info) {
 		chargeUpstreamDifference(ctx, &info, record)
 	}
 }
