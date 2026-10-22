@@ -34,6 +34,7 @@ import {
   Settings,
   ShieldCheck,
   Ticket,
+  Trophy,
   User,
   Users,
   Wallet,
@@ -137,6 +138,11 @@ export function useSidebarData(): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
+          },
+          {
+            title: t('Channel Daily Rank'),
+            url: '/channel-rank',
+            icon: Trophy,
           },
           {
             title: t('Models'),

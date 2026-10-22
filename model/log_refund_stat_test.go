@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -142,4 +143,50 @@ func TestRecordTaskBillingLogSkipsDashboardWhenConsumeLogDisabled(t *testing.T) 
 	var rows []QuotaData
 	require.NoError(t, DB.Find(&rows).Error)
 	require.Empty(t, rows)
+}
+
+func TestGetChannelQuotaRankNetsRefundsPerChannelAndSortsByNetQuota(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.Create(&Channel{Id: 1, Name: "east"}).Error)
+	require.NoError(t, DB.Create(&Channel{Id: 2, Name: "west"}).Error)
+
+	seed := func(channelId int, logType int, quota int, createdAt int64, prompt int, completion int) {
+		require.NoError(t, LOG_DB.Create(&Log{
+			UserId:           1,
+			Username:         "alice",
+			CreatedAt:        createdAt,
+			Type:             logType,
+			ModelName:        "gpt-a",
+			Quota:            quota,
+			PromptTokens:     prompt,
+			CompletionTokens: completion,
+			ChannelId:        channelId,
+		}).Error)
+	}
+	// east: 两次消耗 100+50，退款 30，净额 120。
+	seed(1, LogTypeConsume, 100, 1000, 10, 5)
+	seed(1, LogTypeConsume, 50, 1500, 4, 2)
+	seed(1, LogTypeRefund, 30, 1600, 0, 0)
+	// west: 单次消耗 200，净额 200，应排第一。
+	seed(2, LogTypeConsume, 200, 1200, 20, 8)
+	// 已删除的渠道仍要出现，名称留空。
+	seed(9, LogTypeConsume, 120, 1300, 1, 1)
+	// 窗口为 [1000, 2000)：结束时刻与窗口外的记录、非计费类型都不计入。
+	seed(2, LogTypeConsume, 999, 2000, 0, 0)
+	seed(2, LogTypeConsume, 999, 999, 0, 0)
+	seed(1, LogTypeError, 999, 1100, 0, 0)
+	seed(1, LogTypeTopup, 999, 1100, 0, 0)
+
+	rows, err := GetChannelQuotaRank(1000, 2000)
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+
+	assert.Equal(t, ChannelQuotaRank{ChannelId: 2, ChannelName: "west", RequestCount: 1, PromptTokens: 20, CompletionTokens: 8, ConsumedQuota: 200, NetQuota: 200}, *rows[0])
+	// east 与已删除渠道 9 净额同为 120，按渠道 ID 升序。
+	assert.Equal(t, ChannelQuotaRank{ChannelId: 1, ChannelName: "east", RequestCount: 2, PromptTokens: 14, CompletionTokens: 7, ConsumedQuota: 150, RefundedQuota: 30, NetQuota: 120}, *rows[1])
+	assert.Equal(t, ChannelQuotaRank{ChannelId: 9, RequestCount: 1, PromptTokens: 1, CompletionTokens: 1, ConsumedQuota: 120, NetQuota: 120}, *rows[2])
+
+	empty, err := GetChannelQuotaRank(5000, 6000)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
 }

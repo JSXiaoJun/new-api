@@ -1,8 +1,10 @@
 package model
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -890,6 +892,92 @@ func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	}
 	tx.Where("type = ?", LogTypeConsume).Scan(&token)
 	return token
+}
+
+// getChannelNamesByIds resolves channel names from the main database (or the
+// channel cache); deleted channels are absent from the returned map.
+func getChannelNamesByIds(channelIds []int) (map[int]string, error) {
+	names := make(map[int]string, len(channelIds))
+	if len(channelIds) == 0 {
+		return names, nil
+	}
+	if common.MemoryCacheEnabled {
+		for _, channelId := range channelIds {
+			if channel, err := CacheGetChannel(channelId); err == nil {
+				names[channelId] = channel.Name
+			}
+		}
+		return names, nil
+	}
+	var channels []struct {
+		Id   int    `gorm:"column:id"`
+		Name string `gorm:"column:name"`
+	}
+	if err := DB.Table("channels").Select("id, name").Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
+		return nil, err
+	}
+	for _, channel := range channels {
+		names[channel.Id] = channel.Name
+	}
+	return names, nil
+}
+
+type ChannelQuotaRank struct {
+	ChannelId        int    `json:"channel_id" gorm:"column:channel_id"`
+	ChannelName      string `json:"channel_name" gorm:"-"`
+	RequestCount     int64  `json:"request_count" gorm:"column:request_count"`
+	PromptTokens     int64  `json:"prompt_tokens" gorm:"column:prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens" gorm:"column:completion_tokens"`
+	ConsumedQuota    int64  `json:"consumed_quota" gorm:"column:consumed_quota"`
+	RefundedQuota    int64  `json:"refunded_quota" gorm:"column:refunded_quota"`
+	NetQuota         int64  `json:"net_quota" gorm:"-"`
+}
+
+// GetChannelQuotaRank ranks channels by net consumption (consume minus refund
+// logs) in [startTimestamp, endTimestamp), the same netting as SumUsedQuota.
+func GetChannelQuotaRank(startTimestamp int64, endTimestamp int64) ([]*ChannelQuotaRank, error) {
+	rows := make([]*ChannelQuotaRank, 0)
+	// Log types are inlined rather than bound in the projection, as in SumUsedQuota.
+	selectSQL := fmt.Sprintf("channel_id, "+
+		"COALESCE(sum(CASE WHEN type = %[1]d THEN 1 ELSE 0 END), 0) request_count, "+
+		"COALESCE(sum(CASE WHEN type = %[1]d THEN prompt_tokens ELSE 0 END), 0) prompt_tokens, "+
+		"COALESCE(sum(CASE WHEN type = %[1]d THEN completion_tokens ELSE 0 END), 0) completion_tokens, "+
+		"COALESCE(sum(CASE WHEN type = %[1]d THEN quota ELSE 0 END), 0) consumed_quota, "+
+		"COALESCE(sum(CASE WHEN type = %[2]d THEN quota ELSE 0 END), 0) refunded_quota",
+		LogTypeConsume, LogTypeRefund)
+	err := LOG_DB.Table("logs").
+		Select(selectSQL).
+		Where("created_at >= ? AND created_at < ?", startTimestamp, endTimestamp).
+		Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+		Group("channel_id").
+		Scan(&rows).Error
+	if err != nil {
+		common.SysError(common.LogText("failed to query channel quota rank: %s", err.Error()))
+		return nil, common.NewMessage("Failed to query statistics")
+	}
+
+	channelIds := make([]int, 0, len(rows))
+	for _, row := range rows {
+		row.NetQuota = row.ConsumedQuota - row.RefundedQuota
+		if row.ChannelId != 0 {
+			channelIds = append(channelIds, row.ChannelId)
+		}
+	}
+	names, err := getChannelNamesByIds(channelIds)
+	if err != nil {
+		common.SysError(common.LogText("failed to query channel names: %s", err.Error()))
+		return nil, common.NewMessage("Failed to query statistics")
+	}
+	for _, row := range rows {
+		row.ChannelName = names[row.ChannelId]
+	}
+	slices.SortFunc(rows, func(a, b *ChannelQuotaRank) int {
+		if c := cmp.Compare(b.NetQuota, a.NetQuota); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.ChannelId, b.ChannelId)
+	})
+	return rows, nil
 }
 
 func CountOldLog(ctx context.Context, targetTimestamp int64) (int64, error) {

@@ -7655,6 +7655,19 @@
     "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.": "Sub2API などの上流は、応答が途中で切れた場合でも既に報告した使用量を課金します（Claude のストリームは最初に入力を報告します）。一方ユーザーはエラーを受け取るだけです。オンにすると、このような失敗したリクエストを返金せず、その使用量どおりに請求します。請求するのは最後の試行のみで、それ以前に失敗したリトライは請求しません。オフでは従来どおり全額返金します。回数課金のモデルは常に返金します。",
     "Charge requests blocked by an upstream safety policy": "上流の安全ポリシーでブロックされたリクエストを課金",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, whatever the switches above say, the same as Sub2API, which does not bill these blocks. When on, it is charged by the switches above.": "上流が安全ポリシーでリクエストを拒否した場合です（Sub2API や New API が転送する OpenAI の cyber_policy など）。オフのときは、上のスイッチに関係なく課金しません。これらのブロックを課金しない Sub2API と同じです。オンのときは上のスイッチに従って課金します。",
-    "Upstream failed after billing its usage; charged the usage upstream reported": "上流が課金後に途中で失敗したため、上流が報告した使用量を請求しました"
+    "Upstream failed after billing its usage; charged the usage upstream reported": "上流が課金後に途中で失敗したため、上流が報告した使用量を請求しました",
+    "Channel Daily Rank": "チャネル日次ランキング",
+    "Net consumption": "純消費",
+    "Consumption minus refunds for the day": "当日の消費から返金を差し引いた額",
+    "Consumed": "消費",
+    "Total charged before refunds": "返金前の請求合計",
+    "Refunded": "返金",
+    "Total returned by refund logs": "返金ログによる返金合計",
+    "{{count}} channels with usage": "利用のあるチャネル {{count}} 件",
+    "Failed to load channel rank": "チャネルランキングの読み込みに失敗しました",
+    "No channel consumption on this day": "この日のチャネル消費はありません",
+    "No channel": "チャネルなし",
+    "Deleted channel": "削除済みチャネル",
+    "Rank": "順位"
   }
 }

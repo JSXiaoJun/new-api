@@ -7655,6 +7655,19 @@
     "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.": "Upstream như Sub2API vẫn tính phí phần sử dụng đã báo khi phản hồi bị ngắt giữa chừng (luồng Claude báo đầu vào ngay từ đầu), trong khi người dùng chỉ nhận lỗi. Khi bật, yêu cầu thất bại như vậy được thu đúng phần sử dụng đó thay vì hoàn tiền; chỉ tính lần thử cuối, các lần thử lại thất bại trước đó không tính. Khi tắt, hoàn tiền toàn bộ như trước. Mô hình tính theo lượt luôn được hoàn tiền.",
     "Charge requests blocked by an upstream safety policy": "Tính phí yêu cầu bị chặn bởi chính sách an toàn của upstream",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, whatever the switches above say, the same as Sub2API, which does not bill these blocks. When on, it is charged by the switches above.": "Upstream từ chối yêu cầu theo chính sách an toàn, ví dụ cyber_policy của OpenAI do Sub2API và New API chuyển tiếp. Khi tắt, yêu cầu như vậy không bao giờ bị tính phí, bất kể các công tắc ở trên, giống Sub2API vốn không tính phí các lần chặn này. Khi bật, yêu cầu được tính phí theo các công tắc ở trên.",
-    "Upstream failed after billing its usage; charged the usage upstream reported": "Upstream lỗi sau khi đã tính phí; đã thu phần sử dụng upstream báo"
+    "Upstream failed after billing its usage; charged the usage upstream reported": "Upstream lỗi sau khi đã tính phí; đã thu phần sử dụng upstream báo",
+    "Channel Daily Rank": "Xếp hạng kênh theo ngày",
+    "Net consumption": "Tiêu thụ ròng",
+    "Consumption minus refunds for the day": "Tiêu thụ trong ngày trừ hoàn tiền",
+    "Consumed": "Đã tiêu thụ",
+    "Total charged before refunds": "Tổng đã tính trước hoàn tiền",
+    "Refunded": "Đã hoàn tiền",
+    "Total returned by refund logs": "Tổng đã hoàn theo nhật ký hoàn tiền",
+    "{{count}} channels with usage": "{{count}} kênh có sử dụng",
+    "Failed to load channel rank": "Không tải được xếp hạng kênh",
+    "No channel consumption on this day": "Không có tiêu thụ kênh trong ngày này",
+    "No channel": "Không có kênh",
+    "Deleted channel": "Kênh đã xóa",
+    "Rank": "Hạng"
   }
 }

@@ -7655,6 +7655,19 @@
     "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.": "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.",
     "Charge requests blocked by an upstream safety policy": "Charge requests blocked by an upstream safety policy",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, whatever the switches above say, the same as Sub2API, which does not bill these blocks. When on, it is charged by the switches above.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, whatever the switches above say, the same as Sub2API, which does not bill these blocks. When on, it is charged by the switches above.",
-    "Upstream failed after billing its usage; charged the usage upstream reported": "Upstream failed after billing its usage; charged the usage upstream reported"
+    "Upstream failed after billing its usage; charged the usage upstream reported": "Upstream failed after billing its usage; charged the usage upstream reported",
+    "Channel Daily Rank": "Channel Daily Rank",
+    "Net consumption": "Net consumption",
+    "Consumption minus refunds for the day": "Consumption minus refunds for the day",
+    "Consumed": "Consumed",
+    "Total charged before refunds": "Total charged before refunds",
+    "Refunded": "Refunded",
+    "Total returned by refund logs": "Total returned by refund logs",
+    "{{count}} channels with usage": "{{count}} channels with usage",
+    "Failed to load channel rank": "Failed to load channel rank",
+    "No channel consumption on this day": "No channel consumption on this day",
+    "No channel": "No channel",
+    "Deleted channel": "Deleted channel",
+    "Rank": "Rank"
   }
 }

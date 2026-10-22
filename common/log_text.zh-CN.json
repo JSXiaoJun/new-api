@@ -543,6 +543,8 @@
   "failed to populate newly created user session cache: %s": "新建登录会话后写入缓存失败: %s",
   "failed to publish auth tombstone after hard deleting user %d: %v": "永久删除用户 %d 后发布登录失效通知失败: %v",
   "failed to publish websocket close event: %v": "向其他节点广播 WebSocket 关闭事件失败: %v",
+  "failed to query channel names: %s": "查询渠道名称失败: %s",
+  "failed to query channel quota rank: %s": "查询渠道消费排行失败: %s",
   "failed to query channels: %s": "查询渠道失败: %s",
   "failed to query log stat: %s": "查询日志统计失败: %s",
   "failed to query rpm/tpm stat: %s": "查询 rpm/tpm 统计失败: %s",

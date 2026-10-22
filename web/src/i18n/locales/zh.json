@@ -7655,6 +7655,19 @@
     "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.": "Sub2API 等上游在回复中途断开时，会按已报告的用量计费（Claude 流一开始就会报告输入），而用户只收到报错。开启后，这类失败的请求不再退款，而是按上游报告的用量收费；只收最后一次尝试，之前失败的重试不收。关闭时与以前一样全额退款。按次计费的模型始终退款。",
     "Charge requests blocked by an upstream safety policy": "被上游安全策略拦截时收费",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, whatever the switches above say, the same as Sub2API, which does not bill these blocks. When on, it is charged by the switches above.": "上游因安全策略拒绝了请求，例如 Sub2API、New API 转发的 OpenAI cyber_policy。关闭时，这类请求一律不收费，不受上面开关影响，与 Sub2API 一致（Sub2API 不对这类拦截计费）。开启时按上面的开关收费。",
-    "Upstream failed after billing its usage; charged the usage upstream reported": "上游在已计费后中途失败，按上游报告的用量收费"
+    "Upstream failed after billing its usage; charged the usage upstream reported": "上游在已计费后中途失败，按上游报告的用量收费",
+    "Channel Daily Rank": "渠道日排行",
+    "Net consumption": "净消费",
+    "Consumption minus refunds for the day": "当日消费减去退款",
+    "Consumed": "消费",
+    "Total charged before refunds": "退款前的扣费总额",
+    "Refunded": "退款",
+    "Total returned by refund logs": "退款日志退回的总额",
+    "{{count}} channels with usage": "{{count}} 个渠道有消费",
+    "Failed to load channel rank": "加载渠道排行失败",
+    "No channel consumption on this day": "当天没有渠道消费",
+    "No channel": "无渠道",
+    "Deleted channel": "已删除渠道",
+    "Rank": "排名"
   }
 }

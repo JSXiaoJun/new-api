@@ -7655,6 +7655,19 @@
     "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.": "Un amont comme Sub2API facture l’usage déjà signalé lorsque la réponse s’interrompt en cours (un flux Claude signale d’abord l’entrée), tandis que l’utilisateur ne reçoit qu’une erreur. Activé, une telle requête échouée est facturée exactement cet usage au lieu d’être remboursée ; seule la dernière tentative compte, pas les essais précédents échoués. Désactivé, elle est remboursée entièrement comme avant. Les modèles facturés à l’appel sont toujours remboursés.",
     "Charge requests blocked by an upstream safety policy": "Facturer les requêtes bloquées par une politique de sécurité de l’amont",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, whatever the switches above say, the same as Sub2API, which does not bill these blocks. When on, it is charged by the switches above.": "L’amont a refusé la requête au titre d’une politique de sécurité, comme le cyber_policy d’OpenAI relayé par Sub2API et New API. Désactivé, une telle requête n’est jamais facturée, quels que soient les interrupteurs ci-dessus, comme Sub2API qui ne facture pas ces blocages. Activé, elle est facturée selon les interrupteurs ci-dessus.",
-    "Upstream failed after billing its usage; charged the usage upstream reported": "L’amont a échoué après avoir facturé son usage ; l’usage signalé par l’amont a été facturé"
+    "Upstream failed after billing its usage; charged the usage upstream reported": "L’amont a échoué après avoir facturé son usage ; l’usage signalé par l’amont a été facturé",
+    "Channel Daily Rank": "Classement quotidien des canaux",
+    "Net consumption": "Consommation nette",
+    "Consumption minus refunds for the day": "Consommation du jour moins les remboursements",
+    "Consumed": "Consommé",
+    "Total charged before refunds": "Total facturé avant remboursements",
+    "Refunded": "Remboursé",
+    "Total returned by refund logs": "Total restitué par les journaux de remboursement",
+    "{{count}} channels with usage": "{{count}} canaux utilisés",
+    "Failed to load channel rank": "Échec du chargement du classement des canaux",
+    "No channel consumption on this day": "Aucune consommation de canal ce jour-là",
+    "No channel": "Aucun canal",
+    "Deleted channel": "Canal supprimé",
+    "Rank": "Rang"
   }
 }

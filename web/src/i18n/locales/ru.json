@@ -7655,6 +7655,19 @@
     "Upstream such as Sub2API bills the usage it already reported when the response breaks midway (a Claude stream reports the input first), while the user only gets an error. When on, such a failed request is charged exactly that usage instead of being refunded; earlier failed retries are not charged, only the last attempt. When off, it is refunded in full as before. Per-call priced models are always refunded.": "Апстрим вроде Sub2API списывает уже сообщённый расход, когда ответ обрывается на середине (поток Claude сразу сообщает входные токены), а пользователь получает только ошибку. Если включено, такой неудачный запрос оплачивается ровно этим расходом вместо возврата; учитывается только последняя попытка, предыдущие неудачные повторы не оплачиваются. Если выключено, деньги возвращаются полностью, как раньше. Для моделей с оплатой за вызов всегда выполняется возврат.",
     "Charge requests blocked by an upstream safety policy": "Тарифицировать запросы, заблокированные политикой безопасности апстрима",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, whatever the switches above say, the same as Sub2API, which does not bill these blocks. When on, it is charged by the switches above.": "Апстрим отклонил запрос по политике безопасности, например cyber_policy OpenAI, который передают Sub2API и New API. Если выключено, такой запрос никогда не тарифицируется, независимо от переключателей выше, как в Sub2API, который не тарифицирует такие блокировки. Если включено, он тарифицируется по переключателям выше.",
-    "Upstream failed after billing its usage; charged the usage upstream reported": "Апстрим сбоил после списания; взят расход, о котором сообщил апстрим"
+    "Upstream failed after billing its usage; charged the usage upstream reported": "Апстрим сбоил после списания; взят расход, о котором сообщил апстрим",
+    "Channel Daily Rank": "Дневной рейтинг каналов",
+    "Net consumption": "Чистое потребление",
+    "Consumption minus refunds for the day": "Потребление за день за вычетом возвратов",
+    "Consumed": "Списано",
+    "Total charged before refunds": "Всего списано до возвратов",
+    "Refunded": "Возвращено",
+    "Total returned by refund logs": "Всего возвращено по журналам возвратов",
+    "{{count}} channels with usage": "Каналов с использованием: {{count}}",
+    "Failed to load channel rank": "Не удалось загрузить рейтинг каналов",
+    "No channel consumption on this day": "В этот день нет потребления по каналам",
+    "No channel": "Без канала",
+    "Deleted channel": "Удалённый канал",
+    "Rank": "Место"
   }
 }
