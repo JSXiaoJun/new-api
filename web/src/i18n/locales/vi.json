@@ -7668,6 +7668,12 @@
     "No channel consumption on this day": "Không có tiêu thụ kênh trong ngày này",
     "No channel": "Không có kênh",
     "Deleted channel": "Kênh đã xóa",
-    "Rank": "Hạng"
+    "Rank": "Hạng",
+    "Vendor category": "Danh mục nhà cung cấp",
+    "Domestic models": "Mô hình Trung Quốc",
+    "Google": "Google",
+    "Select a group for {{vendor}}": "Chọn nhóm cho {{vendor}}",
+    "Choose a vendor to narrow the group list": "Chọn nhà cung cấp để lọc danh sách nhóm",
+    "JSON map of group → vendor (openai, anthropic, domestic, google, xai, other). Users filter groups by vendor when creating API keys.": "Ánh xạ JSON nhóm → nhà cung cấp (openai, anthropic, domestic, google, xai, other). Người dùng lọc nhóm theo nhà cung cấp khi tạo khóa API."
   }
 }

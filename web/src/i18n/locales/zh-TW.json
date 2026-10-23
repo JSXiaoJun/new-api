@@ -7668,6 +7668,12 @@
     "No channel consumption on this day": "當天沒有渠道消費",
     "No channel": "無渠道",
     "Deleted channel": "已刪除渠道",
-    "Rank": "排名"
+    "Rank": "排名",
+    "Vendor category": "廠商分類",
+    "Domestic models": "國產模型",
+    "Google": "Google",
+    "Select a group for {{vendor}}": "選擇 {{vendor}} 的可用分組",
+    "Choose a vendor to narrow the group list": "選擇廠商以篩選分組",
+    "JSON map of group → vendor (openai, anthropic, domestic, google, xai, other). Users filter groups by vendor when creating API keys.": "分組 → 廠商的 JSON 對應（openai、anthropic、domestic、google、xai、other）。使用者建立 API 金鑰時可依廠商篩選分組。"
   }
 }

@@ -7668,6 +7668,12 @@
     "No channel consumption on this day": "Aucune consommation de canal ce jour-là",
     "No channel": "Aucun canal",
     "Deleted channel": "Canal supprimé",
-    "Rank": "Rang"
+    "Rank": "Rang",
+    "Vendor category": "Catégorie de fournisseur",
+    "Domestic models": "Modèles chinois",
+    "Google": "Google",
+    "Select a group for {{vendor}}": "Sélectionnez un groupe pour {{vendor}}",
+    "Choose a vendor to narrow the group list": "Choisissez un fournisseur pour filtrer les groupes",
+    "JSON map of group → vendor (openai, anthropic, domestic, google, xai, other). Users filter groups by vendor when creating API keys.": "Objet JSON groupe → fournisseur (openai, anthropic, domestic, google, xai, other). Les utilisateurs filtrent les groupes par fournisseur lors de la création de clés API."
   }
 }

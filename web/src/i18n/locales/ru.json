@@ -7668,6 +7668,12 @@
     "No channel consumption on this day": "В этот день нет потребления по каналам",
     "No channel": "Без канала",
     "Deleted channel": "Удалённый канал",
-    "Rank": "Место"
+    "Rank": "Место",
+    "Vendor category": "Категория поставщика",
+    "Domestic models": "Китайские модели",
+    "Google": "Google",
+    "Select a group for {{vendor}}": "Выберите группу для {{vendor}}",
+    "Choose a vendor to narrow the group list": "Выберите поставщика, чтобы сузить список групп",
+    "JSON map of group → vendor (openai, anthropic, domestic, google, xai, other). Users filter groups by vendor when creating API keys.": "JSON-карта группа → поставщик (openai, anthropic, domestic, google, xai, other). При создании API-ключей пользователи фильтруют группы по поставщику."
   }
 }

@@ -31,6 +31,9 @@ export const STATIC_I18N_KEYS = [
   'For this channel, map the model name in client requests to the model name sent upstream.',
   // Channel provider labels, descriptions and presentation badges.
   'Zhipu GLM',
+  // Group vendor category labels (web/src/lib/group-vendor.tsx).
+  'Domestic models',
+  'Google',
   'Connect to the OpenAI API or compatible services',
   'Generate Midjourney images through MjProxy',
   'Connect to OpenAI models deployed on Azure',

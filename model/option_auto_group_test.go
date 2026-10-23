@@ -16,6 +16,15 @@ func TestValidateOptionValueRejectsInvalidMaxTokenAutoGroups(t *testing.T) {
 	require.NoError(t, validateOptionValue("MaxTokenAutoGroups", "999999"))
 }
 
+func TestValidateOptionValueGroupVendorAcceptsOnlyKnownVendors(t *testing.T) {
+	for _, value := range []string{"", "{}", `{"claude-max":"anthropic","gemini":"google","misc":"other"}`} {
+		assert.NoError(t, validateOptionValue("GroupVendor", value), value)
+	}
+	for _, value := range []string{`{"claude-max":"claude"}`, `{"a":1}`, `["openai"]`, "not json"} {
+		assert.Error(t, validateOptionValue("GroupVendor", value), value)
+	}
+}
+
 func TestValidateOptionValueAcceptsOnlyBooleanAbnormalBillingSwitches(t *testing.T) {
 	for _, field := range []string{
 		"align_with_official",

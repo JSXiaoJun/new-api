@@ -70,6 +70,14 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import {
   Sheet,
@@ -81,6 +89,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
+import {
+  GROUP_VENDORS,
+  isGroupVendorId,
+  renderGroupVendorIcons,
+} from '@/lib/group-vendor'
 
 import { safeJsonParse } from '../utils/json-parser'
 import { GroupSpecialUsableRulesEditor } from './group-special-usable-editor'
@@ -98,6 +111,7 @@ type GroupRatioVisualEditorProps = {
   groupRatio: string
   topupGroupRatio: string
   userUsableGroups: string
+  groupVendor: string
   groupGroupRatio: string
   autoGroups: string
   maxTokenAutoGroupsField: ReactNode
@@ -112,7 +126,10 @@ type GroupPricingRow = {
   topupRatio: string
   selectable: boolean
   description: string
+  vendor: string
 }
+
+const UNSET_VENDOR = '__unset__'
 
 type RegistryEntry = {
   name: string
@@ -159,11 +176,13 @@ function parseNestedRatioMap(
 function buildGroupPricingRows(
   groupRatio: string,
   userUsableGroups: string,
-  topupGroupRatio: string
+  topupGroupRatio: string,
+  groupVendor: string
 ): GroupPricingRow[] {
   const ratioMap = parseRatioMap(groupRatio)
   const usableMap = parseUsableMap(userUsableGroups)
   const topupMap = parseRatioMap(topupGroupRatio)
+  const vendorMap = parseUsableMap(groupVendor)
   const names = new Set([
     ...Object.keys(ratioMap),
     ...Object.keys(usableMap),
@@ -177,6 +196,7 @@ function buildGroupPricingRows(
     topupRatio: Object.hasOwn(topupMap, name) ? String(topupMap[name]) : '',
     selectable: Object.hasOwn(usableMap, name),
     description: String(usableMap[name] ?? ''),
+    vendor: isGroupVendorId(vendorMap[name]) ? vendorMap[name] : '',
   }))
 }
 
@@ -184,6 +204,7 @@ function serializeGroupPricingRows(rows: GroupPricingRow[]) {
   const groupRatio: Record<string, number> = {}
   const userUsableGroups: Record<string, string> = {}
   const topupGroupRatio: Record<string, number> = {}
+  const groupVendor: Record<string, string> = {}
 
   for (const row of rows) {
     const name = row.name.trim()
@@ -196,12 +217,16 @@ function serializeGroupPricingRows(rows: GroupPricingRow[]) {
     if (topup !== '' && Number.isFinite(Number(topup))) {
       topupGroupRatio[name] = Number(topup)
     }
+    if (row.vendor) {
+      groupVendor[name] = row.vendor
+    }
   }
 
   return {
     GroupRatio: JSON.stringify(groupRatio, null, 2),
     UserUsableGroups: JSON.stringify(userUsableGroups, null, 2),
     TopupGroupRatio: JSON.stringify(topupGroupRatio, null, 2),
+    GroupVendor: JSON.stringify(groupVendor, null, 2),
   }
 }
 
@@ -211,18 +236,21 @@ function groupPricingSignature(rows: GroupPricingRow[]): string {
     groupRatio: parseRatioMap(serialized.GroupRatio),
     userUsableGroups: parseUsableMap(serialized.UserUsableGroups),
     topupGroupRatio: parseRatioMap(serialized.TopupGroupRatio),
+    groupVendor: parseUsableMap(serialized.GroupVendor),
   })
 }
 
 function sourceGroupPricingSignature(
   groupRatio: string,
   userUsableGroups: string,
-  topupGroupRatio: string
+  topupGroupRatio: string,
+  groupVendor: string
 ): string {
   return JSON.stringify({
     groupRatio: parseRatioMap(groupRatio),
     userUsableGroups: parseUsableMap(userUsableGroups),
     topupGroupRatio: parseRatioMap(topupGroupRatio),
+    groupVendor: parseUsableMap(groupVendor),
   })
 }
 
@@ -273,6 +301,7 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
   groupRatio,
   topupGroupRatio,
   userUsableGroups,
+  groupVendor,
   groupGroupRatio,
   autoGroups,
   maxTokenAutoGroupsField,
@@ -370,6 +399,7 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
           groupRatio={groupRatio}
           userUsableGroups={userUsableGroups}
           topupGroupRatio={topupGroupRatio}
+          groupVendor={groupVendor}
           onChange={onChange}
           onShowDetail={setDetailGroup}
         />
@@ -475,6 +505,7 @@ type GroupPricingTableProps = {
   groupRatio: string
   userUsableGroups: string
   topupGroupRatio: string
+  groupVendor: string
   onChange: (field: string, value: string) => void
   onShowDetail: (name: string) => void
 }
@@ -483,20 +514,27 @@ function GroupPricingTable({
   groupRatio,
   userUsableGroups,
   topupGroupRatio,
+  groupVendor,
   onChange,
   onShowDetail,
 }: GroupPricingTableProps) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<GroupPricingRow[]>(() =>
-    buildGroupPricingRows(groupRatio, userUsableGroups, topupGroupRatio)
+    buildGroupPricingRows(
+      groupRatio,
+      userUsableGroups,
+      topupGroupRatio,
+      groupVendor
+    )
   )
 
   useEffect(() => {
     const incomingSignature = sourceGroupPricingSignature(
       groupRatio,
       userUsableGroups,
-      topupGroupRatio
+      topupGroupRatio,
+      groupVendor
     )
     setRows((currentRows) => {
       if (groupPricingSignature(currentRows) === incomingSignature) {
@@ -505,10 +543,11 @@ function GroupPricingTable({
       return buildGroupPricingRows(
         groupRatio,
         userUsableGroups,
-        topupGroupRatio
+        topupGroupRatio,
+        groupVendor
       )
     })
-  }, [groupRatio, userUsableGroups, topupGroupRatio])
+  }, [groupRatio, userUsableGroups, topupGroupRatio, groupVendor])
 
   const emitRows = useCallback(
     (nextRows: GroupPricingRow[]) => {
@@ -517,6 +556,7 @@ function GroupPricingTable({
       onChange('GroupRatio', serialized.GroupRatio)
       onChange('UserUsableGroups', serialized.UserUsableGroups)
       onChange('TopupGroupRatio', serialized.TopupGroupRatio)
+      onChange('GroupVendor', serialized.GroupVendor)
     },
     [onChange]
   )
@@ -552,6 +592,7 @@ function GroupPricingTable({
         topupRatio: '',
         selectable: true,
         description: '',
+        vendor: '',
       },
     ])
   }, [emitRows, rows])
@@ -626,7 +667,7 @@ function GroupPricingTable({
             )}
           </InputGroup>
           <StaticDataTable
-            tableClassName='min-w-[760px]'
+            tableClassName='min-w-[940px]'
             tableProps={{ 'aria-label': t('Pricing groups') }}
             data={visibleRows}
             getRowKey={(row) => row._id}
@@ -666,6 +707,52 @@ function GroupPricingTable({
                     }
                     aria-invalid={duplicateNames.includes(row.name.trim())}
                   />
+                ),
+              },
+              {
+                id: 'vendor',
+                header: t('Vendor category'),
+                className: 'w-44',
+                cell: (row) => (
+                  <Select
+                    items={[
+                      { value: UNSET_VENDOR, label: t('Not set') },
+                      ...GROUP_VENDORS.map((vendor) => ({
+                        value: vendor.id,
+                        label: t(vendor.labelKey),
+                      })),
+                    ]}
+                    value={row.vendor || UNSET_VENDOR}
+                    onValueChange={(value) =>
+                      updateRow(
+                        row._id,
+                        'vendor',
+                        value === UNSET_VENDOR || value == null
+                          ? ''
+                          : String(value)
+                      )
+                    }
+                  >
+                    <SelectTrigger
+                      className='w-full'
+                      aria-label={t('Vendor category')}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value={UNSET_VENDOR}>
+                          {t('Not set')}
+                        </SelectItem>
+                        {GROUP_VENDORS.map((vendor) => (
+                          <SelectItem key={vendor.id} value={vendor.id}>
+                            {renderGroupVendorIcons(vendor.id, 14)}
+                            {t(vendor.labelKey)}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 ),
               },
               {

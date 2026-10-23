@@ -7668,6 +7668,12 @@
     "No channel consumption on this day": "この日のチャネル消費はありません",
     "No channel": "チャネルなし",
     "Deleted channel": "削除済みチャネル",
-    "Rank": "順位"
+    "Rank": "順位",
+    "Vendor category": "ベンダー分類",
+    "Domestic models": "中国製モデル",
+    "Google": "Google",
+    "Select a group for {{vendor}}": "{{vendor}} の利用可能なグループを選択",
+    "Choose a vendor to narrow the group list": "ベンダーを選んでグループを絞り込みます",
+    "JSON map of group → vendor (openai, anthropic, domestic, google, xai, other). Users filter groups by vendor when creating API keys.": "グループ → ベンダーの JSON マップ（openai、anthropic、domestic、google、xai、other）。ユーザーは API キー作成時にベンダーでグループを絞り込めます。"
   }
 }

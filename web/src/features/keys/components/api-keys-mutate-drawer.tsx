@@ -51,6 +51,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Sheet,
   SheetClose,
@@ -66,6 +67,12 @@ import { RelatedPolicyLink } from '@/features/system-settings/request-policies/r
 import { useStatus } from '@/hooks/use-status'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import {
+  GROUP_VENDOR_IDS,
+  getGroupVendor,
+  isGroupVendorId,
+  type GroupVendorId,
+} from '@/lib/group-vendor'
 import { handleServerError } from '@/lib/handle-server-error'
 import {
   requireServerSuccess,
@@ -94,6 +101,7 @@ import {
 } from './api-key-group-combobox'
 import { useApiKeys } from './api-keys-provider'
 import { AutoGroupOrderEditor } from './auto-group-order-editor'
+import { GroupVendorPicker } from './group-vendor-picker'
 
 type ApiKeyMutateDrawerProps = {
   open: boolean
@@ -114,6 +122,9 @@ export function ApiKeysMutateDrawer({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [initializedTarget, setInitializedTarget] = useState<string | null>(
+    null
+  )
+  const [selectedVendor, setSelectedVendor] = useState<GroupVendorId | null>(
     null
   )
   const defaultUseAutoGroup = status?.default_use_auto_group === true
@@ -169,9 +180,29 @@ export function ApiKeysMutateDrawer({
         label: key,
         desc: info.desc ? translateServerText(t, info.desc) : key,
         ratio: info.ratio,
+        vendor: isGroupVendorId(info.vendor) ? info.vendor : undefined,
       })),
     [groupsData, t]
   )
+  // Vendor cards only appear once an administrator has set a vendor on at
+  // least one group; groups without one fall under Other.
+  const vendorFilterEnabled = groups.some((group) => group.vendor)
+  const availableVendors = useMemo(
+    () =>
+      GROUP_VENDOR_IDS.filter((id) =>
+        groups.some(
+          (group) => group.value !== 'auto' && (group.vendor ?? 'other') === id
+        )
+      ),
+    [groups]
+  )
+  const visibleGroups = useMemo(() => {
+    if (!vendorFilterEnabled || !selectedVendor) return groups
+    return groups.filter(
+      (group) =>
+        group.value === 'auto' || (group.vendor ?? 'other') === selectedVendor
+    )
+  }, [groups, selectedVendor, vendorFilterEnabled])
   const backendHasAuto = groups.some((g) => g.value === 'auto')
   const availableAutoGroupNames = useMemo(
     () => groups.filter((group) => group.value !== 'auto').map((g) => g.value),
@@ -224,24 +255,32 @@ export function ApiKeysMutateDrawer({
 
     const target = isUpdate && currentRow ? `update:${currentRow.id}` : 'create'
     if (initializedTarget === target) return
+    const vendorOfGroup = (groupName: string | undefined) => {
+      const group = groups.find((item) => item.value === groupName)
+      if (!group || group.value === 'auto') return null
+      return group.vendor ?? 'other'
+    }
     if (isUpdate && currentRow) {
       if (apiKeyData?.success && apiKeyData.data) {
-        form.reset(
-          transformApiKeyToFormDefaults(
-            apiKeyData.data,
-            availableAutoGroupNames,
-            maxAutoGroups
-          )
+        const defaults = transformApiKeyToFormDefaults(
+          apiKeyData.data,
+          availableAutoGroupNames,
+          maxAutoGroups
         )
+        form.reset(defaults)
+        setSelectedVendor(vendorOfGroup(defaults.group))
         setInitializedTarget(target)
       }
     } else {
-      form.reset(
-        getApiKeyFormDefaultValues(defaultUseAutoGroup && backendHasAuto)
+      const defaults = getApiKeyFormDefaultValues(
+        defaultUseAutoGroup && backendHasAuto
       )
+      form.reset(defaults)
+      setSelectedVendor(vendorOfGroup(defaults.group))
       setInitializedTarget(target)
     }
   }, [
+    groups,
     open,
     isUpdate,
     currentRow,
@@ -283,6 +322,23 @@ export function ApiKeysMutateDrawer({
       }
     }
   }, [groups, form, selectedGroup])
+
+  const applyGroup = (group: string) => {
+    form.setValue('group', group, { shouldDirty: true })
+    form.setValue('cross_group_retry', group === 'auto', { shouldDirty: true })
+  }
+
+  const handleVendorChange = (vendor: GroupVendorId | null) => {
+    setSelectedVendor(vendor)
+    if (!vendor) return
+    const vendorGroups = groups.filter(
+      (group) => group.value !== 'auto' && (group.vendor ?? 'other') === vendor
+    )
+    if (vendorGroups.some((group) => group.value === form.getValues('group'))) {
+      return
+    }
+    if (vendorGroups[0]) applyGroup(vendorGroups[0].value)
+  }
 
   const onSubmit = async (data: ApiKeyFormValues) => {
     setIsSubmitting(true)
@@ -419,6 +475,24 @@ export function ApiKeysMutateDrawer({
                 )}
               />
 
+              {vendorFilterEnabled && (
+                <div className='flex flex-col gap-2'>
+                  <Label>{t('Vendor category')}</Label>
+                  <GroupVendorPicker
+                    vendors={availableVendors}
+                    value={selectedVendor}
+                    onValueChange={handleVendorChange}
+                  />
+                  <p className='text-muted-foreground text-xs'>
+                    {selectedVendor
+                      ? t('Select a group for {{vendor}}', {
+                          vendor: t(getGroupVendor(selectedVendor).labelKey),
+                        })
+                      : t('Choose a vendor to narrow the group list')}
+                  </p>
+                </div>
+              )}
+
               <FormField
                 control={form.control}
                 name='group'
@@ -427,20 +501,9 @@ export function ApiKeysMutateDrawer({
                     <FormLabel>{t('Group')}</FormLabel>
                     <FormControl>
                       <ApiKeyGroupCombobox
-                        options={groups}
+                        options={visibleGroups}
                         value={field.value}
-                        onValueChange={(group) => {
-                          field.onChange(group)
-                          if (group === 'auto') {
-                            form.setValue('cross_group_retry', true, {
-                              shouldDirty: true,
-                            })
-                            return
-                          }
-                          form.setValue('cross_group_retry', false, {
-                            shouldDirty: true,
-                          })
-                        }}
+                        onValueChange={applyGroup}
                         placeholder={t('Select a group')}
                       />
                     </FormControl>

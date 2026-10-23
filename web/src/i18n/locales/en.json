@@ -7668,6 +7668,12 @@
     "No channel consumption on this day": "No channel consumption on this day",
     "No channel": "No channel",
     "Deleted channel": "Deleted channel",
-    "Rank": "Rank"
+    "Rank": "Rank",
+    "Vendor category": "Vendor category",
+    "Domestic models": "Domestic models",
+    "Google": "Google",
+    "Select a group for {{vendor}}": "Select a group for {{vendor}}",
+    "Choose a vendor to narrow the group list": "Choose a vendor to narrow the group list",
+    "JSON map of group → vendor (openai, anthropic, domestic, google, xai, other). Users filter groups by vendor when creating API keys.": "JSON map of group → vendor (openai, anthropic, domestic, google, xai, other). Users filter groups by vendor when creating API keys."
   }
 }

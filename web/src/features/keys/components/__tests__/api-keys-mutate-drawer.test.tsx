@@ -16,7 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { afterEach, describe, expect, test } from 'vitest'
 
 const { createInstance } = await import('i18next')
@@ -47,7 +53,28 @@ const originalGet = apiClient.get
 const originalPost = apiClient.post
 let renderedDrawer: RenderedDrawer | null = null
 
-function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
+type GroupFixture = Record<
+  string,
+  { desc: string; ratio: number | string; vendor?: string }
+>
+
+const plainGroups: GroupFixture = {
+  auto: { desc: 'Automatic routing', ratio: 'auto' },
+  default: { desc: 'Standard access', ratio: 1 },
+  vip: { desc: 'Priority access', ratio: 2 },
+}
+
+const vendorGroups: GroupFixture = {
+  auto: { desc: 'Automatic routing', ratio: 'auto', vendor: '' },
+  default: { desc: 'Standard access', ratio: 1, vendor: 'openai' },
+  vip: { desc: 'Priority access', ratio: 2, vendor: 'anthropic' },
+  legacy: { desc: 'Legacy access', ratio: 1, vendor: '' },
+}
+
+function installApiFixtures(
+  createdPayloads: Array<Record<string, unknown>>,
+  groups: GroupFixture = plainGroups
+) {
   apiClient.get = async (url) => {
     switch (url) {
       case '/api/status':
@@ -58,11 +85,7 @@ function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
         return {
           data: {
             success: true,
-            data: {
-              auto: { desc: 'Automatic routing', ratio: 'auto' },
-              default: { desc: 'Standard access', ratio: 1 },
-              vip: { desc: 'Priority access', ratio: 2 },
-            },
+            data: groups,
           },
         }
       case '/api/token/auto-groups':
@@ -84,7 +107,9 @@ function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
   }
 }
 
-async function renderCreateDrawer(): Promise<void> {
+async function renderCreateDrawer(
+  groups: GroupFixture = plainGroups
+): Promise<void> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -101,14 +126,7 @@ async function renderCreateDrawer(): Promise<void> {
   )
   queryClient.setQueryData(
     ['user-groups'],
-    {
-      success: true,
-      data: {
-        auto: { desc: 'Automatic routing', ratio: 'auto' },
-        default: { desc: 'Standard access', ratio: 1 },
-        vip: { desc: 'Priority access', ratio: 2 },
-      },
-    },
+    { success: true, data: groups },
     { updatedAt: freshAt }
   )
   queryClient.setQueryData(
@@ -211,6 +229,7 @@ describe('API keys mutate drawer Auto group integration', () => {
 
     const groupTrigger = getControlByLabel('Group')
     expect(groupTrigger.textContent?.includes('auto')).toBe(true)
+    expect(screen.queryByRole('group', { name: 'Vendor category' })).toBe(null)
     expect(
       document.body.textContent?.includes(
         'Using the complete global Auto order (2 groups)'
@@ -276,5 +295,54 @@ describe('API keys mutate drawer Auto group integration', () => {
     fireEvent.click(findButton('Save changes', true))
     await waitFor(() => expect(createdPayloads).toHaveLength(1))
     expect(createdPayloads[0]?.auto_groups).toEqual(['vip'])
+  })
+})
+
+describe('API keys mutate drawer vendor filter', () => {
+  test('picking a vendor card narrows the group list and selects its first group', async () => {
+    const createdPayloads: Array<Record<string, unknown>> = []
+    installApiFixtures(createdPayloads, vendorGroups)
+    await renderCreateDrawer(vendorGroups)
+
+    const picker = screen.getByRole('group', { name: 'Vendor category' })
+    expect(within(picker).getAllByRole('button')).toHaveLength(3)
+    for (const name of ['OpenAI', 'Anthropic', 'Other']) {
+      expect(within(picker).getByRole('button', { name })).toBeVisible()
+    }
+
+    fireEvent.click(within(picker).getByRole('button', { name: 'Anthropic' }))
+    expect(
+      within(picker).getByRole('button', { name: 'Anthropic' })
+    ).toHaveAttribute('aria-pressed', 'true')
+    const groupTrigger = getControlByLabel('Group')
+    expect(groupTrigger.textContent?.includes('vip')).toBe(true)
+
+    fireEvent.click(groupTrigger)
+    const options = [
+      ...document.querySelectorAll<HTMLElement>('[data-slot="command-item"]'),
+    ].map((option) => option.getAttribute('data-value'))
+    expect(options).toEqual(['auto', 'vip'])
+    fireEvent.click(
+      document.querySelector<HTMLElement>(
+        '[data-slot="command-item"][data-value="vip"]'
+      ) as HTMLElement
+    )
+
+    changeInput(getControlByLabel('Name'), 'claude-key')
+    fireEvent.click(findButton('Save changes', true))
+    await waitFor(() => expect(createdPayloads).toHaveLength(1))
+    expect(createdPayloads[0]?.group).toBe('vip')
+    expect(createdPayloads[0]?.cross_group_retry).toBe(false)
+  })
+
+  test('groups without a vendor are listed under Other', async () => {
+    installApiFixtures([], vendorGroups)
+    await renderCreateDrawer(vendorGroups)
+
+    const picker = screen.getByRole('group', { name: 'Vendor category' })
+    fireEvent.click(within(picker).getByRole('button', { name: 'Other' }))
+    expect(getControlByLabel('Group').textContent?.includes('legacy')).toBe(
+      true
+    )
   })
 })
