@@ -264,6 +264,9 @@ export interface LogOtherData {
   po?: string[]
   billing_source?: string
   group?: string
+  // Error logs of auto-group tokens: the group the failed attempt routed to,
+  // while the log's own group stays "auto".
+  auto_group?: string
   stream_status?: {
     status?: string
     end_reason?: string

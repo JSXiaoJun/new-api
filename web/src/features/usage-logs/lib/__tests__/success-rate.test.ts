@@ -101,6 +101,14 @@ describe('success rate points', () => {
     })
   })
 
+  test('auto-group error log looks up the group its attempt routed to', () => {
+    const autoLog = { ...makeLog(30, 5, { auto_group: 'vip' }), group: 'auto' }
+
+    expect(collectSuccessRatePoints([autoLog], NOW).points).toEqual([
+      { created_at: NOW - 60, group: 'vip', model_name: 'gpt-test' },
+    ])
+  })
+
   test('skips failed logs older than the retention or without a group', () => {
     const old = makeLog(20, 5, {}, NOW - SUCCESS_RATE_RETENTION_SECONDS - 1)
     const noGroup = { ...makeLog(21, 5), group: '' }

@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -123,6 +124,58 @@ func TestProcessChannelErrorMasksDisableReasonAndNotification(t *testing.T) {
 	assert.NotContains(t, notification.Content, "review-token")
 	assert.NotContains(t, notification.Content, "review-secret")
 	assert.Equal(t, http.StatusUnauthorized, apiErr.StatusCode)
+}
+
+func TestProcessChannelErrorLogRecordsRoutedAutoGroup(t *testing.T) {
+	previousDB, previousLogDB := model.DB, model.LOG_DB
+	previousMainType, previousLogType := common.MainDatabaseType(), common.LogDatabaseType()
+	previousErrorLog := constant.ErrorLogEnabled
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = previousDB, previousLogDB
+		common.SetDatabaseTypes(previousMainType, previousLogType)
+		constant.ErrorLogEnabled = previousErrorLog
+	})
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := database.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	require.NoError(t, database.AutoMigrate(&model.User{}, &model.Log{}))
+	model.DB, model.LOG_DB = database, database
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	constant.ErrorLogEnabled = true
+
+	for _, tc := range []struct {
+		name, tokenGroup, routedGroup, wantAutoGroup string
+	}{
+		{name: "auto token records the routed group", tokenGroup: "auto", routedGroup: "vip", wantAutoGroup: "vip"},
+		{name: "auto token failing before routing records none", tokenGroup: "auto", routedGroup: "auto"},
+		{name: "fixed group records none", tokenGroup: "pro", routedGroup: "pro"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, database.Where("1 = 1").Delete(&model.Log{}).Error)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			c.Set("id", 1)
+			c.Set("original_model", "test-model")
+			common.SetContextKey(c, constant.ContextKeyUsingGroup, tc.tokenGroup)
+			apiErr := types.NewOpenAIError(errors.New("upstream failed"), types.ErrorCodeBadResponseStatusCode, http.StatusBadGateway)
+
+			ProcessChannelError(c, types.ChannelError{ChannelId: 3}, apiErr, &relaycommon.RelayInfo{UsingGroup: tc.routedGroup})
+
+			var logged model.Log
+			require.NoError(t, database.First(&logged).Error)
+			assert.Equal(t, tc.tokenGroup, logged.Group, "the log keeps the token's group")
+			var other map[string]any
+			require.NoError(t, common.UnmarshalJsonStr(logged.Other, &other))
+			if tc.wantAutoGroup == "" {
+				assert.NotContains(t, other, "auto_group")
+				return
+			}
+			assert.Equal(t, tc.wantAutoGroup, other["auto_group"])
+		})
+	}
 }
 
 func TestDecideRelayRetryReasons(t *testing.T) {

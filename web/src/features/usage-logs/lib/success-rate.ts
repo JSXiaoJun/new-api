@@ -62,10 +62,12 @@ export function collectSuccessRatePoints(
     if (!log.model_name || !log.group) continue
     if (log.created_at < nowSeconds - SUCCESS_RATE_RETENTION_SECONDS) continue
     if (!isPlatformFailureLog(log)) continue
+    // Success counts are kept under the group a request routed to, not "auto".
+    const routedGroup = parseLogOther(log.other)?.auto_group
     ids.push(log.id)
     points.push({
       created_at: log.created_at,
-      group: log.group,
+      group: routedGroup || log.group,
       model_name: log.model_name,
     })
   }

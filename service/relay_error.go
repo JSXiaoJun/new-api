@@ -89,6 +89,12 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		other.SetPublic("error_type", err.GetErrorType())
 		other.SetPublic("error_code", err.GetErrorCode())
 		other.SetPublic("status_code", err.StatusCode)
+		// The log keeps the token's group, which for auto tokens is "auto"; the
+		// platform success rate beside the log is counted under the group the
+		// attempt actually routed to.
+		if relayInfo != nil && relayInfo.UsingGroup != "" && relayInfo.UsingGroup != userGroup {
+			other.SetPublic("auto_group", relayInfo.UsingGroup)
+		}
 		AppendRelayLogAdminInfo(c, relayInfo, other)
 		AppendResponseModelLogInfo(relayInfo, other)
 		AppendRelayTermination(c, relayInfo, other)
