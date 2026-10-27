@@ -133,7 +133,6 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			info.ObserveResponseModel(streamResponse.Response.Model)
 		}
 		service.ObserveResponsesOutcome(info, &streamResponse)
-		sendResponsesStreamData(c, streamResponse, data)
 		// Responses-compatible gateways can wrap usage several levels deep
 		// inside data/response envelopes. Use relaykit's bounded recursive
 		// extractor in addition to the typed fields above.
@@ -266,6 +265,17 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 					imageCounter.Observe(streamResponse.Item, streamResponse.OutputIndex)
 				}
 			}
+		}
+		if err := helper.ResponseChunkData(c, streamResponse, data); err != nil {
+			sr.Stop(err)
+			return
+		}
+		// An empty terminal response stays open: some sub2api-compatible
+		// gateways attach the output in a following terminal event.
+		if (streamResponse.Type == "response.completed" || streamResponse.Type == "response.done") &&
+			response != nil && len(response.Output) > 0 &&
+			info.StreamStatus.ResponseOutcome() == string(relaycommon.ResponseOutcomeCompleted) {
+			sr.Done()
 		}
 	})
 
@@ -415,9 +425,25 @@ func mergeResponsesInputTokenDetailsMax(dst *dto.InputTokenDetails, src dto.Inpu
 	dst.CachedCreationTokens = maxResponsesUsageInt(dst.CachedCreationTokens, src.CachedCreationTokens)
 	dst.CacheCreationTokens = maxResponsesUsageInt(dst.CacheCreationTokens, src.CacheCreationTokens)
 	dst.CacheWriteTokens = maxResponsesUsageInt(dst.CacheWriteTokens, src.CacheWriteTokens)
+	mergeCacheWriteTokenDetailsMax(dst, src.CacheWriteTokensDetails)
 	dst.TextTokens = maxResponsesUsageInt(dst.TextTokens, src.TextTokens)
 	dst.AudioTokens = maxResponsesUsageInt(dst.AudioTokens, src.AudioTokens)
 	dst.ImageTokens = maxResponsesUsageInt(dst.ImageTokens, src.ImageTokens)
+}
+
+// mergeCacheWriteTokenDetailsMax keeps the cache-write lifetime split, which
+// bills 12-hour writes at their own price, into a detached copy on dst.
+func mergeCacheWriteTokenDetailsMax(dst *dto.InputTokenDetails, src *dto.CacheWriteTokenDetails) {
+	if src == nil {
+		return
+	}
+	var merged dto.CacheWriteTokenDetails
+	if dst.CacheWriteTokensDetails != nil {
+		merged = *dst.CacheWriteTokensDetails
+	}
+	merged.TTL30mTokens = maxResponsesUsageInt(merged.TTL30mTokens, src.TTL30mTokens)
+	merged.TTL12hTokens = maxResponsesUsageInt(merged.TTL12hTokens, src.TTL12hTokens)
+	dst.CacheWriteTokensDetails = &merged
 }
 
 func mergeResponsesOutputTokenDetailsMax(dst *dto.OutputTokenDetails, src dto.OutputTokenDetails) {

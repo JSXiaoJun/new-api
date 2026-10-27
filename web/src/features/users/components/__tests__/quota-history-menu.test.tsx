@@ -37,7 +37,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Users } from '@/features/users'
 import type { User } from '@/features/users/types'
-import { api } from '@/lib/api'
+import { api, type ApiRequestConfig } from '@/lib/api'
 
 const users: User[] = [
   {
@@ -105,50 +105,53 @@ beforeEach(() => {
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
-  vi.spyOn(api, 'get').mockImplementation(async (url, config) => {
-    if (url === '/api/user/') {
-      return {
-        data: {
-          success: true,
-          data: { items: users, total: 2, page: 1, page_size: 20 },
-        },
-      }
-    }
-    if (url === '/api/group/') {
-      return { data: { success: true, data: ['default'] } }
-    }
-    if (url === '/api/authz/catalog') {
-      return {
-        data: { success: true, data: { resources: [], roles: [] } },
-      }
-    }
-    if (url === '/api/user/82/quota/log') {
-      const page = Number(config?.params?.p)
-      return {
-        data: {
-          success: true,
+  vi.spyOn(api, 'get').mockImplementation(
+    async (url, config?: ApiRequestConfig) => {
+      if (url === '/api/user/') {
+        return {
           data: {
-            items: [
-              {
-                id: page,
-                user_id: 82,
-                created_at: 1700000000,
-                source: 'topup',
-                reference: page === 1 ? 'Latest recharge' : 'Earlier recharge',
-                delta: 500000,
-                request_id: '',
-                operator_id: 0,
-              },
-            ],
-            total: 11,
-            page,
-            page_size: Number(config?.params?.page_size),
+            success: true,
+            data: { items: users, total: 2, page: 1, page_size: 20 },
           },
-        },
+        }
       }
+      if (url === '/api/group/') {
+        return { data: { success: true, data: ['default'] } }
+      }
+      if (url === '/api/authz/catalog') {
+        return {
+          data: { success: true, data: { resources: [], roles: [] } },
+        }
+      }
+      if (url === '/api/user/82/quota/log') {
+        const page = Number(config?.params?.p)
+        return {
+          data: {
+            success: true,
+            data: {
+              items: [
+                {
+                  id: page,
+                  user_id: 82,
+                  created_at: 1700000000,
+                  source: 'topup',
+                  reference:
+                    page === 1 ? 'Latest recharge' : 'Earlier recharge',
+                  delta: 500000,
+                  request_id: '',
+                  operator_id: 0,
+                },
+              ],
+              total: 11,
+              page,
+              page_size: Number(config?.params?.page_size),
+            },
+          },
+        }
+      }
+      throw new Error(`Unexpected GET ${url}`)
     }
-    throw new Error(`Unexpected GET ${url}`)
-  })
+  )
 })
 
 afterEach(() => {

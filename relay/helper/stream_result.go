@@ -13,6 +13,7 @@ import (
 type StreamResult struct {
 	status    *relaycommon.StreamStatus
 	stopped   bool
+	done      bool
 	eventType string
 }
 
@@ -45,6 +46,7 @@ func (r *StreamResult) Stop(err error) {
 func (r *StreamResult) Done() {
 	r.status.SetEndReason(relaycommon.StreamEndReasonDone, nil)
 	r.stopped = true
+	r.done = true
 }
 
 // IsStopped returns whether Stop() or Done() was called during this chunk.

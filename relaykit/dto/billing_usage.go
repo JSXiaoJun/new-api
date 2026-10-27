@@ -94,6 +94,7 @@ func HasOpenAIUsageTokens(usage *Usage) bool {
 		return true
 	}
 	if usage.PromptTokensDetails.CachedTokensDetails.HasTokens() ||
+		usage.PromptTokensDetails.CacheWriteTokensDetails.HasTokens() ||
 		usage.PromptTokensDetails.CachedTokens != 0 ||
 		usage.PromptTokensDetails.CachedCreationTokens != 0 ||
 		usage.PromptTokensDetails.CacheCreationTokens != 0 ||
@@ -120,6 +121,7 @@ func HasOpenAIUsageTokens(usage *Usage) bool {
 		return false
 	}
 	return usage.InputTokensDetails.CachedTokensDetails.HasTokens() ||
+		usage.InputTokensDetails.CacheWriteTokensDetails.HasTokens() ||
 		usage.InputTokensDetails.CachedTokens != 0 ||
 		usage.InputTokensDetails.CachedCreationTokens != 0 ||
 		usage.InputTokensDetails.CacheWriteTokens != 0 ||

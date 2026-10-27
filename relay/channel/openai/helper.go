@@ -310,6 +310,7 @@ func mergeInputTokenDetails(dst *dto.InputTokenDetails, src dto.InputTokenDetail
 	if src.CacheWriteTokens > 0 {
 		dst.CacheWriteTokens = maxResponsesUsageInt(dst.CacheWriteTokens, src.CacheWriteTokens)
 	}
+	mergeCacheWriteTokenDetailsMax(dst, src.CacheWriteTokensDetails)
 	if src.TextTokens > 0 {
 		dst.TextTokens = maxResponsesUsageInt(dst.TextTokens, src.TextTokens)
 	}
@@ -441,11 +442,4 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 			common.SysLog(common.LogText("error sending finalized Gemini stream response: %s", err.Error()))
 		}
 	}
-}
-
-func sendResponsesStreamData(c *gin.Context, streamResponse dto.ResponsesStreamResponse, data string) {
-	if data == "" {
-		return
-	}
-	_ = helper.ResponseChunkData(c, streamResponse, data)
 }

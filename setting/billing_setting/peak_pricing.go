@@ -164,7 +164,7 @@ func (p PeakTariff) Validate() error {
 			return fmt.Errorf("audio output price requires a positive audio input price")
 		}
 		data := p.PriceData()
-		for _, ratio := range []float64{data.CompletionRatio, data.CacheRatio, data.CacheCreation1hRatio, data.ImageRatio, data.AudioRatio, data.AudioCompletionRatio} {
+		for _, ratio := range []float64{data.CompletionRatio, data.CacheRatio, data.CacheCreation1hRatio, data.CacheCreation12hRatio, data.ImageRatio, data.AudioRatio, data.AudioCompletionRatio} {
 			if math.IsInf(ratio, 0) || math.IsNaN(ratio) {
 				return fmt.Errorf("token price ratios exceed the supported range")
 			}
@@ -236,6 +236,7 @@ func (p PeakTariff) PriceData() types.PriceData {
 		data.AudioCompletionRatio = *p.AudioOutputPrice / *p.AudioPrice
 	}
 	data.CacheCreation5mRatio = data.CacheCreationRatio
-	data.CacheCreation1hRatio = data.CacheCreationRatio * 1.6
+	data.CacheCreation1hRatio = data.CacheCreationRatio * types.ClaudeCacheCreation1hMultiplier
+	data.CacheCreation12hRatio = data.CacheCreationRatio * types.OpenAICacheCreation12hMultiplier
 	return data
 }

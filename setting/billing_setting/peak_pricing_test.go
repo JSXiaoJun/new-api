@@ -74,6 +74,13 @@ func TestPeakTokenTariffUsesIndependentPrices(t *testing.T) {
 	assert.Zero(t, price.CacheRatio)
 	assert.Equal(t, 2.0, price.AudioRatio)
 	assert.Equal(t, 3.0, price.AudioCompletionRatio)
+
+	// Long-lived cache writes keep their fixed multiple of the peak write price.
+	tariff.CreateCachePrice = common.GetPointer(2.5)
+	price = tariff.PriceData()
+	assert.Equal(t, 1.25, price.CacheCreationRatio)
+	assert.Equal(t, 2.0, price.CacheCreation1hRatio)
+	assert.Equal(t, 2.5, price.CacheCreation12hRatio)
 	tariff.InputPrice = common.GetPointer(math.SmallestNonzeroFloat64)
 	assert.Error(t, tariff.Validate())
 }
