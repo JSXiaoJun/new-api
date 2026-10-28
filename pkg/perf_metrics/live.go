@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -26,7 +27,8 @@ const (
 	// LiveWindowMinutes is how far back the status page looks.
 	LiveWindowMinutes      = 60
 	liveShortWindowMinutes = 5
-	// liveMinSamples hides rates computed from too few requests to mean anything.
+	// liveMinSamples hides rates beside usage logs computed from too few
+	// requests to mean anything. The status page rates every minute with traffic.
 	liveMinSamples = 3
 	// liveCompareRadiusMinutes widens a log's minute on both sides, so the rate
 	// beside one request does not rest on that minute alone.
@@ -100,9 +102,8 @@ type liveMinute struct {
 var liveMinutes sync.Map // minute start -> *liveMinute
 
 type LiveMinutePoint struct {
-	Ts int64 `json:"ts"`
-	// SuccessRate is nil when the minute had fewer than liveMinSamples requests.
-	SuccessRate *float64 `json:"success_rate"`
+	Ts          int64   `json:"ts"`
+	SuccessRate float64 `json:"success_rate"`
 }
 
 type LiveModelStatus struct {
@@ -113,8 +114,10 @@ type LiveModelStatus struct {
 }
 
 type LiveGroupStatus struct {
-	Group             string            `json:"group"`
-	Description       string            `json:"description"`
+	Group       string `json:"group"`
+	Description string `json:"description"`
+	// Vendor is the group's vendor category, or "" when none is set.
+	Vendor            string            `json:"vendor"`
 	ShortSuccessRate  *float64          `json:"short_success_rate"`
 	WindowSuccessRate *float64          `json:"window_success_rate"`
 	Models            []LiveModelStatus `json:"models"`
@@ -502,7 +505,7 @@ func QueryLiveStatus(now time.Time, groups map[string]string) LiveStatusResult {
 			if minuteTs >= shortStart {
 				totals.short = totals.short.add(counts)
 			}
-			totals.minutes = append(totals.minutes, LiveMinutePoint{Ts: minuteTs, SuccessRate: liveSuccessRate(counts)})
+			totals.minutes = append(totals.minutes, LiveMinutePoint{Ts: minuteTs, SuccessRate: *liveStatusRate(counts)})
 		}
 	}
 
@@ -521,8 +524,8 @@ func QueryLiveStatus(now time.Time, groups map[string]string) LiveStatusResult {
 			groupWindow = groupWindow.add(totals.window)
 			statuses = append(statuses, LiveModelStatus{
 				ModelName:         modelName,
-				ShortSuccessRate:  liveSuccessRate(totals.short),
-				WindowSuccessRate: liveSuccessRate(totals.window),
+				ShortSuccessRate:  liveStatusRate(totals.short),
+				WindowSuccessRate: liveStatusRate(totals.window),
 				Minutes:           totals.minutes,
 			})
 		}
@@ -532,8 +535,9 @@ func QueryLiveStatus(now time.Time, groups map[string]string) LiveStatusResult {
 		result.Groups = append(result.Groups, LiveGroupStatus{
 			Group:             group,
 			Description:       groups[group],
-			ShortSuccessRate:  liveSuccessRate(groupShort),
-			WindowSuccessRate: liveSuccessRate(groupWindow),
+			Vendor:            setting.GetGroupVendor(group),
+			ShortSuccessRate:  liveStatusRate(groupShort),
+			WindowSuccessRate: liveStatusRate(groupWindow),
 			Models:            statuses,
 		})
 	}
@@ -601,6 +605,16 @@ func QueryLiveSuccessRates(now time.Time, points []LiveComparePoint, allowedGrou
 
 func liveSuccessRate(counts liveCounts) *float64 {
 	if counts.requests < liveMinSamples {
+		return nil
+	}
+	rate := math.Round(float64(counts.successes)/float64(counts.requests)*10000) / 100
+	return &rate
+}
+
+// liveStatusRate is the success rate the status page shows, nil only without
+// requests: a few successful requests read as working, not as unknown.
+func liveStatusRate(counts liveCounts) *float64 {
+	if counts.requests == 0 {
 		return nil
 	}
 	rate := math.Round(float64(counts.successes)/float64(counts.requests)*10000) / 100

@@ -16,11 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { LiveMinutePoint } from '../types'
+import {
+  GROUP_VENDOR_IDS,
+  isGroupVendorId,
+  type GroupVendorId,
+} from '@/lib/group-vendor'
+
+import type { LiveGroupStatus, LiveMinutePoint } from '../types'
 
 export type MinuteSlot =
   | { ts: number; state: 'idle' }
-  | { ts: number; state: 'sparse' }
   | { ts: number; state: 'rated'; successRate: number }
 
 /**
@@ -37,16 +42,40 @@ export function buildMinuteSlots(
   const byTs = new Map(points.map((point) => [point.ts, point.success_rate]))
   const slots: MinuteSlot[] = []
   for (let ts = windowStart; ts <= windowEnd; ts += bucketSeconds) {
-    if (!byTs.has(ts)) {
-      slots.push({ ts, state: 'idle' })
-      continue
-    }
     const successRate = byTs.get(ts)
     if (successRate == null) {
-      slots.push({ ts, state: 'sparse' })
+      slots.push({ ts, state: 'idle' })
       continue
     }
     slots.push({ ts, state: 'rated', successRate })
   }
   return slots
+}
+
+export const DEFAULT_STATUS_VENDOR: GroupVendorId = 'openai'
+
+/** Groups without a vendor fall under Other, as on the API key form. */
+export function getStatusGroupVendor(group: LiveGroupStatus): GroupVendorId {
+  return isGroupVendorId(group.vendor) ? group.vendor : 'other'
+}
+
+/**
+ * The category the page shows: the visitor's pick while it still has groups
+ * (null shows every group), otherwise OpenAI, otherwise the first one.
+ */
+export function resolveStatusVendor(
+  picked: GroupVendorId | null | undefined,
+  vendors: GroupVendorId[]
+): GroupVendorId | null {
+  if (picked === null) return null
+  if (picked !== undefined && vendors.includes(picked)) return picked
+  if (vendors.includes(DEFAULT_STATUS_VENDOR)) return DEFAULT_STATUS_VENDOR
+  return vendors[0] ?? null
+}
+
+/** Vendor categories that have at least one reported group, in display order. */
+export function getStatusVendors(groups: LiveGroupStatus[]): GroupVendorId[] {
+  return GROUP_VENDOR_IDS.filter((id) =>
+    groups.some((group) => getStatusGroupVendor(group) === id)
+  )
 }

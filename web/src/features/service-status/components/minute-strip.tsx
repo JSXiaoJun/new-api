@@ -39,13 +39,11 @@ export function MinuteStrip(props: MinuteStripProps) {
   const describe = (slot: MinuteSlot): string => {
     const time = dayjs(slot.ts * 1000).format('HH:mm')
     if (slot.state === 'idle') return `${time} · ${t('No requests')}`
-    if (slot.state === 'sparse') return `${time} · ${t('Too few requests')}`
     return `${time} · ${t('Success rate')} ${formatUptimePct(slot.successRate)}`
   }
 
   const slotClass = (slot: MinuteSlot): string => {
     if (slot.state === 'idle') return 'bg-muted'
-    if (slot.state === 'sparse') return 'bg-muted-foreground/30'
     return getSuccessRateDotClass(slot.successRate)
   }
 

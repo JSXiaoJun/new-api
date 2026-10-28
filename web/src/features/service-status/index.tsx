@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Activity } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { EmptyState } from '@/components/empty-state'
@@ -25,13 +26,20 @@ import { ErrorState } from '@/components/error-state'
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
 import { Skeleton } from '@/components/ui/skeleton'
+import { GroupVendorPicker } from '@/features/keys/components/group-vendor-picker'
 import { getSuccessRateDotClass } from '@/features/performance-metrics/lib/format'
 import dayjs from '@/lib/dayjs'
+import type { GroupVendorId } from '@/lib/group-vendor'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import { getLiveServiceStatus } from './api'
 import { StatusGroupCard } from './components/status-group-card'
+import {
+  getStatusGroupVendor,
+  getStatusVendors,
+  resolveStatusVendor,
+} from './lib/minutes'
 
 const REFRESH_INTERVAL_MS = 60_000
 
@@ -43,6 +51,20 @@ export function ServiceStatus() {
     refetchInterval: REFRESH_INTERVAL_MS,
   })
   const data = statusQuery.data?.data
+  // undefined until the visitor picks a category; null shows every group.
+  const [pickedVendor, setPickedVendor] = useState<
+    GroupVendorId | null | undefined
+  >(undefined)
+
+  const groups = data?.groups ?? []
+  const vendors = getStatusVendors(groups)
+  // Categories only appear once an administrator has set a vendor on a group.
+  const vendorFilterEnabled = groups.some((group) => group.vendor)
+  const selectedVendor = resolveStatusVendor(pickedVendor, vendors)
+  const visibleGroups =
+    vendorFilterEnabled && selectedVendor
+      ? groups.filter((group) => getStatusGroupVendor(group) === selectedVendor)
+      : groups
 
   let content
   if (statusQuery.isLoading) {
@@ -75,7 +97,14 @@ export function ServiceStatus() {
   } else {
     content = (
       <div className='flex flex-col gap-4'>
-        {data.groups.map((group) => (
+        {vendorFilterEnabled && (
+          <GroupVendorPicker
+            vendors={vendors}
+            value={selectedVendor}
+            onValueChange={setPickedVendor}
+          />
+        )}
+        {visibleGroups.map((group) => (
           <StatusGroupCard
             key={group.group}
             group={group}
@@ -125,7 +154,6 @@ function StatusLegend() {
     { className: getSuccessRateDotClass(90), label: t('90% or more') },
     { className: getSuccessRateDotClass(70), label: t('70% or more') },
     { className: getSuccessRateDotClass(0), label: t('Below 70%') },
-    { className: 'bg-muted-foreground/30', label: t('Too few requests') },
     { className: 'bg-muted', label: t('No requests') },
   ]
   return (

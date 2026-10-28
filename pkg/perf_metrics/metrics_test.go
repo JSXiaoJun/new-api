@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
 	"github.com/samber/lo"
@@ -420,6 +421,9 @@ func TestLiveStatusReportsUsableGroupsWithTraffic(t *testing.T) {
 	recordLiveSamples(now.Add(-61*time.Minute), "pro", "gpt", 0, 9)
 	recordLiveSamples(now, "hidden", "gpt", 5, 0)
 
+	require.NoError(t, setting.UpdateGroupVendorByJSONString(`{"pro":"openai"}`))
+	t.Cleanup(func() { _ = setting.UpdateGroupVendorByJSONString("") })
+
 	result := QueryLiveStatus(now, map[string]string{"pro": "Pro group", "idle": ""})
 
 	assert.Equal(t, liveMinuteStart(now.Unix()), result.WindowEnd)
@@ -428,6 +432,7 @@ func TestLiveStatusReportsUsableGroupsWithTraffic(t *testing.T) {
 	group := result.Groups[0]
 	assert.Equal(t, "pro", group.Group)
 	assert.Equal(t, "Pro group", group.Description)
+	assert.Equal(t, "openai", group.Vendor)
 	require.NotNil(t, group.ShortSuccessRate)
 	assert.Equal(t, 75.0, *group.ShortSuccessRate)
 	require.NotNil(t, group.WindowSuccessRate)
@@ -436,15 +441,16 @@ func TestLiveStatusReportsUsableGroupsWithTraffic(t *testing.T) {
 	require.Len(t, group.Models, 2)
 	claude, gpt := group.Models[0], group.Models[1]
 	assert.Equal(t, "claude", claude.ModelName)
-	assert.Nil(t, claude.WindowSuccessRate, "a single request is too few to report")
-	assert.Equal(t, []LiveMinutePoint{{Ts: liveMinuteStart(now.Add(-30 * time.Minute).Unix())}}, claude.Minutes)
+	require.NotNil(t, claude.WindowSuccessRate, "a single successful request still reads as working")
+	assert.Equal(t, 100.0, *claude.WindowSuccessRate)
+	assert.Nil(t, claude.ShortSuccessRate, "no requests in the short window")
+	assert.Equal(t, []LiveMinutePoint{{Ts: liveMinuteStart(now.Add(-30 * time.Minute).Unix()), SuccessRate: 100}}, claude.Minutes)
 	assert.Equal(t, "gpt", gpt.ModelName)
 	require.NotNil(t, gpt.WindowSuccessRate)
 	assert.Equal(t, 37.5, *gpt.WindowSuccessRate)
 	require.Len(t, gpt.Minutes, 2)
 	assert.Less(t, gpt.Minutes[0].Ts, gpt.Minutes[1].Ts)
-	require.NotNil(t, gpt.Minutes[0].SuccessRate)
-	assert.Equal(t, 0.0, *gpt.Minutes[0].SuccessRate)
+	assert.Equal(t, 0.0, gpt.Minutes[0].SuccessRate)
 }
 
 // useLiveMiniRedis points the live metrics at a fresh in-memory Redis and

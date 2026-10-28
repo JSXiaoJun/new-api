@@ -25,6 +25,7 @@ import type { LiveGroupStatus } from '../types'
 const group: LiveGroupStatus = {
   group: 'pro',
   description: 'Pro group',
+  vendor: 'openai',
   short_success_rate: 99.5,
   window_success_rate: 97,
   models: [
@@ -34,7 +35,7 @@ const group: LiveGroupStatus = {
       window_success_rate: 97,
       minutes: [
         { ts: 60, success_rate: 100 },
-        { ts: 120, success_rate: null },
+        { ts: 120, success_rate: 50 },
       ],
     },
     {
@@ -76,10 +77,10 @@ describe('service status group card', () => {
     const states = [...strip.children].map((slot) =>
       slot.getAttribute('data-state')
     )
-    expect(states).toEqual(['idle', 'rated', 'sparse', 'idle'])
+    expect(states).toEqual(['idle', 'rated', 'rated', 'idle'])
   })
 
-  test('shows a dash for a model with too few requests to rate', () => {
+  test('shows a dash for a model without requests in a window', () => {
     renderCard()
 
     const row = screen.getByText('rare-model').closest('li')

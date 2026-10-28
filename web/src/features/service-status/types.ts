@@ -18,8 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 export type LiveMinutePoint = {
   ts: number
-  /** Null when the minute had requests, but too few to report a rate. */
-  success_rate: number | null
+  success_rate: number
 }
 
 export type LiveModelStatus = {
@@ -32,6 +31,8 @@ export type LiveModelStatus = {
 export type LiveGroupStatus = {
   group: string
   description: string
+  /** Vendor category set by an administrator, or empty. */
+  vendor: string
   short_success_rate: number | null
   window_success_rate: number | null
   models: LiveModelStatus[]
