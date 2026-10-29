@@ -42,6 +42,14 @@ export type GetTopUpOrdersParams = {
   user_id?: number
 }
 
+export type ExportTopUpOrdersParams = {
+  keyword?: string
+  user_id?: number
+  /** Creation time bounds in seconds. */
+  start_timestamp?: number
+  end_timestamp?: number
+}
+
 export type GetTopUpOrdersResponse = {
   success: boolean
   message?: string

@@ -28,6 +28,7 @@ import { useMediaQuery } from '@/hooks'
 
 import { getTopUpOrders } from '../api'
 import type { TopUpOrder } from '../types'
+import { ExportTopUpOrdersDialog } from './export-topup-orders-dialog'
 import { useTopUpOrdersColumns } from './topup-orders-columns'
 
 export function TopUpOrdersTable() {
@@ -135,6 +136,15 @@ export function TopUpOrdersTable() {
               </p>
             )}
           </div>
+        ),
+        preActions: (
+          <ExportTopUpOrdersDialog
+            keyword={globalFilter}
+            userId={
+              userId === '' || !isUserIdValid ? undefined : Number(userId)
+            }
+            disabled={!isUserIdValid}
+          />
         ),
         hasAdditionalFilters: userIdFilter !== '',
         onReset: () => {

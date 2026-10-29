@@ -1084,22 +1084,30 @@ func CancelUserTopUp(c *gin.Context) {
 	})
 }
 
+// topUpUserIdFromQuery reads the optional user_id filter of the admin top-up
+// order list and export. It answers the request and returns false when the
+// value is not one positive ID.
+func topUpUserIdFromQuery(c *gin.Context) (int, bool) {
+	userIdQuery, exists := c.Request.URL.Query()["user_id"]
+	if !exists {
+		return 0, true
+	}
+	if len(userIdQuery) == 1 {
+		if userId, err := strconv.Atoi(userIdQuery[0]); err == nil && userId > 0 {
+			return userId, true
+		}
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
+	return 0, false
+}
+
 // GetAllTopUps 管理员获取全平台充值记录
 func GetAllTopUps(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
-	userId := 0
-	if userIdQuery, exists := c.Request.URL.Query()["user_id"]; exists {
-		if len(userIdQuery) != 1 {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
-			return
-		}
-		parsedUserId, err := strconv.Atoi(userIdQuery[0])
-		if err != nil || parsedUserId <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID"})
-			return
-		}
-		userId = parsedUserId
+	userId, ok := topUpUserIdFromQuery(c)
+	if !ok {
+		return
 	}
 
 	var (
@@ -1120,6 +1128,56 @@ func GetAllTopUps(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(topups)
 	common.ApiSuccess(c, pageInfo)
+}
+
+// ExportAllTopUps streams the top-up orders matching the order number, user
+// and creation time search as one JSON order per line, newest first, and ends
+// with an API response object: success with the order count, or the failure.
+func ExportAllTopUps(c *gin.Context) {
+	userId, ok := topUpUserIdFromQuery(c)
+	if !ok {
+		return
+	}
+	filter := model.TopUpExportFilter{
+		Keyword: strings.TrimSpace(c.Query("keyword")),
+		UserId:  userId,
+	}
+	filter.StartTimestamp, _ = strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	filter.EndTimestamp, _ = strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+
+	c.Header("Content-Type", "application/x-ndjson; charset=utf-8")
+	c.Header("Cache-Control", "no-store")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	count := 0
+	ctx := c.Request.Context()
+	err := model.StreamAllTopUps(ctx, filter, func(topUp *model.AdminTopUp) error {
+		line, err := common.Marshal(topUp)
+		if err != nil {
+			return err
+		}
+		if _, err := c.Writer.Write(append(line, '\n')); err != nil {
+			return err
+		}
+		count++
+		return nil
+	})
+	if ctx.Err() != nil {
+		return
+	}
+	// The status is already sent, so the result object becomes the last line.
+	if err != nil {
+		var message *common.Message
+		if errors.As(err, &message) {
+			common.ApiError(c, err)
+			return
+		}
+		common.SysError(common.LogText("failed to export topups: %s", err.Error()))
+		common.ApiErrorT(c, "Failed to export recharge orders")
+		return
+	}
+	common.ApiSuccess(c, gin.H{"count": count})
 }
 
 type AdminCompleteTopupRequest struct {

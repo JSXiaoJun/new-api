@@ -93,31 +93,3 @@ export function getLogCsvRow(
     renderLogContent(other, t) ?? log.content ?? '',
   ]
 }
-
-/**
- * A CSV line with every cell quoted. Text a spreadsheet would run as a
- * formula gets a leading apostrophe, since logs carry user-entered names.
- */
-export function toCsvLine(cells: string[]): string {
-  const quoted = cells.map((cell) => {
-    const text =
-      /^[=+\-@\t\r]/.test(cell) && !/^-?\d+(\.\d+)?$/.test(cell)
-        ? `'${cell}`
-        : cell
-    return `"${text.replaceAll('"', '""')}"`
-  })
-  return `${quoted.join(',')}\r\n`
-}
-
-/** Save CSV lines as a UTF-8 file that spreadsheet apps open correctly. */
-export function downloadCsv(filename: string, lines: string[]): void {
-  const blob = new Blob(['\uFEFF', ...lines], {
-    type: 'text/csv;charset=utf-8',
-  })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  anchor.click()
-  URL.revokeObjectURL(url)
-}

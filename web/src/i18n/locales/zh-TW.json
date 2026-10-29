@@ -7766,6 +7766,10 @@
     "Zhipu": "智譜",
     "Zhipu GLM": "智譜GLM",
     "Zhipu V4": "智譜 V4",
-    "Zoom": "縮放"
+    "Zoom": "縮放",
+    "Export recharge orders": "匯出儲值訂單",
+    "Exported {{count}} orders": "已匯出 {{count}} 筆訂單",
+    "Failed to export recharge orders": "匯出儲值訂單失敗",
+    "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "匯出在此時間範圍內建立的訂單，本頁的訂單號和使用者 ID 篩選同樣生效。"
   }
 }

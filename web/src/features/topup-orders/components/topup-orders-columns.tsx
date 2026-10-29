@@ -24,6 +24,7 @@ import { LongText } from '@/components/long-text'
 import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import { formatNumber, formatTimestampToDate } from '@/lib/format'
 
+import { formatPaymentChannel } from '../lib/export'
 import type { TopUpOrder, TopUpOrderStatus } from '../types'
 
 const STATUS_VARIANTS: Record<TopUpOrderStatus, StatusVariant> = {
@@ -38,15 +39,6 @@ const STATUS_LABELS: Record<TopUpOrderStatus, string> = {
   pending: 'Pending',
   failed: 'Failed',
   expired: 'Expired',
-}
-
-function formatPaymentChannel(order: TopUpOrder): string {
-  const provider = order.payment_provider?.trim()
-  const method = order.payment_method?.trim()
-  if (provider && method && provider !== method) {
-    return `${provider} / ${method}`
-  }
-  return provider || method || '-'
 }
 
 export function useTopUpOrdersColumns(): ColumnDef<TopUpOrder>[] {

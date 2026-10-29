@@ -7766,6 +7766,10 @@
     "Zhipu": "Zhipu",
     "Zhipu GLM": "Zhipu GLM",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Export recharge orders": "Xuất đơn nạp tiền",
+    "Exported {{count}} orders": "Đã xuất {{count}} đơn",
+    "Failed to export recharge orders": "Xuất đơn nạp tiền thất bại",
+    "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "Xuất các đơn được tạo trong khoảng thời gian này. Bộ lọc mã đơn và ID người dùng trên trang này cũng được áp dụng."
   }
 }

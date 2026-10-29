@@ -25,16 +25,12 @@ import { toast } from 'sonner'
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { useStatus } from '@/hooks/use-status'
+import { downloadCsv, toCsvLine } from '@/lib/csv'
 import dayjs from '@/lib/dayjs'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { exportLogs } from '../../api'
-import {
-  downloadCsv,
-  getLogCsvHeader,
-  getLogCsvRow,
-  toCsvLine,
-} from '../../lib/export'
+import { getLogCsvHeader, getLogCsvRow } from '../../lib/export'
 import { buildApiParams, getDefaultTimeRange } from '../../lib/utils'
 import { CompactDateTimeRangePicker } from '../compact-date-time-range-picker'
 import { useLogsViewScope } from '../usage-logs-provider'

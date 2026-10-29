@@ -7766,6 +7766,10 @@
     "Zhipu": "Zhipu",
     "Zhipu GLM": "Zhipu GLM",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Export recharge orders": "Export recharge orders",
+    "Exported {{count}} orders": "Exported {{count}} orders",
+    "Failed to export recharge orders": "Failed to export recharge orders",
+    "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "Orders created in this time range are exported. The order number and user ID filters on this page also apply."
   }
 }

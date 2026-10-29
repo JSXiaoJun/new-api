@@ -20,7 +20,7 @@ import { createInstance } from 'i18next'
 import { describe, expect, test } from 'vitest'
 
 import type { UsageLog } from '../../data/schema'
-import { getLogCsvHeader, getLogCsvRow, toCsvLine } from '../export'
+import { getLogCsvHeader, getLogCsvRow } from '../export'
 
 const consumeLog: UsageLog = {
   id: 1,
@@ -155,11 +155,5 @@ describe('usage log CSV export', () => {
     expect(row.slice(1, 2)).toEqual(['充值'])
     expect(row.slice(5, 12)).toEqual(['', '', '', '', '', '', ''])
     expect(row.at(-1)).toBe('充值 $5')
-  })
-
-  test('cells are quoted and text that starts a formula stays text', () => {
-    expect(
-      toCsvLine(['=HYPERLINK("x")', '-12.5', '+cmd', 'a"b', 'two\nlines'])
-    ).toBe(`"'=HYPERLINK(""x"")","-12.5","'+cmd","a""b","two\nlines"\r\n`)
   })
 })

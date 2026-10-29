@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -868,6 +869,70 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo, userId int) (top
 		return nil, 0, err
 	}
 	return topups, total, nil
+}
+
+// TopUpExportFilter selects the top-up orders of an export. Zero fields do
+// not filter; the timestamps bound the order creation time.
+type TopUpExportFilter struct {
+	Keyword        string
+	UserId         int
+	StartTimestamp int64
+	EndTimestamp   int64
+}
+
+const topUpExportBatchSize = 500
+
+// StreamAllTopUps calls fn with each top-up order matching filter, newest
+// first, with its user. Orders are read in batches by id, so an export never
+// holds the whole result in memory or keeps one query open.
+func StreamAllTopUps(ctx context.Context, filter TopUpExportFilter, fn func(*AdminTopUp) error) error {
+	db := DB.WithContext(ctx)
+	query := db.Model(&TopUp{})
+	if filter.UserId != 0 {
+		query = query.Where("user_id = ?", filter.UserId)
+	}
+	if filter.Keyword != "" {
+		pattern, err := sanitizeLikePattern(filter.Keyword)
+		if err != nil {
+			return err
+		}
+		query = query.Where("trade_no LIKE ? ESCAPE '!'", pattern)
+	}
+	if filter.StartTimestamp != 0 {
+		query = query.Where("create_time >= ?", filter.StartTimestamp)
+	}
+	if filter.EndTimestamp != 0 {
+		query = query.Where("create_time <= ?", filter.EndTimestamp)
+	}
+	query = query.Session(&gorm.Session{})
+
+	lastId := 0
+	for {
+		batch := query
+		if lastId != 0 {
+			batch = batch.Where("id < ?", lastId)
+		}
+		var records []*TopUp
+		if err := batch.Order("id desc").Limit(topUpExportBatchSize).Find(&records).Error; err != nil {
+			return err
+		}
+		if len(records) == 0 {
+			return nil
+		}
+		topups, err := attachAdminTopUpUsers(db, records)
+		if err != nil {
+			return err
+		}
+		for _, topUp := range topups {
+			if err := fn(topUp); err != nil {
+				return err
+			}
+		}
+		if len(records) < topUpExportBatchSize {
+			return nil
+		}
+		lastId = records[len(records)-1].Id
+	}
 }
 
 func attachAdminTopUpUsers(tx *gorm.DB, topups []*TopUp) ([]*AdminTopUp, error) {

@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api, getFreshAuthHeaders, type ApiRequestConfig } from '@/lib/api'
-import { createServerError } from '@/lib/server-error-message'
+import { api, type ApiRequestConfig } from '@/lib/api'
+import { readExportStream } from '@/lib/csv'
 
 import type { UsageLog } from './data/schema'
 import { buildQueryParams } from './lib/query-params'
@@ -90,11 +90,10 @@ export const getUserLogStats = (
 ) => fetchLogStats('/api/log', params, false)
 
 /**
- * Stream the logs matching params, newest first. The server sends one JSON
- * log per line and ends with an API response object; a stream that ends
- * without a successful one is a failed export. Resolves with the log count.
+ * Stream the logs matching params, newest first, through readExportStream.
+ * Resolves with the log count.
  */
-export async function exportLogs(
+export function exportLogs(
   params: GetLogsParams,
   isAdmin: boolean,
   options: { signal: AbortSignal; onLog: (log: UsageLog) => void }
@@ -102,45 +101,10 @@ export async function exportLogs(
   const queryParams = buildQueryParams(
     params as unknown as Record<string, unknown>
   )
-  const response = await fetch(
+  return readExportStream<UsageLog>(
     `${buildApiPath('/api/log', isAdmin)}/export?${queryParams}`,
-    {
-      credentials: 'include',
-      headers: await getFreshAuthHeaders(),
-      signal: options.signal,
-    }
+    { signal: options.signal, onRecord: options.onLog }
   )
-  if (!response.ok || !response.body) {
-    const body: unknown = await response.json().catch(() => null)
-    throw createServerError(body ?? { status: response.status })
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let result: { success?: unknown; data?: { count?: number } } | null = null
-  for (;;) {
-    const { done, value } = await reader.read()
-    buffer += done ? decoder.decode() : decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = done ? '' : (lines.pop() ?? '')
-    for (const line of lines) {
-      if (!line.trim()) continue
-      let parsed
-      try {
-        parsed = JSON.parse(line)
-      } catch {
-        throw createServerError(null)
-      }
-      if (typeof parsed.success === 'boolean') result = parsed
-      else options.onLog(parsed as UsageLog)
-    }
-    if (done) break
-  }
-  if (result?.success !== true) {
-    throw createServerError(result)
-  }
-  return result.data?.count ?? 0
 }
 
 export async function getUserInfo(

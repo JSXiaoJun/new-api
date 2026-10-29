@@ -7766,6 +7766,10 @@
     "Zhipu": "智谱",
     "Zhipu GLM": "智谱GLM",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Export recharge orders": "导出充值订单",
+    "Exported {{count}} orders": "已导出 {{count}} 条订单",
+    "Failed to export recharge orders": "导出充值订单失败",
+    "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "导出在此时间范围内创建的订单，本页的订单号和用户 ID 筛选同样生效。"
   }
 }

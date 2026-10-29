@@ -17,8 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+import { readExportStream } from '@/lib/csv'
 
-import type { GetTopUpOrdersParams, GetTopUpOrdersResponse } from './types'
+import type {
+  ExportTopUpOrdersParams,
+  GetTopUpOrdersParams,
+  GetTopUpOrdersResponse,
+  TopUpOrder,
+} from './types'
 
 export async function getTopUpOrders(
   params: GetTopUpOrdersParams = {}
@@ -32,4 +38,28 @@ export async function getTopUpOrders(
     },
   })
   return response.data
+}
+
+/**
+ * Stream every recharge order matching params, newest first. Resolves with
+ * the order count.
+ */
+export function exportTopUpOrders(
+  params: ExportTopUpOrdersParams,
+  options: { signal: AbortSignal; onOrder: (order: TopUpOrder) => void }
+): Promise<number> {
+  const query = new URLSearchParams()
+  const keyword = params.keyword?.trim()
+  if (keyword) query.set('keyword', keyword)
+  if (params.user_id !== undefined) query.set('user_id', String(params.user_id))
+  if (params.start_timestamp !== undefined) {
+    query.set('start_timestamp', String(params.start_timestamp))
+  }
+  if (params.end_timestamp !== undefined) {
+    query.set('end_timestamp', String(params.end_timestamp))
+  }
+  return readExportStream<TopUpOrder>(`/api/user/topup/export?${query}`, {
+    signal: options.signal,
+    onRecord: options.onOrder,
+  })
 }

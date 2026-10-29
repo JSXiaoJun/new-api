@@ -7766,6 +7766,10 @@
     "Zhipu": "Zhipu",
     "Zhipu GLM": "Zhipu GLM",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Export recharge orders": "チャージ注文をエクスポート",
+    "Exported {{count}} orders": "{{count}} 件の注文をエクスポートしました",
+    "Failed to export recharge orders": "チャージ注文のエクスポートに失敗しました",
+    "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "この期間に作成された注文をエクスポートします。このページの注文番号とユーザー ID のフィルターも適用されます。"
   }
 }
