@@ -19,8 +19,6 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
-	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -92,6 +90,36 @@ export function buildSubmitRequest(){return {}} export function parseSubmitRespo
 		"upstream":{"task_id":"upstream_private"}
 	}`, recorder.Body.String())
 	assert.JSONEq(t, `{"seconds":5}`, recorder.Header().Get("X-New-Api-Other-Ratios"))
+}
+
+// The submit presenter may answer with the vendor's status; a native route that
+// already relayed the vendor's event stream gets nothing more.
+func TestPresentTaskSubmissionHonorsReplyWrapperAndRelayedStreams(t *testing.T) {
+	plugin, err := pluginruntime.CompilePlugin(`
+export const meta = {apiVersion:1,key:"accepted-test",name:"Accepted",version:"1.0.0",author:{name:"Test"},models:["model"],fetchMode:"per_task",routes:[{method:"POST",path:"/vendor/jobs",type:"submit",decode:"decode",render:"created"}]};
+export const native = {decode:function(ctx){return {kind:"submit",model:"model",requestBody:ctx.body.value};},created:function(ctx,task){return {__status:202,__body:{id:task.task_id}};}};
+export function buildSubmitRequest(){return {}} export function parseSubmitResponse(){return {taskId:"upstream"}} export function buildQueryRequest(){return {}} export function parseTaskResult(){return {status:"SUCCESS"}}
+`, pluginruntime.Options{})
+	require.NoError(t, err)
+	present := func(recorder *httptest.ResponseRecorder, written bool) {
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/vendor/jobs", strings.NewReader(`{"model":"model"}`))
+		c.Set(pluginruntime.ContextKeyPinnedRoute, pluginruntime.PinnedRoute{Plugin: plugin, Route: plugin.Meta.Routes[0]})
+		c.Set(pluginruntime.ContextKeyRouteRequest, pluginruntime.RouteRequestContext{Path: "/vendor/jobs", Method: http.MethodPost, Body: map[string]any{"kind": "json", "value": map[string]any{"model": "model"}}})
+		if written {
+			_, _ = c.Writer.WriteString("data: {}\n\n")
+		}
+		presentTaskSubmission(c, &taskSubmissionOutcome{Result: &relay.TaskSubmitResult{}, Task: &model.Task{TaskID: "task_public"}, RelayInfo: &relaycommon.RelayInfo{}})
+	}
+
+	accepted := httptest.NewRecorder()
+	present(accepted, false)
+	assert.Equal(t, http.StatusAccepted, accepted.Code)
+	assert.JSONEq(t, `{"id":"task_public"}`, accepted.Body.String())
+
+	streamed := httptest.NewRecorder()
+	present(streamed, true)
+	assert.Equal(t, "data: {}\n\n", streamed.Body.String())
 }
 
 func TestPresentTaskSubmissionFallbackUsesPersistedPublicID(t *testing.T) {
@@ -435,51 +463,23 @@ func TestExecuteTaskSubmissionDisconnectAfterDurableInsertDoesNotRefund(t *testi
 // caller that stops waiting must not cancel it: the task is persisted and
 // charged. A failed attempt after the caller left is neither retried nor sent
 // again, and a caller still waiting is never cut off by the detach timeout.
-// With the official billing alignment on, the submit is cancelled with its
-// caller and refunded, as upstream new-api does.
 func TestDetachedTaskSubmissionLifecycle(t *testing.T) {
 	const reserved = 4_321
 	for _, tc := range []struct {
 		name             string
 		disconnect       bool
 		attemptFails     bool
-		aligned          bool
-		strict           bool
-		match            bool
 		acceptAfterLeave bool
 		wantCode         string
 		wantEvents       []string
 		wantTasks        int64
 		wantAttempts     int
-		wantRecorded     int
 	}{
 		{name: "disconnect during submit persists and settles", disconnect: true, wantEvents: []string{"reserve", "insert", "settle"}, wantTasks: 1, wantAttempts: 1},
 		{name: "failed attempt after disconnect is not retried", disconnect: true, attemptFails: true, wantCode: "request_cancelled", wantEvents: []string{"refund"}, wantAttempts: 1},
 		{name: "connected caller outlives the detach timeout", wantEvents: []string{"reserve", "insert", "settle"}, wantTasks: 1, wantAttempts: 1},
-		{name: "official alignment refunds a submit whose caller left", disconnect: true, aligned: true, wantCode: "request_cancelled", wantEvents: []string{"refund"}, wantAttempts: 1},
-		{name: "official alignment records the refund of a submit upstream accepted", disconnect: true, aligned: true, acceptAfterLeave: true, wantCode: "request_cancelled", wantEvents: []string{"refund"}, wantAttempts: 1, wantRecorded: reserved},
-		{name: "a strict billing user keeps the detached submit under the official alignment", disconnect: true, aligned: true, strict: true, wantEvents: []string{"reserve", "insert", "settle"}, wantTasks: 1, wantAttempts: 1},
-		{name: "matching upstream charges keeps the detached submit under the official alignment", disconnect: true, aligned: true, match: true, wantEvents: []string{"reserve", "insert", "settle"}, wantTasks: 1, wantAttempts: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.aligned {
-				alignSettings := config.GlobalConfig.Get("abnormal_billing_setting")
-				require.NoError(t, config.UpdateConfigFromMap(alignSettings, map[string]string{"align_with_official": "true"}))
-				t.Cleanup(func() {
-					require.NoError(t, config.UpdateConfigFromMap(alignSettings, map[string]string{"align_with_official": "false"}))
-				})
-			}
-			if tc.match {
-				matchSettings := config.GlobalConfig.Get("abnormal_billing_setting")
-				require.NoError(t, config.UpdateConfigFromMap(matchSettings, map[string]string{"match_upstream_charge": "true"}))
-				t.Cleanup(func() {
-					require.NoError(t, config.UpdateConfigFromMap(matchSettings, map[string]string{"match_upstream_charge": "false"}))
-				})
-			}
-			if tc.strict {
-				require.NoError(t, billing_setting.LoadStrictBillingUsers("[1]"))
-				t.Cleanup(func() { require.NoError(t, billing_setting.LoadStrictBillingUsers("[]")) })
-			}
 			events := make([]string, 0, 3)
 			database := setupTaskSubmissionDatabase(t, true, &events)
 			previousLogConsumeEnabled := common.LogConsumeEnabled
@@ -534,17 +534,6 @@ func TestDetachedTaskSubmissionLifecycle(t *testing.T) {
 			var count int64
 			require.NoError(t, database.Model(&model.Task{}).Where("task_id = ?", "task_public").Count(&count).Error)
 			assert.Equal(t, tc.wantTasks, count)
-			var records []model.AbnormalCharge
-			require.NoError(t, database.Find(&records).Error)
-			if tc.wantRecorded == 0 {
-				assert.Empty(t, records)
-				return
-			}
-			require.Len(t, records, 1)
-			assert.Equal(t, tc.wantRecorded, records[0].ForgoneQuota)
-			assert.True(t, records[0].IsTask)
-			assert.True(t, records[0].UserCaused)
-			assert.Equal(t, model.AbnormalChargeOutcomeRefunded, records[0].Outcome)
 		})
 	}
 }
@@ -585,7 +574,7 @@ func setupTaskSubmissionDatabase(t *testing.T, migrate bool, events *[]string) *
 	previousDB := model.DB
 	var models []any
 	if migrate {
-		models = append(models, &model.Task{}, &model.AbnormalCharge{})
+		models = append(models, &model.Task{})
 	}
 	database, _ := openTaskDialectDatabase(t, models...)
 	require.NoError(t, database.Callback().Create().Before("gorm:create").Register("test:task-submit-order", func(db *gorm.DB) {

@@ -130,11 +130,6 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/user/2fa/stats":                          accessTokenScopeRule("user:read"),
 	"DELETE /api/user/:id/2fa":                         accessTokenScopeRule("user:write"),
 	"GET /api/user/:id/quota/log":                      accessTokenScopeRule("user:read"),
-	"GET /api/user/abnormal_charges":                   accessTokenScopeRule("user:read"),
-	"GET /api/user/abnormal_charges/records":           accessTokenScopeRule("user:read"),
-	"GET /api/user/:id/abnormal_charges":               accessTokenScopeRule("user:read"),
-	"POST /api/user/:id/abnormal_charges/recover":      accessTokenScopeRule("user:write"),
-	"PUT /api/user/:id/strict_billing":                 accessTokenScopeRule("user:write"),
 
 	// router/api-router.go: /api/subscription
 	"GET /api/subscription/plans":                                    accessTokenScopeRule("wallet:read"),
@@ -164,6 +159,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"PUT /api/option/":                                           accessTokenScopeRule("option:write"),
 	"PUT /api/option/passkey/domains":                            accessTokenScopeRule("option:write"),
 	"GET /api/option/model_pricing":                              accessTokenScopeRule("option:read"),
+	"GET /api/option/model_pricing/issues":                       accessTokenScopeRule("option:read"),
 	"PATCH /api/option/model_pricing":                            accessTokenScopeRule("option:write"),
 	"POST /api/option/model_pricing/convert":                     accessTokenScopeRule("option:read"),
 	"POST /api/option/model_pricing/preview":                     accessTokenScopeRule("option:read"),
