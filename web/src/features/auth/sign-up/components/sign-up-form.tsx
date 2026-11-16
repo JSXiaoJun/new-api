@@ -41,9 +41,11 @@ import { Label } from '@/components/ui/label'
 import { register, wechatLoginByCode } from '@/features/auth/api'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
+import { SimpleCaptchaField } from '@/features/auth/components/simple-captcha-field'
 import { registerFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
+import { useSimpleCaptcha } from '@/features/auth/hooks/use-simple-captcha'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import {
   getAffiliateCode,
@@ -77,6 +79,7 @@ export function SignUpForm({
     setTurnstileToken,
     validateTurnstile,
   } = useTurnstile()
+  const simpleCaptcha = useSimpleCaptcha()
   const { redirectToLogin, handleLoginResult } = useAuthRedirect()
   const {
     isSending: isSendingCode,
@@ -157,18 +160,26 @@ export function SignUpForm({
       }
     }
 
+    if (!simpleCaptcha.validateCaptcha()) return
     if (!validateTurnstile()) return
+
+    // The server consumes the captcha on every attempt.
+    const submittedCaptcha = simpleCaptcha.captchaAnswer
+    simpleCaptcha.refreshCaptcha()
 
     setIsLoading(true)
     try {
-      const res = await register({
-        username: data.username,
-        password: data.password,
-        email: data.email || undefined,
-        verification_code: verificationCode || undefined,
-        aff_code: getAffiliateCode(),
-        turnstile: turnstileToken,
-      })
+      const res = await register(
+        {
+          username: data.username,
+          password: data.password,
+          email: data.email || undefined,
+          verification_code: verificationCode || undefined,
+          aff_code: getAffiliateCode(),
+          turnstile: turnstileToken,
+        },
+        submittedCaptcha
+      )
 
       if (res?.success) {
         toast.success(t('Account created! Please sign in'))
@@ -348,6 +359,17 @@ export function SignUpForm({
               </Button>
             </div>
           </>
+        )}
+
+        {simpleCaptcha.isSimpleCaptchaEnabled && (
+          <SimpleCaptchaField
+            image={simpleCaptcha.captchaImage}
+            value={simpleCaptcha.captchaCode}
+            onValueChange={simpleCaptcha.setCaptchaCode}
+            onRefresh={simpleCaptcha.refreshCaptcha}
+            isLoading={simpleCaptcha.isCaptchaLoading}
+            disabled={isLoading}
+          />
         )}
 
         {/* Turnstile */}

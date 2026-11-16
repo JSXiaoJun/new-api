@@ -7813,6 +7813,17 @@
     "Failed to export recharge orders": "Xuất đơn nạp tiền thất bại",
     "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "Xuất các đơn được tạo trong khoảng thời gian này. Bộ lọc mã đơn và ID người dùng trên trang này cũng được áp dụng.",
     "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.",
-    "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request."
+    "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.",
+    "Login & Registration Protection": "Bảo vệ đăng nhập và đăng ký",
+    "Enable simple captcha": "Bật captcha đơn giản",
+    "Require an image captcha when signing in or signing up. No third-party service is needed.": "Yêu cầu nhập captcha hình ảnh khi đăng nhập hoặc đăng ký. Không cần dịch vụ bên thứ ba.",
+    "Captcha": "Mã captcha",
+    "Captcha image": "Hình ảnh captcha",
+    "Enter the characters in the image": "Nhập các ký tự trong hình",
+    "Refresh captcha": "Làm mới captcha",
+    "Please enter the captcha": "Vui lòng nhập captcha",
+    "Captcha is incorrect or expired, please try again": "Captcha không đúng hoặc đã hết hạn, vui lòng thử lại",
+    "Captcha is not enabled": "Captcha chưa được bật",
+    "Failed to generate captcha, please try again": "Tạo captcha thất bại, vui lòng thử lại"
   }
 }

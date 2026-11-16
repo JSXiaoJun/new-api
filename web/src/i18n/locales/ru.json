@@ -7813,6 +7813,17 @@
     "Failed to export recharge orders": "Не удалось экспортировать заказы пополнения",
     "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "Экспортируются заказы, созданные в этом диапазоне времени. Фильтры по номеру заказа и ID пользователя на этой странице также применяются.",
     "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.",
-    "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request."
+    "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.",
+    "Login & Registration Protection": "Защита входа и регистрации",
+    "Enable simple captcha": "Включить простую капчу",
+    "Require an image captcha when signing in or signing up. No third-party service is needed.": "Требовать ввод капчи с картинки при входе и регистрации. Сторонний сервис не нужен.",
+    "Captcha": "Капча",
+    "Captcha image": "Изображение капчи",
+    "Enter the characters in the image": "Введите символы с картинки",
+    "Refresh captcha": "Обновить капчу",
+    "Please enter the captcha": "Введите капчу",
+    "Captcha is incorrect or expired, please try again": "Капча неверна или устарела, попробуйте ещё раз",
+    "Captcha is not enabled": "Капча не включена",
+    "Failed to generate captcha, please try again": "Не удалось создать капчу, попробуйте ещё раз"
   }
 }

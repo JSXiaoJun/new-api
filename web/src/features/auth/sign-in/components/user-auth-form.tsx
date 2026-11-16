@@ -42,8 +42,10 @@ import { Label } from '@/components/ui/label'
 import { login, wechatLoginByCode } from '@/features/auth/api'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
+import { SimpleCaptchaField } from '@/features/auth/components/simple-captcha-field'
 import { loginFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
+import { useSimpleCaptcha } from '@/features/auth/hooks/use-simple-captcha'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import { beginPasskeyLogin, finishPasskeyLogin } from '@/features/auth/passkey'
 import {
@@ -102,6 +104,7 @@ export function UserAuthForm({
     setTurnstileToken,
     validateTurnstile,
   } = useTurnstile()
+  const simpleCaptcha = useSimpleCaptcha()
   const { handleLoginResult } = useAuthRedirect()
 
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
@@ -165,6 +168,7 @@ export function UserAuthForm({
       return
     }
 
+    if (!simpleCaptcha.validateCaptcha()) return
     if (!validateTurnstile()) return
 
     const submittedTurnstileToken = turnstileToken
@@ -172,15 +176,21 @@ export function UserAuthForm({
       setTurnstileToken('')
       setTurnstileWidgetKey((current) => current + 1)
     }
+    // The server consumes the captcha on every attempt.
+    const submittedCaptcha = simpleCaptcha.captchaAnswer
+    simpleCaptcha.refreshCaptcha()
 
     setIsLoading(true)
     try {
-      const res = await login({
-        username: data.username,
-        password: data.password,
-        turnstile: submittedTurnstileToken,
-        passwordEncryptionEnabled: passwordLoginEncryptionEnabled,
-      })
+      const res = await login(
+        {
+          username: data.username,
+          password: data.password,
+          turnstile: submittedTurnstileToken,
+          passwordEncryptionEnabled: passwordLoginEncryptionEnabled,
+        },
+        submittedCaptcha
+      )
 
       if (res.success) {
         form.setValue('password', '')
@@ -394,6 +404,17 @@ export function UserAuthForm({
                 </FormItem>
               )}
             />
+
+            {simpleCaptcha.isSimpleCaptchaEnabled && (
+              <SimpleCaptchaField
+                image={simpleCaptcha.captchaImage}
+                value={simpleCaptcha.captchaCode}
+                onValueChange={simpleCaptcha.setCaptchaCode}
+                onRefresh={simpleCaptcha.refreshCaptcha}
+                isLoading={simpleCaptcha.isCaptchaLoading}
+                disabled={isLoading}
+              />
+            )}
 
             {/* Submit Button */}
             <Button

@@ -38,6 +38,7 @@ import type { UpdateOptionRequest } from '../../types'
 import { BotProtectionSection } from '../bot-protection-section'
 
 const defaults = {
+  SimpleCaptchaEnabled: false,
   TurnstileCheckEnabled: false,
   TurnstileSiteKey: '',
   TurnstileSecretKey: '',
@@ -84,7 +85,27 @@ beforeEach(async () => {
   vi.spyOn(api, 'put').mockResolvedValue({ data: { success: true } })
 })
 
-describe('Bot Protection settings saves', () => {
+describe('Login & Registration Protection settings saves', () => {
+  it('saves only the simple captcha switch when it is turned on', async () => {
+    const put = vi.spyOn(api, 'put').mockResolvedValue({
+      data: { success: true, message: '' },
+    } as never)
+    const user = userEvent.setup()
+    await renderSettings()
+
+    await user.click(
+      screen.getByRole('switch', { name: 'Enable simple captcha' })
+    )
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1))
+    expect(put.mock.calls[0][1]).toEqual({
+      key: 'SimpleCaptchaEnabled',
+      value: true,
+    })
+  })
+
+
   it('saves both keys before enabling Turnstile in one save', async () => {
     const savedOptions: Record<string, string | number | boolean> = {}
     const put = vi.spyOn(api, 'put').mockImplementation(async (_url, body) => {

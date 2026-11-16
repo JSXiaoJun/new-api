@@ -45,6 +45,17 @@ export interface RegisterPayload {
   turnstile?: string
 }
 
+export interface SimpleCaptcha {
+  captcha_id: string
+  image: string
+}
+
+// Query parameters the sign-in and sign-up endpoints read the answer from.
+export interface SimpleCaptchaAnswer {
+  captcha_id: string
+  captcha_code: string
+}
+
 export interface PasswordResetPayload {
   email: string
   turnstile?: string
@@ -117,6 +128,7 @@ export interface SystemStatus {
     WeChatAccountQRCodeImageURL?: string
     turnstile_check?: boolean
     turnstile_site_key?: string
+    simple_captcha_check?: boolean
     email_verification?: boolean
     self_use_mode_enabled?: boolean
     display_in_currency?: boolean
@@ -166,6 +178,7 @@ export interface SystemStatus {
   WeChatAccountQRCodeImageURL?: string
   turnstile_check?: boolean
   turnstile_site_key?: string
+  simple_captcha_check?: boolean
   email_verification?: boolean
   self_use_mode_enabled?: boolean
   display_in_currency?: boolean

@@ -104,10 +104,11 @@ const AUTH_SECTIONS = [
   },
   {
     id: 'bot-protection',
-    titleKey: 'Bot Protection',
+    titleKey: 'Login & Registration Protection',
     build: (settings: AuthSettings) => (
       <BotProtectionSection
         defaultValues={{
+          SimpleCaptchaEnabled: settings.SimpleCaptchaEnabled,
           TurnstileCheckEnabled: settings.TurnstileCheckEnabled,
           TurnstileSiteKey: settings.TurnstileSiteKey,
           TurnstileSecretKey: settings.TurnstileSecretKey,

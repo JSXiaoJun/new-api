@@ -72,6 +72,7 @@ func GetStatus(c *gin.Context) {
 		"mainland_web_block_enabled":  traffic_control.MainlandWebBlockEnabled(),
 		"turnstile_check":             common.TurnstileCheckEnabled,
 		"turnstile_site_key":          common.TurnstileSiteKey,
+		"simple_captcha_check":        common.SimpleCaptchaEnabled,
 		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
 		"gallery_link":                operation_setting.GetGeneralSetting().GalleryLink,
 		"infinite_canvas_link":        operation_setting.GetGeneralSetting().InfiniteCanvasLink,

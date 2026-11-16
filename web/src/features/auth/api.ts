@@ -21,8 +21,10 @@ import axios from 'axios'
 import { api, refreshAuthentication, type RefreshOutcome } from '@/lib/api'
 import { AuthOperationError } from '@/lib/secure-verification'
 import {
+  createServerError,
   getServerErrorMessageKey,
   getServerMessage,
+  requireServerSuccess,
 } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -40,6 +42,8 @@ import type {
   TwoFAPayload,
   RegisterPayload,
   ApiResponse,
+  SimpleCaptcha,
+  SimpleCaptchaAnswer,
 } from './types'
 
 // ============================================================================
@@ -51,7 +55,10 @@ import type {
 // ----------------------------------------------------------------------------
 
 // User login with username and password
-export async function login(payload: LoginPayload): Promise<LoginResponse> {
+export async function login(
+  payload: LoginPayload,
+  captcha?: SimpleCaptchaAnswer
+): Promise<LoginResponse> {
   const turnstile = payload.turnstile ?? ''
   try {
     let passwordFields:
@@ -72,7 +79,7 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
         username: payload.username,
         ...passwordFields,
       },
-      { skipAuthRefresh: true }
+      { params: captcha, skipAuthRefresh: true }
     )
     if (payload.passwordEncryptionEnabled && !res.data?.success) {
       clearPasswordEncryptionCache()
@@ -247,11 +254,25 @@ export async function telegramLogin(
 // ----------------------------------------------------------------------------
 
 // User registration
-export async function register(payload: RegisterPayload): Promise<ApiResponse> {
+export async function register(
+  payload: RegisterPayload,
+  captcha?: SimpleCaptchaAnswer
+): Promise<ApiResponse> {
   const res = await api.post(`/api/user/register`, payload, {
-    params: { turnstile: payload.turnstile ?? '' },
+    params: { turnstile: payload.turnstile ?? '', ...captcha },
   })
   return res.data
+}
+
+// Issue a new single-use image captcha for sign-in and sign-up
+export async function getSimpleCaptcha(): Promise<SimpleCaptcha> {
+  const res = await api.get<ApiResponse<SimpleCaptcha>>('/api/captcha', {
+    disableDuplicate: true,
+    skipAuthRefresh: true,
+  })
+  const data = requireServerSuccess(res.data).data
+  if (!data) throw createServerError(res.data)
+  return data
 }
 
 // Send email verification code

@@ -7813,6 +7813,17 @@
     "Failed to export recharge orders": "チャージ注文のエクスポートに失敗しました",
     "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "この期間に作成された注文をエクスポートします。このページの注文番号とユーザー ID のフィルターも適用されます。",
     "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.",
-    "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request."
+    "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.",
+    "Login & Registration Protection": "ログイン・登録保護",
+    "Enable simple captcha": "簡易キャプチャを有効にする",
+    "Require an image captcha when signing in or signing up. No third-party service is needed.": "ログインおよび登録時に画像キャプチャの入力を必須にします。サードパーティサービスは不要です。",
+    "Captcha": "画像認証",
+    "Captcha image": "キャプチャ画像",
+    "Enter the characters in the image": "画像の文字を入力してください",
+    "Refresh captcha": "画像を更新",
+    "Please enter the captcha": "画像認証の文字を入力してください",
+    "Captcha is incorrect or expired, please try again": "画像認証が正しくないか期限切れです。もう一度お試しください",
+    "Captcha is not enabled": "画像認証は有効になっていません",
+    "Failed to generate captcha, please try again": "画像認証の生成に失敗しました。もう一度お試しください"
   }
 }

@@ -7813,6 +7813,17 @@
     "Failed to export recharge orders": "Failed to export recharge orders",
     "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "Orders created in this time range are exported. The order number and user ID filters on this page also apply.",
     "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.",
-    "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request."
+    "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.",
+    "Login & Registration Protection": "Login & Registration Protection",
+    "Enable simple captcha": "Enable simple captcha",
+    "Require an image captcha when signing in or signing up. No third-party service is needed.": "Require an image captcha when signing in or signing up. No third-party service is needed.",
+    "Captcha": "Captcha",
+    "Captcha image": "Captcha image",
+    "Enter the characters in the image": "Enter the characters in the image",
+    "Refresh captcha": "Refresh captcha",
+    "Please enter the captcha": "Please enter the captcha",
+    "Captcha is incorrect or expired, please try again": "Captcha is incorrect or expired, please try again",
+    "Captcha is not enabled": "Captcha is not enabled",
+    "Failed to generate captcha, please try again": "Failed to generate captcha, please try again"
   }
 }
