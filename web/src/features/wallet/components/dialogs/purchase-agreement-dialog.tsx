@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Loader2 } from 'lucide-react'
-import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useId, useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import {
@@ -56,6 +56,7 @@ interface PurchaseAgreementDialogProps {
 
 export function PurchaseAgreementDialog(props: PurchaseAgreementDialogProps) {
   const { t } = useTranslation()
+  const hintId = useId()
   const [notMainlandCitizen, setNotMainlandCitizen] = useState(false)
   const [notInMainland, setNotInMainland] = useState(false)
   const [noInvoice, setNoInvoice] = useState(false)
@@ -158,8 +159,21 @@ export function PurchaseAgreementDialog(props: PurchaseAgreementDialogProps) {
           ))}
 
           <div className='space-y-1.5'>
+            {/* Stays visible while typing, unlike the placeholder */}
+            {!signed && (
+              <p id={hintId} className='text-sm'>
+                <Trans
+                  t={t}
+                  i18nKey='Type "<phrase/>" below to confirm'
+                  components={{
+                    phrase: <strong className='font-semibold'>{phrase}</strong>,
+                  }}
+                />
+              </p>
+            )}
             <Input
               aria-label={t('Confirmation text')}
+              aria-describedby={signed ? undefined : hintId}
               placeholder={t('Please enter "{{phrase}}"', { phrase })}
               value={signed ? phrase : statement}
               onChange={(e) => setStatement(e.target.value)}
@@ -170,7 +184,9 @@ export function PurchaseAgreementDialog(props: PurchaseAgreementDialogProps) {
             />
             {statementMismatch && (
               <p className='text-destructive text-xs'>
-                {t('The text you entered does not match')}
+                {t('The text you entered does not match "{{phrase}}"', {
+                  phrase,
+                })}
               </p>
             )}
           </div>

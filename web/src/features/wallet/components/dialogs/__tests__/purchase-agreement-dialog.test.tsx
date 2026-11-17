@@ -97,6 +97,40 @@ describe('PurchaseAgreementDialog', () => {
     ).toBeDisabled()
   })
 
+  it('keeps the required phrase visible and describing the input while the user types', async () => {
+    const user = userEvent.setup()
+    render(
+      <PurchaseAgreementDialog
+        open
+        onOpenChange={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    )
+    const input = screen.getByRole('textbox', { name: 'Confirmation text' })
+
+    await user.type(input, 'I underst')
+
+    expect(input).toHaveAccessibleDescription(
+      `Type "${PHRASE}" below to confirm`
+    )
+    expect(
+      screen.getByText(`The text you entered does not match "${PHRASE}"`)
+    ).toBeInTheDocument()
+  })
+
+  it('hides the typing hint once the agreement is signed', () => {
+    render(
+      <PurchaseAgreementDialog
+        open
+        onOpenChange={vi.fn()}
+        signedAt={1_700_000_000}
+        onConfirmed={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByText(/below to confirm/)).not.toBeInTheDocument()
+  })
+
   it('submits the confirmation and reports the signed time on success', async () => {
     vi.mocked(confirmPurchaseAgreement).mockResolvedValue({
       success: true,
