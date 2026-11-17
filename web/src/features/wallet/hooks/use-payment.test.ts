@@ -43,7 +43,29 @@ describe('payment amount routing', () => {
       },
     })
 
-    expect(amount).toBe(18.75)
+    expect(amount).toEqual({ amount: 18.75, fee: 0 })
     expect(calls).toEqual(['waffo:120'])
+  })
+
+  test('returns the Epay fee included in the regular amount', async () => {
+    const quote = await requestPaymentAmount(10, 'alipay', {
+      regular: async () => ({ success: true, data: '10.06', fee: '0.06' }),
+      stripe: async () => ({ success: true, data: '2' }),
+      waffo: async () => ({ success: true, data: '3' }),
+      waffoPancake: async () => ({ success: true, data: '4' }),
+    })
+
+    expect(quote).toEqual({ amount: 10.06, fee: 0.06 })
+  })
+
+  test('treats a zero fee as merchant paid', async () => {
+    const quote = await requestPaymentAmount(100, 'alipay', {
+      regular: async () => ({ success: true, data: '100.00', fee: '0.00' }),
+      stripe: async () => ({ success: true, data: '2' }),
+      waffo: async () => ({ success: true, data: '3' }),
+      waffoPancake: async () => ({ success: true, data: '4' }),
+    })
+
+    expect(quote).toEqual({ amount: 100, fee: 0 })
   })
 })

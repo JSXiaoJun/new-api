@@ -125,7 +125,12 @@ func GetTopUpInfo(c *gin.Context) {
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 		"bonus":                   operation_setting.GetPaymentSetting().AmountBonus,
-		"topup_link":              common.TopUpLink,
+		"epay_fee": gin.H{
+			"enabled":   operation_setting.GetPaymentSetting().EpayFeeEnabled,
+			"threshold": operation_setting.GetPaymentSetting().EpayFeeThreshold,
+			"rate":      operation_setting.GetPaymentSetting().EpayFeeRate,
+		},
+		"topup_link": common.TopUpLink,
 	}
 	common.ApiSuccess(c, data)
 }
@@ -429,7 +434,10 @@ func confirmEpayGatewayPayment(ctx context.Context, tradeNo string, callbackTrad
 	return nil
 }
 
-func getPayMoney(amount int64, group string) float64 {
+// getPayMoney returns the yuan amount an Epay order charges the user and the
+// surcharge included in it. The surcharge only applies below the configured
+// fee threshold; at or above it the merchant bears the gateway fee.
+func getPayMoney(amount int64, group string) (payMoney float64, fee float64) {
 	dAmount := decimal.NewFromInt(amount)
 	// 充值金额以“展示类型”为准：
 	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
@@ -454,9 +462,15 @@ func getPayMoney(amount int64, group string) float64 {
 	}
 	dDiscount := decimal.NewFromFloat(discount)
 
-	payMoney := dAmount.Mul(dPrice).Mul(dTopupGroupRatio).Mul(dDiscount)
+	baseMoney := dAmount.Mul(dPrice).Mul(dTopupGroupRatio).Mul(dDiscount)
 
-	return payMoney.InexactFloat64()
+	// The gateway takes two decimals, so the surcharge is computed on the
+	// amount as it would be sent and the total stays exact at two decimals.
+	dFee := operation_setting.EpayTopUpFee(baseMoney.Round(2))
+	if dFee.Sign() <= 0 {
+		return baseMoney.InexactFloat64(), 0
+	}
+	return baseMoney.Round(2).Add(dFee).InexactFloat64(), dFee.InexactFloat64()
 }
 
 func getMinTopup() int64 {
@@ -620,7 +634,7 @@ func RequestEpay(c *gin.Context) {
 		paymentError(c, common.NewMessage("Failed to get the user group"))
 		return
 	}
-	payMoney := getPayMoney(req.Amount, group)
+	payMoney, fee := getPayMoney(req.Amount, group)
 	if payMoney < 0.01 {
 		paymentError(c, common.NewMessage("Payment amount is too low"))
 		return
@@ -672,6 +686,7 @@ func RequestEpay(c *gin.Context) {
 			CreateTime:      time.Now().Unix(),
 			Status:          common.TopUpStatusPending,
 			BonusQuota:      bonusQuota,
+			Fee:             fee,
 		}
 		if err := model.CreatePendingEpayWxPayTopUp(topUp); err != nil {
 			if errors.Is(err, model.ErrPendingEpayWxPayOrder) {
@@ -733,7 +748,7 @@ func RequestEpay(c *gin.Context) {
 			return
 		}
 
-		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 微信扫码订单创建成功 user_id=%d trade_no=%s amount=%d money=%.2f", id, tradeNo, req.Amount, payMoney))
+		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 微信扫码订单创建成功 user_id=%d trade_no=%s amount=%d money=%.2f fee=%.2f", id, tradeNo, req.Amount, payMoney, fee))
 		c.JSON(http.StatusOK, gin.H{
 			"message": "success",
 			"data": gin.H{
@@ -768,6 +783,7 @@ func RequestEpay(c *gin.Context) {
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 		BonusQuota:      bonusQuota,
+		Fee:             fee,
 	}
 	err = topUp.Insert()
 	if err != nil {
@@ -775,7 +791,7 @@ func RequestEpay(c *gin.Context) {
 		paymentError(c, common.NewMessage("Failed to create order"))
 		return
 	}
-	logger.LogInfo(c.Request.Context(), common.LogText("Epay top-up order created user_id=%d trade_no=%s payment_method=%s amount=%d money=%.2f uri=%q params=%q", id, tradeNo, req.PaymentMethod, req.Amount, payMoney, uri, common.GetJsonString(params)))
+	logger.LogInfo(c.Request.Context(), common.LogText("Epay top-up order created user_id=%d trade_no=%s payment_method=%s amount=%d money=%.2f fee=%.2f uri=%q params=%q", id, tradeNo, req.PaymentMethod, req.Amount, payMoney, fee, uri, common.GetJsonString(params)))
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
 }
 
@@ -947,12 +963,16 @@ func RequestAmount(c *gin.Context) {
 		paymentError(c, common.NewMessage("Failed to get the user group"))
 		return
 	}
-	payMoney := getPayMoney(req.Amount, group)
+	payMoney, fee := getPayMoney(req.Amount, group)
 	if payMoney <= 0.01 {
 		paymentError(c, common.NewMessage("Payment amount is too low"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"data":    strconv.FormatFloat(payMoney, 'f', 2, 64),
+		"fee":     strconv.FormatFloat(fee, 'f', 2, 64),
+	})
 }
 
 func GetUserTopUps(c *gin.Context) {

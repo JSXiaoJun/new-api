@@ -7824,6 +7824,18 @@
     "Please enter the captcha": "Please enter the captcha",
     "Captcha is incorrect or expired, please try again": "Captcha is incorrect or expired, please try again",
     "Captcha is not enabled": "Captcha is not enabled",
-    "Failed to generate captcha, please try again": "Failed to generate captcha, please try again"
+    "Failed to generate captcha, please try again": "Failed to generate captcha, please try again",
+    "Payment Fee": "Payment Fee",
+    "Save payment fee settings": "Save payment fee settings",
+    "Applies to Epay top-ups. When the amount to pay is below the threshold, the fee is added to the order and paid by the user. At or above the threshold, the merchant bears the gateway fee and the user pays the original amount. The credited quota is not changed.": "Applies to Epay top-ups. When the amount to pay is below the threshold, the fee is added to the order and paid by the user. At or above the threshold, the merchant bears the gateway fee and the user pays the original amount. The credited quota is not changed.",
+    "Charge the fee to users below the threshold": "Charge the fee to users below the threshold",
+    "When off, the merchant bears the gateway fee on every order.": "When off, the merchant bears the gateway fee on every order.",
+    "Fee threshold (CNY)": "Fee threshold (CNY)",
+    "Orders whose amount to pay is below this value add the fee. Orders equal to or above it do not.": "Orders whose amount to pay is below this value add the fee. Orders equal to or above it do not.",
+    "Fee rate (%)": "Fee rate (%)",
+    "For example, 0.6 adds 0.6% of the amount, rounded up to the cent. At most {{max}}%.": "For example, 0.6 adds 0.6% of the amount, rounded up to the cent. At most {{max}}%.",
+    "Includes payment fee": "Includes payment fee",
+    "Includes a payment fee of {{fee}}.": "Includes a payment fee of {{fee}}.",
+    "Orders paying less than {{threshold}} add a {{rate}}% payment fee. Orders at or above it have no fee.": "Orders paying less than {{threshold}} add a {{rate}}% payment fee. Orders at or above it have no fee."
   }
 }

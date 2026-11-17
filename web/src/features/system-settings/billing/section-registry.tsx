@@ -26,6 +26,7 @@ import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 import { AbnormalBillingSection } from './abnormal-billing-section'
+import { PaymentFeeSection } from './payment-fee-section'
 
 const getModelDefaults = (settings: BillingSettings) => ({
   ModelPrice: settings.ModelPrice,
@@ -188,6 +189,21 @@ const BILLING_SECTIONS = [
             settings['payment_setting.compliance_terms_version'] ?? '',
           confirmedAt: settings['payment_setting.compliance_confirmed_at'] ?? 0,
           confirmedBy: settings['payment_setting.compliance_confirmed_by'] ?? 0,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'payment-fee',
+    titleKey: 'Payment Fee',
+    build: (settings: BillingSettings) => (
+      <PaymentFeeSection
+        defaultValues={{
+          enabled: settings['payment_setting.epay_fee_enabled'] ?? false,
+          threshold: Number(
+            settings['payment_setting.epay_fee_threshold'] ?? 0
+          ),
+          rate: Number(settings['payment_setting.epay_fee_rate'] ?? 0),
         }}
       />
     ),

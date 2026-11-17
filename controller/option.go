@@ -291,6 +291,16 @@ func UpdateOption(c *gin.Context) {
 			common.ApiErrorMsg(c, err.Error())
 			return
 		}
+	case "payment_setting.epay_fee_rate":
+		if err = operation_setting.ValidateEpayFeeRate(option.Value.(string)); err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+	case "payment_setting.epay_fee_threshold":
+		if err = operation_setting.ValidateEpayFeeThreshold(option.Value.(string)); err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
 	case "claude.default_max_tokens":
 		err = model_setting.ValidateClaudeDefaultMaxTokens(option.Value.(string))
 		if err != nil {

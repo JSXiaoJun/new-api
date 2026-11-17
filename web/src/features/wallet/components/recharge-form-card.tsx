@@ -70,6 +70,8 @@ interface RechargeFormCardProps {
   topupAmount: number
   onTopupAmountChange: (amount: number) => void
   paymentAmount: number
+  /** Payment fee included in paymentAmount */
+  paymentFee?: number
   calculating: boolean
   onPaymentMethodSelect: (method: PaymentMethod) => void
   paymentLoading: string | null
@@ -102,6 +104,7 @@ export function RechargeFormCard({
   topupAmount,
   onTopupAmountChange,
   paymentAmount,
+  paymentFee = 0,
   calculating,
   onPaymentMethodSelect,
   paymentLoading,
@@ -151,6 +154,12 @@ export function RechargeFormCard({
   const hasAnyTopup = hasConfigurableTopup || enableCreemTopup
   const hasStandardPaymentMethods =
     Array.isArray(topupInfo?.pay_methods) && topupInfo.pay_methods.length > 0
+  const epayFee = topupInfo?.epay_fee
+  const showEpayFeeHint =
+    hasStandardPaymentMethods &&
+    epayFee?.enabled === true &&
+    epayFee.rate > 0 &&
+    epayFee.threshold > 0
   const hasWaffoPaymentMethods =
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
@@ -378,6 +387,24 @@ export function RechargeFormCard({
                     {t(
                       'This top-up earns a {{percent}}% bonus, credited with your balance after payment.',
                       { percent: topUpBonusPercent }
+                    )}
+                  </p>
+                )}
+                {!calculating && paymentFee > 0 && (
+                  <p className='text-muted-foreground text-xs'>
+                    {t('Includes a payment fee of {{fee}}.', {
+                      fee: formatCurrency(paymentFee),
+                    })}
+                  </p>
+                )}
+                {showEpayFeeHint && (
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'Orders paying less than {{threshold}} add a {{rate}}% payment fee. Orders at or above it have no fee.',
+                      {
+                        threshold: formatCurrency(epayFee.threshold),
+                        rate: epayFee.rate,
+                      }
                     )}
                   </p>
                 )}

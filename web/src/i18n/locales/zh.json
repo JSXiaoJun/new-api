@@ -7824,6 +7824,18 @@
     "Please enter the captcha": "请输入图形验证码",
     "Captcha is incorrect or expired, please try again": "图形验证码错误或已过期，请重新输入",
     "Captcha is not enabled": "图形验证码未启用",
-    "Failed to generate captcha, please try again": "生成图形验证码失败，请重试"
+    "Failed to generate captcha, please try again": "生成图形验证码失败，请重试",
+    "Payment Fee": "支付手续费",
+    "Save payment fee settings": "保存支付手续费设置",
+    "Applies to Epay top-ups. When the amount to pay is below the threshold, the fee is added to the order and paid by the user. At or above the threshold, the merchant bears the gateway fee and the user pays the original amount. The credited quota is not changed.": "适用于易支付充值。应付金额低于门槛时，手续费加在订单金额里由用户支付；达到或超过门槛时，由商户承担支付平台手续费，用户按原金额支付。到账额度不受影响。",
+    "Charge the fee to users below the threshold": "低于门槛时由用户承担手续费",
+    "When off, the merchant bears the gateway fee on every order.": "关闭后，所有订单的支付平台手续费都由商户承担。",
+    "Fee threshold (CNY)": "手续费门槛（元）",
+    "Orders whose amount to pay is below this value add the fee. Orders equal to or above it do not.": "应付金额低于此值的订单加收手续费，等于或高于此值的订单不加收。",
+    "Fee rate (%)": "手续费费率（%）",
+    "For example, 0.6 adds 0.6% of the amount, rounded up to the cent. At most {{max}}%.": "例如填 0.6 表示加收金额的 0.6%，按分向上取整。最高 {{max}}%。",
+    "Includes payment fee": "含支付手续费",
+    "Includes a payment fee of {{fee}}.": "含支付手续费 {{fee}}。",
+    "Orders paying less than {{threshold}} add a {{rate}}% payment fee. Orders at or above it have no fee.": "支付金额低于 {{threshold}} 的订单加收 {{rate}}% 支付手续费，达到或超过该金额不加收。"
   }
 }

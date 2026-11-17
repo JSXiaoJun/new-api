@@ -33,6 +33,9 @@ type TopUp struct {
 	// is fixed when the order is created so later setting changes never alter a
 	// pending order.
 	BonusQuota int64 `json:"bonus_quota" gorm:"type:bigint;default:0"`
+	// Fee is the Epay surcharge included in Money, fixed when the order is
+	// created. It covers the gateway fee, so referral rewards exclude it.
+	Fee float64 `json:"fee" gorm:"default:0"`
 }
 
 type AdminTopUp struct {
@@ -161,6 +164,8 @@ func topUpBonusLogPart(creditedQuota int, paidQuota int) *common.Message {
 // inviter's referral reward. Money is stored in the gateway's currency, so it
 // is converted back to quota with that gateway's unit price; providers without
 // a unit price fall back to the paid quota (which excludes promotional bonus).
+// The Epay fee included in Money pays the gateway, not for quota, so it is
+// left out of the actual payment.
 func inviterTopUpRewardQuota(topUp *TopUp, paidQuota int, percent float64) int {
 	if percent <= 0 || !common.IsValidInviterTopUpRewardPercent(percent) || paidQuota <= 0 {
 		return 0
@@ -176,7 +181,14 @@ func inviterTopUpRewardQuota(topUp *TopUp, paidQuota int, percent float64) int {
 	}
 	base := decimal.NewFromInt(int64(paidQuota))
 	if unitPrice > 0 && !math.IsInf(unitPrice, 0) && topUp.Money > 0 && !math.IsInf(topUp.Money, 0) {
-		base = decimal.NewFromFloat(topUp.Money).
+		paidMoney := decimal.NewFromFloat(topUp.Money)
+		if topUp.Fee > 0 && !math.IsInf(topUp.Fee, 0) {
+			paidMoney = paidMoney.Sub(decimal.NewFromFloat(topUp.Fee))
+		}
+		if paidMoney.Sign() <= 0 {
+			return 0
+		}
+		base = paidMoney.
 			Div(decimal.NewFromFloat(unitPrice)).
 			Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	}

@@ -63,11 +63,18 @@ const defaultPaymentAmountCalculators: PaymentAmountCalculators = {
   waffoPancake: calculateWaffoPancakeAmount,
 }
 
+export interface PaymentQuote {
+  /** Amount the user pays, including any fee */
+  amount: number
+  /** Payment fee included in amount, 0 when the merchant bears it */
+  fee: number
+}
+
 export async function requestPaymentAmount(
   topupAmount: number,
   paymentType: string,
   calculators: PaymentAmountCalculators = defaultPaymentAmountCalculators
-): Promise<number> {
+): Promise<PaymentQuote> {
   let calculator = calculators.regular
   if (isStripePayment(paymentType)) {
     calculator = calculators.stripe
@@ -79,14 +86,19 @@ export async function requestPaymentAmount(
 
   const response = await calculator({ amount: topupAmount })
   if (!isApiSuccess(response) || !response.data) {
-    return 0
+    return { amount: 0, fee: 0 }
   }
 
-  return Number.parseFloat(response.data)
+  const fee = Number.parseFloat(response.fee ?? '')
+  return {
+    amount: Number.parseFloat(response.data),
+    fee: Number.isFinite(fee) && fee > 0 ? fee : 0,
+  }
 }
 
 export function usePayment() {
   const [amount, setAmount] = useState<number>(0)
+  const [fee, setFee] = useState<number>(0)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [wechatPayment, setWechatPayment] =
@@ -102,14 +114,13 @@ export function usePayment() {
     async (topupAmount: number, paymentType: string) => {
       try {
         setCalculating(true)
-        const calculatedAmount = await requestPaymentAmount(
-          topupAmount,
-          paymentType
-        )
-        setAmount(calculatedAmount)
-        return calculatedAmount
+        const quote = await requestPaymentAmount(topupAmount, paymentType)
+        setAmount(quote.amount)
+        setFee(quote.fee)
+        return quote.amount
       } catch {
         setAmount(0)
+        setFee(0)
         return 0
       } finally {
         setCalculating(false)
@@ -203,6 +214,7 @@ export function usePayment() {
 
   return {
     amount,
+    fee,
     calculating,
     processing,
     wechatPayment,

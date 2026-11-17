@@ -7824,6 +7824,18 @@
     "Please enter the captcha": "Vui lòng nhập captcha",
     "Captcha is incorrect or expired, please try again": "Captcha không đúng hoặc đã hết hạn, vui lòng thử lại",
     "Captcha is not enabled": "Captcha chưa được bật",
-    "Failed to generate captcha, please try again": "Tạo captcha thất bại, vui lòng thử lại"
+    "Failed to generate captcha, please try again": "Tạo captcha thất bại, vui lòng thử lại",
+    "Payment Fee": "Phí thanh toán",
+    "Save payment fee settings": "Lưu cài đặt phí thanh toán",
+    "Applies to Epay top-ups. When the amount to pay is below the threshold, the fee is added to the order and paid by the user. At or above the threshold, the merchant bears the gateway fee and the user pays the original amount. The credited quota is not changed.": "Áp dụng cho nạp tiền qua Epay. Khi số tiền cần trả thấp hơn ngưỡng, phí được cộng vào đơn và do người dùng trả. Từ ngưỡng trở lên, người bán chịu phí cổng thanh toán và người dùng trả số tiền gốc. Hạn mức được cộng không thay đổi.",
+    "Charge the fee to users below the threshold": "Người dùng chịu phí khi dưới ngưỡng",
+    "When off, the merchant bears the gateway fee on every order.": "Khi tắt, người bán chịu phí cổng thanh toán cho mọi đơn.",
+    "Fee threshold (CNY)": "Ngưỡng phí (CNY)",
+    "Orders whose amount to pay is below this value add the fee. Orders equal to or above it do not.": "Đơn có số tiền cần trả thấp hơn giá trị này sẽ cộng phí. Đơn bằng hoặc cao hơn thì không.",
+    "Fee rate (%)": "Tỷ lệ phí (%)",
+    "For example, 0.6 adds 0.6% of the amount, rounded up to the cent. At most {{max}}%.": "Ví dụ: 0.6 cộng thêm 0,6% số tiền, làm tròn lên đến xu. Tối đa {{max}}%.",
+    "Includes payment fee": "Đã gồm phí thanh toán",
+    "Includes a payment fee of {{fee}}.": "Đã gồm phí thanh toán {{fee}}.",
+    "Orders paying less than {{threshold}} add a {{rate}}% payment fee. Orders at or above it have no fee.": "Đơn thanh toán dưới {{threshold}} sẽ cộng {{rate}}% phí thanh toán. Từ mức này trở lên không tính phí."
   }
 }

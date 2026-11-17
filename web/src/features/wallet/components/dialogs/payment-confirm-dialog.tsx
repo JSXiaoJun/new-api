@@ -46,6 +46,8 @@ interface PaymentConfirmDialogProps {
   calculating: boolean
   processing: boolean
   discountRate?: number
+  /** Payment fee included in paymentAmount */
+  feeAmount?: number
   usdExchangeRate?: number
 }
 
@@ -59,12 +61,17 @@ export function PaymentConfirmDialog({
   calculating,
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
+  feeAmount = 0,
   usdExchangeRate = 1,
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
-  const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
-  const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
-  const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
+  const hasFee = feeAmount > 0 && paymentAmount > feeAmount
+  // The discount applies to the amount before the fee is added.
+  const discountedAmount = hasFee ? paymentAmount - feeAmount : paymentAmount
+  const hasDiscount =
+    discountRate > 0 && discountRate < 1 && discountedAmount > 0
+  const originalAmount = hasDiscount ? discountedAmount / discountRate : 0
+  const discountAmount = hasDiscount ? originalAmount - discountedAmount : 0
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -105,12 +112,21 @@ export function PaymentConfirmDialog({
                 </span>
                 {hasDiscount && (
                   <span className='text-muted-foreground text-sm line-through'>
-                    {formatCurrency(originalAmount)}
+                    {formatCurrency(originalAmount + (hasFee ? feeAmount : 0))}
                   </span>
                 )}
               </div>
             )}
           </div>
+
+          {hasFee && !calculating && (
+            <div className='flex items-center justify-between text-sm'>
+              <span className='text-muted-foreground'>
+                {t('Includes payment fee')}
+              </span>
+              <span className='font-medium'>{formatCurrency(feeAmount)}</span>
+            </div>
+          )}
 
           {hasDiscount && !calculating && (
             <div className='bg-muted/50 rounded-lg p-3'>

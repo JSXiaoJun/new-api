@@ -190,3 +190,62 @@ func TestSubscriptionEpayOrderNameSignsPlanTitlesWithAmpersand(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, name, params["name"])
 }
+
+func TestGetPayMoneyAddsEpayFeeOnlyBelowThreshold(t *testing.T) {
+	paymentSetting := operation_setting.GetPaymentSetting()
+	oldPrice := operation_setting.Price
+	oldEnabled, oldThreshold, oldRate := paymentSetting.EpayFeeEnabled, paymentSetting.EpayFeeThreshold, paymentSetting.EpayFeeRate
+	oldDiscount := paymentSetting.AmountDiscount
+	t.Cleanup(func() {
+		operation_setting.Price = oldPrice
+		paymentSetting.EpayFeeEnabled, paymentSetting.EpayFeeThreshold, paymentSetting.EpayFeeRate = oldEnabled, oldThreshold, oldRate
+		paymentSetting.AmountDiscount = oldDiscount
+	})
+	operation_setting.Price = 1
+	paymentSetting.AmountDiscount = map[int]float64{}
+	require.NotEqual(t, operation_setting.QuotaDisplayTypeTokens, operation_setting.GetQuotaDisplayType())
+
+	cases := []struct {
+		name      string
+		enabled   bool
+		threshold float64
+		rate      float64
+		amount    int64
+		wantMoney float64
+		wantFee   float64
+	}{
+		{name: "disabled keeps the amount", enabled: false, threshold: 50, rate: 0.6, amount: 10, wantMoney: 10, wantFee: 0},
+		{name: "below threshold adds the fee", enabled: true, threshold: 50, rate: 0.6, amount: 10, wantMoney: 10.06, wantFee: 0.06},
+		{name: "fee rounds up to the cent", enabled: true, threshold: 50, rate: 0.6, amount: 49, wantMoney: 49.30, wantFee: 0.30},
+		{name: "amount equal to threshold is merchant paid", enabled: true, threshold: 50, rate: 0.6, amount: 50, wantMoney: 50, wantFee: 0},
+		{name: "amount above threshold is merchant paid", enabled: true, threshold: 50, rate: 0.6, amount: 100, wantMoney: 100, wantFee: 0},
+		{name: "zero rate adds nothing", enabled: true, threshold: 50, rate: 0, amount: 10, wantMoney: 10, wantFee: 0},
+		{name: "stored rate above the cap adds nothing", enabled: true, threshold: 50, rate: 60, amount: 10, wantMoney: 10, wantFee: 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			paymentSetting.EpayFeeEnabled = tc.enabled
+			paymentSetting.EpayFeeThreshold = tc.threshold
+			paymentSetting.EpayFeeRate = tc.rate
+
+			money, fee := getPayMoney(tc.amount, "default")
+			assert.InDelta(t, tc.wantMoney, money, 1e-9)
+			assert.InDelta(t, tc.wantFee, fee, 1e-9)
+		})
+	}
+}
+
+func TestValidateEpayFeeOptions(t *testing.T) {
+	for _, raw := range []string{"0", "0.6", "20"} {
+		assert.NoError(t, operation_setting.ValidateEpayFeeRate(raw), raw)
+	}
+	for _, raw := range []string{"-0.1", "20.01", "NaN", "abc", ""} {
+		assert.Error(t, operation_setting.ValidateEpayFeeRate(raw), raw)
+	}
+	for _, raw := range []string{"0", "100", "99.5"} {
+		assert.NoError(t, operation_setting.ValidateEpayFeeThreshold(raw), raw)
+	}
+	for _, raw := range []string{"-1", "Inf", "abc", ""} {
+		assert.Error(t, operation_setting.ValidateEpayFeeThreshold(raw), raw)
+	}
+}

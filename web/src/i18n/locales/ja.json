@@ -7824,6 +7824,18 @@
     "Please enter the captcha": "画像認証の文字を入力してください",
     "Captcha is incorrect or expired, please try again": "画像認証が正しくないか期限切れです。もう一度お試しください",
     "Captcha is not enabled": "画像認証は有効になっていません",
-    "Failed to generate captcha, please try again": "画像認証の生成に失敗しました。もう一度お試しください"
+    "Failed to generate captcha, please try again": "画像認証の生成に失敗しました。もう一度お試しください",
+    "Payment Fee": "決済手数料",
+    "Save payment fee settings": "決済手数料設定を保存",
+    "Applies to Epay top-ups. When the amount to pay is below the threshold, the fee is added to the order and paid by the user. At or above the threshold, the merchant bears the gateway fee and the user pays the original amount. The credited quota is not changed.": "Epay でのチャージに適用されます。支払額がしきい値未満の場合、手数料を注文金額に加えてユーザーが負担します。しきい値以上の場合は決済代行の手数料を加盟店が負担し、ユーザーは元の金額を支払います。付与されるクォータは変わりません。",
+    "Charge the fee to users below the threshold": "しきい値未満はユーザーが手数料を負担",
+    "When off, the merchant bears the gateway fee on every order.": "オフにすると、すべての注文で決済代行の手数料を加盟店が負担します。",
+    "Fee threshold (CNY)": "手数料しきい値（CNY）",
+    "Orders whose amount to pay is below this value add the fee. Orders equal to or above it do not.": "支払額がこの値未満の注文に手数料を加算します。この値以上の注文には加算しません。",
+    "Fee rate (%)": "手数料率（%）",
+    "For example, 0.6 adds 0.6% of the amount, rounded up to the cent. At most {{max}}%.": "例：0.6 は金額の 0.6% を加算し、1 分単位で切り上げます。最大 {{max}}%。",
+    "Includes payment fee": "決済手数料込み",
+    "Includes a payment fee of {{fee}}.": "決済手数料 {{fee}} を含みます。",
+    "Orders paying less than {{threshold}} add a {{rate}}% payment fee. Orders at or above it have no fee.": "{{threshold}} 未満の注文には {{rate}}% の決済手数料が加算されます。それ以上は手数料なしです。"
   }
 }

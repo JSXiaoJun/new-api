@@ -7824,6 +7824,18 @@
     "Please enter the captcha": "請輸入圖形驗證碼",
     "Captcha is incorrect or expired, please try again": "圖形驗證碼錯誤或已過期，請重新輸入",
     "Captcha is not enabled": "圖形驗證碼未啟用",
-    "Failed to generate captcha, please try again": "產生圖形驗證碼失敗，請重試"
+    "Failed to generate captcha, please try again": "產生圖形驗證碼失敗，請重試",
+    "Payment Fee": "支付手續費",
+    "Save payment fee settings": "儲存支付手續費設定",
+    "Applies to Epay top-ups. When the amount to pay is below the threshold, the fee is added to the order and paid by the user. At or above the threshold, the merchant bears the gateway fee and the user pays the original amount. The credited quota is not changed.": "適用於易支付儲值。應付金額低於門檻時，手續費加在訂單金額裡由使用者支付；達到或超過門檻時，由商戶承擔支付平台手續費，使用者按原金額支付。到帳額度不受影響。",
+    "Charge the fee to users below the threshold": "低於門檻時由使用者承擔手續費",
+    "When off, the merchant bears the gateway fee on every order.": "關閉後，所有訂單的支付平台手續費都由商戶承擔。",
+    "Fee threshold (CNY)": "手續費門檻（元）",
+    "Orders whose amount to pay is below this value add the fee. Orders equal to or above it do not.": "應付金額低於此值的訂單加收手續費，等於或高於此值的訂單不加收。",
+    "Fee rate (%)": "手續費費率（%）",
+    "For example, 0.6 adds 0.6% of the amount, rounded up to the cent. At most {{max}}%.": "例如填 0.6 表示加收金額的 0.6%，按分向上取整。最高 {{max}}%。",
+    "Includes payment fee": "含支付手續費",
+    "Includes a payment fee of {{fee}}.": "含支付手續費 {{fee}}。",
+    "Orders paying less than {{threshold}} add a {{rate}}% payment fee. Orders at or above it have no fee.": "支付金額低於 {{threshold}} 的訂單加收 {{rate}}% 支付手續費，達到或超過該金額不加收。"
   }
 }

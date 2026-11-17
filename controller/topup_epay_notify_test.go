@@ -572,3 +572,53 @@ func TestSubscriptionEpayNotifyRequiresGatewayConfirmation(t *testing.T) {
 	require.Equal(t, "success", postSubscriptionNotify(signed), "gateway retries must be acknowledged")
 	assert.EqualValues(t, 1, countSubscriptions())
 }
+
+func TestRequestEpayFeeIsPaidButNeverCreditedOrRewarded(t *testing.T) {
+	setupEpayNotifyTest(t)
+	setInviterTopUpRewardPercentForTest(t, 10)
+	paymentSetting := operation_setting.GetPaymentSetting()
+	oldPrice, oldMinTopUp := operation_setting.Price, operation_setting.MinTopUp
+	oldDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
+	oldEnabled, oldThreshold, oldRate := paymentSetting.EpayFeeEnabled, paymentSetting.EpayFeeThreshold, paymentSetting.EpayFeeRate
+	operation_setting.Price, operation_setting.MinTopUp = 1, 1
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
+	paymentSetting.EpayFeeEnabled, paymentSetting.EpayFeeThreshold, paymentSetting.EpayFeeRate = true, 50, 0.6
+	t.Cleanup(func() {
+		operation_setting.Price, operation_setting.MinTopUp = oldPrice, oldMinTopUp
+		operation_setting.GetGeneralSetting().QuotaDisplayType = oldDisplayType
+		paymentSetting.EpayFeeEnabled, paymentSetting.EpayFeeThreshold, paymentSetting.EpayFeeRate = oldEnabled, oldThreshold, oldRate
+	})
+
+	inviter := model.User{Username: "epay_fee_inviter", AffCode: "epay_fee_inviter", Password: "password123", Group: "default", Status: common.UserStatusEnabled}
+	require.NoError(t, model.DB.Create(&inviter).Error)
+	invitee := model.User{Username: "epay_fee_invitee", AffCode: "epay_fee_invitee", Password: "password123", Group: "default", Status: common.UserStatusEnabled, InviterId: inviter.Id}
+	require.NoError(t, model.DB.Create(&invitee).Error)
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/user/pay", strings.NewReader(`{"amount":10,"payment_method":"alipay"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("id", invitee.Id)
+	RequestEpay(c)
+	require.Contains(t, recorder.Body.String(), `"message":"success"`, recorder.Body.String())
+
+	var order model.TopUp
+	require.NoError(t, model.DB.Where("user_id = ?", invitee.Id).First(&order).Error)
+	assert.InDelta(t, 10.06, order.Money, 1e-9)
+	assert.InDelta(t, 0.06, order.Fee, 1e-9)
+
+	// The gateway reporting a payment without the fee is rejected.
+	setFakeEpayGatewayOrder(t, order.TradeNo, map[string]any{
+		"code": 1, "status": 1, "pid": 1000, "trade_no": "GW" + order.TradeNo, "out_trade_no": order.TradeNo, "money": "10.00",
+	})
+	require.Equal(t, "fail", postEpayNotify(t, signedEpayNotifyParams(order.TradeNo, "alipay", "10.00", epayNotifyTestKey)))
+	assert.Equal(t, 0, userQuotaForEpayNotifyTest(t, invitee.Id))
+	fakeEpayGatewayOrders.Delete(order.TradeNo)
+
+	require.Equal(t, "success", postEpayNotify(t, signedEpayNotifyParams(order.TradeNo, "alipay", "10.06", epayNotifyTestKey)))
+	assert.Equal(t, 10*500000, userQuotaForEpayNotifyTest(t, invitee.Id), "the fee never adds quota")
+	affQuota, affHistory := affQuotaForEpayNotifyTest(t, inviter.Id)
+	assert.Equal(t, 10*500000/10, affQuota, "the reward is a share of the 10 paid for quota, not of the fee")
+	assert.Equal(t, 10*500000/10, affHistory)
+}

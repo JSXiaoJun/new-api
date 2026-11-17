@@ -7824,6 +7824,18 @@
     "Please enter the captcha": "Veuillez saisir le captcha",
     "Captcha is incorrect or expired, please try again": "Le captcha est incorrect ou a expiré, veuillez réessayer",
     "Captcha is not enabled": "Le captcha n'est pas activé",
-    "Failed to generate captcha, please try again": "Impossible de générer le captcha, veuillez réessayer"
+    "Failed to generate captcha, please try again": "Impossible de générer le captcha, veuillez réessayer",
+    "Payment Fee": "Frais de paiement",
+    "Save payment fee settings": "Enregistrer les frais de paiement",
+    "Applies to Epay top-ups. When the amount to pay is below the threshold, the fee is added to the order and paid by the user. At or above the threshold, the merchant bears the gateway fee and the user pays the original amount. The credited quota is not changed.": "S'applique aux recharges Epay. Si le montant à payer est inférieur au seuil, les frais sont ajoutés à la commande et payés par l'utilisateur. À partir du seuil, le marchand prend en charge les frais de la passerelle et l'utilisateur paie le montant initial. Le quota crédité ne change pas.",
+    "Charge the fee to users below the threshold": "Faire payer les frais aux utilisateurs sous le seuil",
+    "When off, the merchant bears the gateway fee on every order.": "Désactivé, le marchand prend en charge les frais de la passerelle sur toutes les commandes.",
+    "Fee threshold (CNY)": "Seuil des frais (CNY)",
+    "Orders whose amount to pay is below this value add the fee. Orders equal to or above it do not.": "Les commandes dont le montant à payer est inférieur à cette valeur ajoutent les frais. Celles égales ou supérieures n'en ajoutent pas.",
+    "Fee rate (%)": "Taux des frais (%)",
+    "For example, 0.6 adds 0.6% of the amount, rounded up to the cent. At most {{max}}%.": "Par exemple, 0.6 ajoute 0,6 % du montant, arrondi au centime supérieur. {{max}} % au maximum.",
+    "Includes payment fee": "Frais de paiement inclus",
+    "Includes a payment fee of {{fee}}.": "Comprend des frais de paiement de {{fee}}.",
+    "Orders paying less than {{threshold}} add a {{rate}}% payment fee. Orders at or above it have no fee.": "Les commandes de moins de {{threshold}} ajoutent {{rate}} % de frais de paiement. À partir de ce montant, aucuns frais."
   }
 }

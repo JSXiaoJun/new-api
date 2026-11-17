@@ -7824,6 +7824,18 @@
     "Please enter the captcha": "Введите капчу",
     "Captcha is incorrect or expired, please try again": "Капча неверна или устарела, попробуйте ещё раз",
     "Captcha is not enabled": "Капча не включена",
-    "Failed to generate captcha, please try again": "Не удалось создать капчу, попробуйте ещё раз"
+    "Failed to generate captcha, please try again": "Не удалось создать капчу, попробуйте ещё раз",
+    "Payment Fee": "Комиссия за оплату",
+    "Save payment fee settings": "Сохранить настройки комиссии",
+    "Applies to Epay top-ups. When the amount to pay is below the threshold, the fee is added to the order and paid by the user. At or above the threshold, the merchant bears the gateway fee and the user pays the original amount. The credited quota is not changed.": "Применяется к пополнениям через Epay. Если сумма к оплате ниже порога, комиссия добавляется к заказу и оплачивается пользователем. При сумме не ниже порога комиссию шлюза несёт продавец, а пользователь платит исходную сумму. Зачисляемая квота не меняется.",
+    "Charge the fee to users below the threshold": "Взимать комиссию с пользователей ниже порога",
+    "When off, the merchant bears the gateway fee on every order.": "Если выключено, комиссию шлюза по всем заказам несёт продавец.",
+    "Fee threshold (CNY)": "Порог комиссии (CNY)",
+    "Orders whose amount to pay is below this value add the fee. Orders equal to or above it do not.": "К заказам с суммой к оплате ниже этого значения добавляется комиссия. К заказам с суммой не ниже — нет.",
+    "Fee rate (%)": "Ставка комиссии (%)",
+    "For example, 0.6 adds 0.6% of the amount, rounded up to the cent. At most {{max}}%.": "Например, 0.6 добавляет 0,6 % от суммы с округлением вверх до копейки. Не более {{max}} %.",
+    "Includes payment fee": "Включая комиссию за оплату",
+    "Includes a payment fee of {{fee}}.": "Включает комиссию за оплату {{fee}}.",
+    "Orders paying less than {{threshold}} add a {{rate}}% payment fee. Orders at or above it have no fee.": "К заказам на сумму меньше {{threshold}} добавляется комиссия {{rate}} %. От этой суммы комиссии нет."
   }
 }

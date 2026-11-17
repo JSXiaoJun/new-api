@@ -34,7 +34,10 @@ export interface ApiResponse<T = unknown> {
  */
 export type TopupInfoResponse = ApiResponse<TopupInfo>
 export type RedemptionResponse = ApiResponse<number>
-export type AmountResponse = ApiResponse<string>
+export type AmountResponse = ApiResponse<string> & {
+  /** Payment fee included in data, sent by the Epay amount endpoint */
+  fee?: string
+}
 export interface EpayQRCodePaymentData {
   qrcode: string
   trade_no: string
@@ -149,6 +152,8 @@ export interface TopupInfo {
   discount: Record<number, number>
   /** Bonus percentage by minimum top-up amount */
   bonus?: Record<number, number>
+  /** Epay fee the user pays on orders below the threshold (CNY, percent) */
+  epay_fee?: { enabled: boolean; threshold: number; rate: number }
   /** Optional topup link for purchasing codes */
   topup_link?: string
   /** Whether Creem topup is enabled */
