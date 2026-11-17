@@ -7951,6 +7951,10 @@
     "The two verification nodes of {{chain}} must use different providers": "{{chain}} の 2 つの検証ノードは別のプロバイダーにしてください",
     "These deposits were held because the two providers returned different results. Check both providers before trusting either.": "2 つのプロバイダーの結果が異なるため、これらの入金を保留しました。どちらかを信用する前に両方を確認してください。",
     "Verification nodes disagree": "検証ノードの結果が一致しません",
-    "{{chain}} needs two verification nodes from different providers": "{{chain}} には別々のプロバイダーの検証ノードが 2 つ必要です"
+    "{{chain}} needs two verification nodes from different providers": "{{chain}} には別々のプロバイダーの検証ノードが 2 つ必要です",
+    "Administrators only (testing)": "管理者のみ表示（テスト用）",
+    "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "管理者だけが USDT カードを表示し、アドレス取得と入金確認ができます。オフにすると全ユーザーに USDT 入金を開放します。",
+    "On-chain transfer": "オンチェーン送金",
+    "USDT": "USDT"
   }
 }

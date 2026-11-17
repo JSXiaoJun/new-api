@@ -20,7 +20,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
-import { UsdtDepositCard } from '@/features/usdt-deposit/components/usdt-deposit-card'
+import { UsdtDepositPanel } from '@/features/usdt-deposit/components/usdt-deposit-panel'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
@@ -85,6 +85,7 @@ export function Wallet(props: WalletProps) {
     useState<CreemProduct | null>(null)
   const [showSubscriptionPanel, setShowSubscriptionPanel] = useState(true)
   const [agreementDialogOpen, setAgreementDialogOpen] = useState(false)
+  const [usdtSelected, setUsdtSelected] = useState(false)
 
   const { status } = useStatus()
   const { currency } = useSystemConfig()
@@ -397,6 +398,21 @@ export function Wallet(props: WalletProps) {
                   }
                   purchaseAgreementSigned={purchaseAgreementSigned}
                   onOpenPurchaseAgreement={() => setAgreementDialogOpen(true)}
+                  usdt={
+                    topupInfo?.enable_usdt_topup
+                      ? {
+                          selected: usdtSelected,
+                          onSelect: () => setUsdtSelected(true),
+                          onExit: () => setUsdtSelected(false),
+                          panel: (
+                            <UsdtDepositPanel
+                              onBeforeAddress={ensurePurchaseAgreement}
+                              onCredited={fetchUser}
+                            />
+                          ),
+                        }
+                      : undefined
+                  }
                 />
               </div>
 
@@ -408,13 +424,6 @@ export function Wallet(props: WalletProps) {
                 onBeforePurchase={ensurePurchaseAgreement}
               />
             </div>
-
-            {topupInfo?.enable_usdt_topup && (
-              <UsdtDepositCard
-                onBeforeAddress={ensurePurchaseAgreement}
-                onCredited={fetchUser}
-              />
-            )}
 
             <AffiliateRewardsCard
               user={user}

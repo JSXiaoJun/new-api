@@ -16,8 +16,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func isUsdtTopUpEnabled() bool {
-	return isPaymentComplianceConfirmed() && len(usdt.UserNetworks()) > 0
+// usdtVisibleTo reports whether the requesting user may see and use USDT
+// deposits. In administrator-only mode the server refuses everyone else, so
+// hiding the card in the browser is not the only barrier.
+func usdtVisibleTo(c *gin.Context) bool {
+	if !isPaymentComplianceConfirmed() || len(usdt.UserNetworks()) == 0 {
+		return false
+	}
+	return !operation_setting.GetUsdtSetting().AdminOnly || c.GetInt("role") >= common.RoleAdminUser
 }
 
 type usdtDepositView struct {
@@ -64,10 +70,11 @@ func usdtError(c *gin.Context, err error) {
 // GetUsdtInfo returns the networks, the user's existing addresses and the rate.
 func GetUsdtInfo(c *gin.Context) {
 	userID := c.GetInt("id")
-	networks := usdt.UserNetworks()
-	enabled := isPaymentComplianceConfirmed() && len(networks) > 0
+	enabled := usdtVisibleTo(c)
+	var networks []usdt.NetworkInfo
 	addresses := map[string]string{}
 	if enabled {
+		networks = usdt.UserNetworks()
 		rows, err := model.ListUserUsdtDepositAddresses(userID)
 		if err != nil {
 			common.ApiError(c, err)
@@ -105,7 +112,7 @@ func CreateUsdtAddress(c *gin.Context) {
 		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
-	if !isUsdtTopUpEnabled() {
+	if !usdtVisibleTo(c) {
 		common.ApiErrorT(c, "USDT top-up is not available")
 		return
 	}
@@ -136,6 +143,10 @@ func ClaimUsdtDeposit(c *gin.Context) {
 	var req usdtChainRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
 		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
+	if !usdtVisibleTo(c) {
+		common.ApiErrorT(c, "USDT top-up is not available")
 		return
 	}
 	if _, err := usdt.NormalizeTxHash(req.TxHash); err != nil {

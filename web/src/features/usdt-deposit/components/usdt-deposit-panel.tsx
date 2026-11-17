@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Coins, TriangleAlert } from 'lucide-react'
+import { TriangleAlert } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -26,7 +26,6 @@ import { CopyButton } from '@/components/copy-button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { TitledCard } from '@/components/ui/titled-card'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { formatCurrencyFromUSD } from '@/lib/currency'
 
@@ -36,14 +35,18 @@ import type { UsdtNetwork } from '../types'
 import { UsdtClaimForm } from './usdt-claim-form'
 import { UsdtDepositHistory } from './usdt-deposit-history'
 
-interface UsdtDepositCardProps {
+interface UsdtDepositPanelProps {
   /** Returns false (and prompts) while the purchase agreement is unsigned. */
   onBeforeAddress: () => boolean
   /** Called after a deposit was credited, to refresh the balance. */
   onCredited: () => void
 }
 
-export function UsdtDepositCard(props: UsdtDepositCardProps) {
+/**
+ * USDT deposit flow shown inside the wallet's "Add Funds" card when the user
+ * picks USDT as the payment method.
+ */
+export function UsdtDepositPanel(props: UsdtDepositPanelProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<string | null>(null)
@@ -63,23 +66,23 @@ export function UsdtDepositCard(props: UsdtDepositCardProps) {
     return <Skeleton className='h-64 w-full rounded-xl' />
   }
   if (!info?.enabled || networks.length === 0) {
-    return null
+    return (
+      <p className='text-muted-foreground text-sm'>
+        {t('USDT top-up is not available')}
+      </p>
+    )
   }
   const network: UsdtNetwork =
     networks.find((n) => n.id === selected) ?? networks[0]
   const address = info.addresses[network.id]
 
   return (
-    <TitledCard
-      title={t('USDT Deposit')}
-      description={t(
-        'Each network gives you a permanent personal address. Deposits are credited automatically after network confirmation.'
-      )}
-      icon={<Coins className='h-4 w-4' />}
-      iconTone='success'
-      disableHoverEffect
-      contentClassName='space-y-5'
-    >
+    <section className='space-y-5' aria-label={t('USDT Deposit')}>
+      <p className='text-muted-foreground text-sm'>
+        {t(
+          'Each network gives you a permanent personal address. Deposits are credited automatically after network confirmation.'
+        )}
+      </p>
       <div className='space-y-2'>
         <p className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
           {t('Network')}
@@ -162,7 +165,7 @@ export function UsdtDepositCard(props: UsdtDepositCardProps) {
 
       <UsdtClaimForm network={network} onCredited={props.onCredited} />
       <UsdtDepositHistory />
-    </TitledCard>
+    </section>
   )
 }
 

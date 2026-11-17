@@ -51,9 +51,12 @@ type UsdtChainSetting struct {
 // the generic option API: the salt secret and a chain's factory are frozen
 // once addresses exist, and the generic API cannot enforce that.
 type UsdtSetting struct {
-	Enabled  bool                        `json:"enabled"`
-	Chains   map[string]UsdtChainSetting `json:"chains"`
-	RateMode string                      `json:"rate_mode"`
+	Enabled bool `json:"enabled"`
+	// AdminOnly shows USDT deposits to administrators only, for testing a
+	// network with real funds before opening it to users.
+	AdminOnly bool                        `json:"admin_only"`
+	Chains    map[string]UsdtChainSetting `json:"chains"`
+	RateMode  string                      `json:"rate_mode"`
 	// FixedRate is the USD quota credited per USDT in fixed mode.
 	FixedRate float64 `json:"fixed_rate"`
 	// SaltSecret derives every deposit address (32-byte hex). Frozen once any
@@ -75,6 +78,7 @@ func defaultUsdtChains() map[string]UsdtChainSetting {
 }
 
 var usdtSetting = UsdtSetting{
+	AdminOnly: true,
 	Chains:    defaultUsdtChains(),
 	RateMode:  UsdtRateMarket,
 	FixedRate: 1,

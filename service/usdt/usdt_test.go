@@ -255,6 +255,13 @@ func TestDepositIsCreditedOnceToTheAddressOwner(t *testing.T) {
 	}
 	assert.Equal(t, expected, userQuota(t, 501), "a transfer is credited at most once")
 
+	// Resubmitting the below-minimum transfer still reports it as not credited.
+	outcomes, err = ProcessTransaction(context.Background(), "polygon", txHash(10), 1, 501, model.UsdtDepositSourceClaim, "", false)
+	require.NoError(t, err)
+	require.Len(t, outcomes, 1)
+	assert.Equal(t, model.UsdtDepositBelowMin, outcomes[0].Status)
+	assert.Equal(t, expected, userQuota(t, 501))
+
 	// An administrator can credit the below-minimum transfer explicitly.
 	outcomes, err = ProcessTransaction(context.Background(), "polygon", txHash(10), 1, 501, model.UsdtDepositSourceAdmin, "", true)
 	require.NoError(t, err)

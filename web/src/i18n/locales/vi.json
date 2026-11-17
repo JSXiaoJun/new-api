@@ -7951,6 +7951,10 @@
     "The two verification nodes of {{chain}} must use different providers": "Hai nút xác minh của {{chain}} phải thuộc nhà cung cấp khác nhau",
     "These deposits were held because the two providers returned different results. Check both providers before trusting either.": "Các khoản nạp này bị tạm giữ vì hai nhà cung cấp trả về kết quả khác nhau. Hãy kiểm tra cả hai trước khi tin bên nào.",
     "Verification nodes disagree": "Các nút xác minh không khớp",
-    "{{chain}} needs two verification nodes from different providers": "{{chain}} cần hai nút xác minh từ các nhà cung cấp khác nhau"
+    "{{chain}} needs two verification nodes from different providers": "{{chain}} cần hai nút xác minh từ các nhà cung cấp khác nhau",
+    "Administrators only (testing)": "Chỉ quản trị viên (thử nghiệm)",
+    "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "Chỉ quản trị viên thấy thẻ USDT, lấy địa chỉ và kiểm tra khoản nạp. Tắt để mở nạp USDT cho mọi người dùng.",
+    "On-chain transfer": "Chuyển trên chuỗi",
+    "USDT": "USDT"
   }
 }

@@ -7951,6 +7951,10 @@
     "The two verification nodes of {{chain}} must use different providers": "Два узла проверки {{chain}} должны быть от разных провайдеров",
     "These deposits were held because the two providers returned different results. Check both providers before trusting either.": "Эти пополнения отложены: провайдеры вернули разные результаты. Проверьте оба, прежде чем доверять любому из них.",
     "Verification nodes disagree": "Узлы проверки расходятся",
-    "{{chain}} needs two verification nodes from different providers": "Для {{chain}} нужны два узла проверки от разных провайдеров"
+    "{{chain}} needs two verification nodes from different providers": "Для {{chain}} нужны два узла проверки от разных провайдеров",
+    "Administrators only (testing)": "Только администраторы (тест)",
+    "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "Только администраторы видят карточку USDT, получают адреса и проверяют пополнения. Отключите, чтобы открыть пополнение USDT всем.",
+    "On-chain transfer": "Перевод в блокчейне",
+    "USDT": "USDT"
   }
 }

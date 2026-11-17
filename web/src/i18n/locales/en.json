@@ -7951,6 +7951,10 @@
     "The two verification nodes of {{chain}} must use different providers": "The two verification nodes of {{chain}} must use different providers",
     "These deposits were held because the two providers returned different results. Check both providers before trusting either.": "These deposits were held because the two providers returned different results. Check both providers before trusting either.",
     "Verification nodes disagree": "Verification nodes disagree",
-    "{{chain}} needs two verification nodes from different providers": "{{chain}} needs two verification nodes from different providers"
+    "{{chain}} needs two verification nodes from different providers": "{{chain}} needs two verification nodes from different providers",
+    "Administrators only (testing)": "Administrators only (testing)",
+    "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.",
+    "On-chain transfer": "On-chain transfer",
+    "USDT": "USDT"
   }
 }

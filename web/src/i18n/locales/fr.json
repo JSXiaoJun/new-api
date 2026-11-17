@@ -7951,6 +7951,10 @@
     "The two verification nodes of {{chain}} must use different providers": "Les deux nœuds de vérification de {{chain}} doivent utiliser des fournisseurs différents",
     "These deposits were held because the two providers returned different results. Check both providers before trusting either.": "Ces dépôts sont en attente car les deux fournisseurs renvoient des résultats différents. Vérifiez les deux avant de faire confiance à l'un d'eux.",
     "Verification nodes disagree": "Les nœuds de vérification ne concordent pas",
-    "{{chain}} needs two verification nodes from different providers": "{{chain}} nécessite deux nœuds de vérification de fournisseurs différents"
+    "{{chain}} needs two verification nodes from different providers": "{{chain}} nécessite deux nœuds de vérification de fournisseurs différents",
+    "Administrators only (testing)": "Administrateurs uniquement (test)",
+    "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "Seuls les administrateurs voient la carte USDT et peuvent obtenir une adresse ou réclamer un dépôt. Désactivez pour ouvrir les dépôts USDT à tous.",
+    "On-chain transfer": "Transfert on-chain",
+    "USDT": "USDT"
   }
 }

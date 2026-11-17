@@ -136,7 +136,7 @@ func setupUsdtAttackTest(t *testing.T) usdtAttackFixture {
 	require.NoError(t, err)
 	cfg := config.GlobalConfig.Get("usdt_setting")
 	require.NoError(t, config.UpdateConfigFromMap(cfg, map[string]string{
-		"enabled": "true", "chains": string(chains), "rate_mode": "fixed", "fixed_rate": "1", "scanner_ips": "",
+		"enabled": "true", "admin_only": "false", "chains": string(chains), "rate_mode": "fixed", "fixed_rate": "1", "scanner_ips": "",
 		"salt_secret":    "0x0303030303030303030303030303030303030303030303030303030303030303",
 		"scanner_secret": usdtTestSecret,
 	}))
@@ -192,14 +192,19 @@ func depositBody(chain string, tx int, logIndex int) string {
 	return fmt.Sprintf(`{"chain":%q,"tx_hash":%q,"log_index":%d}`, chain, usdtTxHash(tx), logIndex)
 }
 
-// userCall drives a logged-in user's endpoint.
+// userCall drives a logged-in regular user's endpoint.
 func userCall(handler gin.HandlerFunc, userID int, path, body string) (bool, string) {
+	return userCallAs(handler, userID, common.RoleCommonUser, path, body)
+}
+
+func userCallAs(handler gin.HandlerFunc, userID, role int, path, body string) (bool, string) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("id", userID)
+	c.Set("role", role)
 	handler(c)
 	var resp struct {
 		Success bool   `json:"success"`
@@ -378,4 +383,45 @@ func TestUsdtCompromisedVerificationNodeCannotMintBalance(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, recorder.Code, "scanner report of tx %d is held, not settled", tx)
 	}
 	assert.Zero(t, usdtQuota(t, usdtAttackerID), "one lying provider cannot create or inflate a deposit")
+}
+
+func TestUsdtAdminOnlyModeRefusesRegularUsersOnTheServer(t *testing.T) {
+	setupUsdtAttackTest(t)
+	require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("usdt_setting"), map[string]string{"admin_only": "true"}))
+	claimBody := fmt.Sprintf(`{"chain":"polygon","tx_hash":%q}`, usdtTxHash(txAttackerPays))
+
+	infoEnabled := func(role int) bool {
+		gin.SetMode(gin.TestMode)
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/user/usdt/info", nil)
+		c.Set("id", usdtAttackerID)
+		c.Set("role", role)
+		GetUsdtInfo(c)
+		var resp struct {
+			Data struct {
+				Enabled bool `json:"enabled"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+		return resp.Data.Enabled
+	}
+
+	// A regular user calling the API directly, bypassing the hidden card.
+	assert.False(t, infoEnabled(common.RoleCommonUser))
+	ok, msg := userCallAs(CreateUsdtAddress, usdtAttackerID, common.RoleCommonUser, "/api/user/usdt/address", `{"chain":"polygon"}`)
+	assert.False(t, ok)
+	assert.Equal(t, "USDT top-up is not available", msg)
+	ok, msg = userCallAs(ClaimUsdtDeposit, usdtAttackerID, common.RoleCommonUser, "/api/user/usdt/claim", claimBody)
+	assert.False(t, ok)
+	assert.Equal(t, "USDT top-up is not available", msg)
+	assert.Zero(t, usdtQuota(t, usdtAttackerID))
+
+	// An administrator can test the whole flow.
+	assert.True(t, infoEnabled(common.RoleAdminUser))
+	ok, _ = userCallAs(CreateUsdtAddress, usdtAttackerID, common.RoleAdminUser, "/api/user/usdt/address", `{"chain":"polygon"}`)
+	assert.True(t, ok)
+	ok, msg = userCallAs(ClaimUsdtDeposit, usdtAttackerID, common.RoleAdminUser, "/api/user/usdt/claim", claimBody)
+	assert.True(t, ok, msg)
+	assert.Equal(t, 5*500000, usdtQuota(t, usdtAttackerID))
 }

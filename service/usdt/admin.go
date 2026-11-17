@@ -35,6 +35,7 @@ type ChainView struct {
 
 type SettingsView struct {
 	Enabled          bool                      `json:"enabled"`
+	AdminOnly        bool                      `json:"admin_only"`
 	RateMode         string                    `json:"rate_mode"`
 	FixedRate        float64                   `json:"fixed_rate"`
 	ScannerIPs       string                    `json:"scanner_ips"`
@@ -54,7 +55,7 @@ func SettingsForAdmin() (SettingsView, error) {
 	}
 	hb := currentHeartbeat()
 	view := SettingsView{
-		Enabled: setting.Enabled, RateMode: setting.RateMode, FixedRate: setting.FixedRate,
+		Enabled: setting.Enabled, AdminOnly: setting.AdminOnly, RateMode: setting.RateMode, FixedRate: setting.FixedRate,
 		ScannerIPs: setting.ScannerIPs, HasScannerSecret: strings.TrimSpace(setting.ScannerSecret) != "",
 		Heartbeat: hb.chains, HeartbeatAt: hb.at, ScannerVersion: hb.version, Alerts: RecentVerificationAlerts(),
 	}
@@ -86,6 +87,7 @@ type ChainPatch struct {
 
 type SettingsPatch struct {
 	Enabled    *bool                 `json:"enabled"`
+	AdminOnly  *bool                 `json:"admin_only"`
 	RateMode   *string               `json:"rate_mode"`
 	FixedRate  *float64              `json:"fixed_rate"`
 	ScannerIPs *string               `json:"scanner_ips"`
@@ -214,6 +216,9 @@ func UpdateSettings(patch SettingsPatch) error {
 	if patch.Enabled != nil {
 		setting.Enabled = *patch.Enabled
 	}
+	if patch.AdminOnly != nil {
+		setting.AdminOnly = *patch.AdminOnly
+	}
 
 	values := map[string]string{}
 	if setting.Enabled && strings.TrimSpace(setting.SaltSecret) == "" {
@@ -229,6 +234,7 @@ func UpdateSettings(patch SettingsPatch) error {
 	}
 	values["usdt_setting.chains"] = string(chainsJSON)
 	values["usdt_setting.enabled"] = strconv.FormatBool(setting.Enabled)
+	values["usdt_setting.admin_only"] = strconv.FormatBool(setting.AdminOnly)
 	values["usdt_setting.rate_mode"] = setting.RateMode
 	values["usdt_setting.fixed_rate"] = strconv.FormatFloat(setting.FixedRate, 'f', -1, 64)
 	values["usdt_setting.scanner_ips"] = setting.ScannerIPs

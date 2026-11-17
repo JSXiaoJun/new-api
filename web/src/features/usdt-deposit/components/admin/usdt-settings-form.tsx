@@ -68,6 +68,7 @@ const chainSchema = z.object({
 
 const schema = z.object({
   enabled: z.boolean(),
+  admin_only: z.boolean(),
   rate_mode: z.enum(['market', 'fixed']),
   fixed_rate: z.coerce.number().gt(0).max(100),
   scanner_ips: z.string().trim(),
@@ -79,6 +80,7 @@ export type UsdtSettingsValues = z.infer<typeof schema>
 function toFormValues(settings: UsdtSettings): UsdtSettingsValues {
   return {
     enabled: settings.enabled,
+    admin_only: settings.admin_only,
     rate_mode: settings.rate_mode,
     fixed_rate: settings.fixed_rate,
     scanner_ips: settings.scanner_ips,
@@ -112,6 +114,7 @@ function toPatch(values: UsdtSettingsValues): UsdtSettingsPatch {
   }
   return {
     enabled: values.enabled,
+    admin_only: values.admin_only,
     rate_mode: values.rate_mode,
     fixed_rate: values.fixed_rate,
     scanner_ips: values.scanner_ips,
@@ -159,6 +162,28 @@ export function UsdtSettingsForm(props: { settings: UsdtSettings }) {
                 <FormDescription>
                   {t(
                     'Shows the USDT deposit card in the wallet for networks that are enabled and verified.'
+                  )}
+                </FormDescription>
+              </SettingsSwitchContent>
+              <FormControl>
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+            </SettingsSwitchItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name='admin_only'
+          render={({ field }) => (
+            <SettingsSwitchItem>
+              <SettingsSwitchContent>
+                <FormLabel>{t('Administrators only (testing)')}</FormLabel>
+                <FormDescription>
+                  {t(
+                    'Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.'
                   )}
                 </FormDescription>
               </SettingsSwitchContent>

@@ -28,7 +28,7 @@ import {
   getUsdtDeposits,
   getUsdtInfo,
 } from '../api'
-import { UsdtDepositCard } from '../components/usdt-deposit-card'
+import { UsdtDepositPanel } from '../components/usdt-deposit-panel'
 import type { UsdtInfo } from '../types'
 
 vi.mock('../api', () => ({
@@ -71,23 +71,27 @@ function renderCard(onBeforeAddress: () => boolean = () => true) {
     <QueryClientProvider client={client}>{props.children}</QueryClientProvider>
   )
   return render(
-    <UsdtDepositCard onBeforeAddress={onBeforeAddress} onCredited={vi.fn()} />,
+    <UsdtDepositPanel onBeforeAddress={onBeforeAddress} onCredited={vi.fn()} />,
     {
       wrapper,
     }
   )
 }
 
-describe('UsdtDepositCard', () => {
+describe('UsdtDepositPanel', () => {
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  it('renders nothing when no network is enabled', async () => {
+  it('says USDT is unavailable when no network is enabled', async () => {
     vi.mocked(getUsdtInfo).mockResolvedValue({ ...info({}), networks: [] })
-    const { container } = renderCard()
-    await waitFor(() => expect(getUsdtInfo).toHaveBeenCalled())
-    await waitFor(() => expect(container).toBeEmptyDOMElement())
+    renderCard()
+    expect(
+      await screen.findByText('USDT top-up is not available')
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Show my deposit address' })
+    ).not.toBeInTheDocument()
   })
 
   it('requests the address of the selected network only after the purchase agreement check passes', async () => {

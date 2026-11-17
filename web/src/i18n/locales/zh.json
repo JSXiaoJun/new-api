@@ -7951,6 +7951,10 @@
     "The two verification nodes of {{chain}} must use different providers": "{{chain}} 的两个核实节点必须来自不同服务商",
     "These deposits were held because the two providers returned different results. Check both providers before trusting either.": "以下充值因为两家服务商返回的结果不同而暂缓入账。请先检查两家服务商，不要轻信任何一方。",
     "Verification nodes disagree": "核实节点结果不一致",
-    "{{chain}} needs two verification nodes from different providers": "{{chain}} 需要两个来自不同服务商的核实节点"
+    "{{chain}} needs two verification nodes from different providers": "{{chain}} 需要两个来自不同服务商的核实节点",
+    "Administrators only (testing)": "仅管理员可见（测试用）",
+    "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "只有管理员能看到 USDT 充值卡片、获取充值地址和查询到账。关闭后对所有用户开放 USDT 充值。",
+    "On-chain transfer": "链上转账",
+    "USDT": "USDT 支付"
   }
 }

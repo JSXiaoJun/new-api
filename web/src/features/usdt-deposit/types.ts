@@ -122,6 +122,7 @@ export interface UsdtVerificationAlert {
 
 export interface UsdtSettings {
   enabled: boolean
+  admin_only: boolean
   rate_mode: 'market' | 'fixed'
   fixed_rate: number
   scanner_ips: string
@@ -146,6 +147,7 @@ export interface UsdtChainPatch {
 
 export interface UsdtSettingsPatch {
   enabled?: boolean
+  admin_only?: boolean
   rate_mode?: 'market' | 'fixed'
   fixed_rate?: number
   scanner_ips?: string

@@ -251,7 +251,9 @@ func ProcessTransaction(ctx context.Context, chainID, txHash string, logIndex in
 		}
 		outcome.UserId = wallet.UserId
 		outcome.Status = result.Status
-		if result.AlreadyDone {
+		// A resubmitted below-minimum deposit is still not credited; only a
+		// deposit that was credited before reports "already".
+		if result.AlreadyDone && result.Status == model.UsdtDepositCredited {
 			outcome.Status = "already"
 		}
 		outcome.Quota = result.CreditedQuota
