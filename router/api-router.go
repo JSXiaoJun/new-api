@@ -70,6 +70,11 @@ func SetApiRouter(router *gin.Engine) {
 		// :env separates test vs prod URLs so the operator can register each
 		// in Pancake's matching webhook slot; handler enforces env match.
 		apiRouter.POST("/waffo-pancake/webhook/:env", anonymousRequestBodyLimit, controller.WaffoPancakeWebhook)
+		// USDT scanner service: HMAC-signed, and its deposit reports are only hints
+		// that new-api verifies on chain before crediting.
+		apiRouter.GET("/usdt/scanner/state", middleware.DisableCache(), controller.UsdtScannerState)
+		apiRouter.POST("/usdt/scanner/deposit", anonymousRequestBodyLimit, controller.UsdtScannerDeposit)
+		apiRouter.POST("/usdt/scanner/heartbeat", anonymousRequestBodyLimit, controller.UsdtScannerHeartbeat)
 
 		// Universal secure verification routes
 		apiRouter.GET("/verify/methods", middleware.UserAuth(), middleware.DisableCache(), controller.GetVerificationMethods)
@@ -138,6 +143,10 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), middleware.PurchaseAgreementRequired(), controller.RequestWaffoPay)
 				selfRoute.POST("/waffo-pancake/amount", controller.RequestWaffoPancakeAmount)
 				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), middleware.PurchaseAgreementRequired(), controller.RequestWaffoPancakePay)
+				selfRoute.GET("/usdt/info", controller.GetUsdtInfo)
+				selfRoute.GET("/usdt/deposits", controller.GetUsdtDeposits)
+				selfRoute.POST("/usdt/address", middleware.CriticalRateLimit(), middleware.PurchaseAgreementRequired(), controller.CreateUsdtAddress)
+				selfRoute.POST("/usdt/claim", middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("usdt-claim"), controller.ClaimUsdtDeposit)
 				selfRoute.POST("/aff_transfer", middleware.UserCriticalRateLimit("aff-transfer"), controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
@@ -240,6 +249,13 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.POST("/waffo-pancake/save", controller.SaveWaffoPancake)
 			optionRoute.POST("/waffo-pancake/subscription-product", controller.CreateWaffoPancakeSubscriptionProduct)
 			optionRoute.GET("/waffo-pancake/subscription-product-options", controller.ListWaffoPancakeSubscriptionProductOptions)
+			optionRoute.GET("/usdt", controller.GetUsdtSettings)
+			optionRoute.PUT("/usdt", controller.UpdateUsdtSettings)
+			optionRoute.POST("/usdt/verify", controller.VerifyUsdtFactory)
+			optionRoute.POST("/usdt/scanner-secret", controller.RegenerateUsdtScannerSecret)
+			optionRoute.GET("/usdt/deposits", controller.ListUsdtDeposits)
+			optionRoute.POST("/usdt/recheck", controller.RecheckUsdtTransaction)
+			optionRoute.POST("/usdt/deposits/:id/credit", controller.CreditUsdtDepositBelowMin)
 		}
 
 		// Custom OAuth provider management (root only)

@@ -217,6 +217,10 @@ func UpdateOption(c *gin.Context) {
 			common.ApiErrorT(c, "Compliance confirmation fields cannot be changed through the general settings API")
 			return
 		}
+		if operation_setting.IsUsdtSettingOptionKey(option.Key) {
+			common.ApiErrorT(c, "USDT settings can only be changed on the USDT settings page")
+			return
+		}
 	}
 	if option.Key == "TaskPublicAddress" && option.Value.(string) != "" {
 		if err := service.ValidateTaskArtifactBaseURL(option.Value.(string)); err != nil {

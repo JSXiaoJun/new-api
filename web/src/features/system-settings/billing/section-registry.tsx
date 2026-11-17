@@ -1,3 +1,4 @@
+import { UsdtSettingsSection } from '@/features/usdt-deposit/components/admin/usdt-settings-section'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -192,6 +193,11 @@ const BILLING_SECTIONS = [
         }}
       />
     ),
+  },
+  {
+    id: 'usdt',
+    titleKey: 'USDT Deposits',
+    build: () => <UsdtSettingsSection />,
   },
   {
     id: 'payment-fee',

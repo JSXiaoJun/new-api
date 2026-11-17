@@ -396,6 +396,8 @@ func migrateDB() error {
 		&Log{},
 		&Midjourney{},
 		&TopUp{},
+		&UsdtDepositAddress{},
+		&UsdtDeposit{},
 		&QuotaData{},
 		&Task{},
 		&ImageAsset{},
