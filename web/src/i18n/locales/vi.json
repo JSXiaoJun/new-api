@@ -7955,6 +7955,16 @@
     "Administrators only (testing)": "Chỉ quản trị viên (thử nghiệm)",
     "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "Chỉ quản trị viên thấy thẻ USDT, lấy địa chỉ và kiểm tra khoản nạp. Tắt để mở nạp USDT cho mọi người dùng.",
     "On-chain transfer": "Chuyển trên chuỗi",
-    "USDT": "USDT"
+    "USDT": "USDT",
+    "Announcement": "Thông báo",
+    "Sign-in popup": "Cửa sổ khi đăng nhập",
+    "Pop up": "Cửa sổ",
+    "Pop up after sign-in": "Hiện cửa sổ sau khi đăng nhập",
+    "Signed-in users see it in a popup once it is published and must confirm it before it closes. Each account confirms once.": "Sau khi đăng, thông báo hiện trong cửa sổ cho người dùng đã đăng nhập và chỉ đóng khi họ xác nhận. Mỗi tài khoản chỉ xác nhận một lần.",
+    "Failed to confirm the announcement": "Không thể xác nhận thông báo",
+    "{{count}} more to read": "Còn {{count}} thông báo chưa đọc",
+    "I have read it": "Tôi đã đọc",
+    "Announcement #{{index}} has an invalid popup value": "Thông báo #{{index}} có giá trị cửa sổ không hợp lệ",
+    "Announcement #{{index}} needs a unique ID to pop up after sign-in": "Thông báo #{{index}} cần ID duy nhất để hiện sau khi đăng nhập"
   }
 }

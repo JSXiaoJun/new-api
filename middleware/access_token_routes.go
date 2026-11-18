@@ -100,8 +100,11 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/user/topup/status":             accessTokenScopeRule("wallet:read"),
 	"POST /api/user/topup/cancel":            accessTokenScopeRule("wallet:write"),
 	// The pre-purchase confirmation is the user's own consent.
-	"POST /api/user/purchase-agreement":            accessTokenSessionRule,
-	"PUT /api/user/setting":                        accessTokenScopeRule("profile:write"),
+	"POST /api/user/purchase-agreement": accessTokenSessionRule,
+	"PUT /api/user/setting":             accessTokenScopeRule("profile:write"),
+	// Sign-in popups are a dashboard session concern.
+	"GET /api/user/announcements/popup":            accessTokenSessionRule,
+	"POST /api/user/announcements/popup/ack":       accessTokenSessionRule,
 	"GET /api/user/2fa/status":                     accessTokenScopeRule("account_security:read"),
 	"POST /api/user/2fa/setup":                     accessTokenScopeRule("account_security:write"),
 	"POST /api/user/2fa/enable":                    accessTokenScopeRule("account_security:write"),

@@ -7955,6 +7955,16 @@
     "Administrators only (testing)": "Administrateurs uniquement (test)",
     "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "Seuls les administrateurs voient la carte USDT et peuvent obtenir une adresse ou réclamer un dépôt. Désactivez pour ouvrir les dépôts USDT à tous.",
     "On-chain transfer": "Transfert on-chain",
-    "USDT": "USDT"
+    "USDT": "USDT",
+    "Announcement": "Annonce",
+    "Sign-in popup": "Fenêtre à la connexion",
+    "Pop up": "Fenêtre",
+    "Pop up after sign-in": "Afficher dans une fenêtre après la connexion",
+    "Signed-in users see it in a popup once it is published and must confirm it before it closes. Each account confirms once.": "Une fois publiée, l'annonce s'affiche dans une fenêtre pour les utilisateurs connectés, qui doivent la confirmer pour la fermer. Chaque compte confirme une seule fois.",
+    "Failed to confirm the announcement": "Impossible de confirmer l'annonce",
+    "{{count}} more to read": "Encore {{count}} à lire",
+    "I have read it": "J'ai lu",
+    "Announcement #{{index}} has an invalid popup value": "L'annonce n° {{index}} a une valeur de fenêtre invalide",
+    "Announcement #{{index}} needs a unique ID to pop up after sign-in": "L'annonce n° {{index}} doit avoir un ID unique pour s'afficher après la connexion"
   }
 }

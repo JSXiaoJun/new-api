@@ -7955,6 +7955,16 @@
     "Administrators only (testing)": "管理者のみ表示（テスト用）",
     "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "管理者だけが USDT カードを表示し、アドレス取得と入金確認ができます。オフにすると全ユーザーに USDT 入金を開放します。",
     "On-chain transfer": "オンチェーン送金",
-    "USDT": "USDT"
+    "USDT": "USDT",
+    "Announcement": "お知らせ",
+    "Sign-in popup": "ログイン時ポップアップ",
+    "Pop up": "ポップアップ",
+    "Pop up after sign-in": "ログイン後にポップアップ表示",
+    "Signed-in users see it in a popup once it is published and must confirm it before it closes. Each account confirms once.": "公開後、ログインしたユーザーにポップアップで表示され、確認しないと閉じられません。各アカウントで確認は一度だけです。",
+    "Failed to confirm the announcement": "お知らせの確認に失敗しました",
+    "{{count}} more to read": "未読があと {{count}} 件",
+    "I have read it": "確認しました",
+    "Announcement #{{index}} has an invalid popup value": "お知らせ #{{index}} のポップアップ設定が無効です",
+    "Announcement #{{index}} needs a unique ID to pop up after sign-in": "お知らせ #{{index}} をログイン時ポップアップにするには一意の ID が必要です"
   }
 }

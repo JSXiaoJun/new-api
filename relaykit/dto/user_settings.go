@@ -18,6 +18,7 @@ type UserSetting struct {
 	SidebarModules                   string  `json:"sidebar_modules,omitempty"`                      // SidebarModules 左侧边栏模块配置
 	BillingPreference                string  `json:"billing_preference,omitempty"`                   // BillingPreference 扣费策略（订阅/钱包）
 	Language                         string  `json:"language,omitempty"`                             // Language 用户语言偏好 (zh, en)
+	AckAnnouncementIds               []int64 `json:"ack_announcement_ids,omitempty"`                 // 已确认的登录弹窗公告 ID
 }
 
 var (

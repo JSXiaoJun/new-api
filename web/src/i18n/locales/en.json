@@ -7955,6 +7955,16 @@
     "Administrators only (testing)": "Administrators only (testing)",
     "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.",
     "On-chain transfer": "On-chain transfer",
-    "USDT": "USDT"
+    "USDT": "USDT",
+    "Announcement": "Announcement",
+    "Sign-in popup": "Sign-in popup",
+    "Pop up": "Pop up",
+    "Pop up after sign-in": "Pop up after sign-in",
+    "Signed-in users see it in a popup once it is published and must confirm it before it closes. Each account confirms once.": "Signed-in users see it in a popup once it is published and must confirm it before it closes. Each account confirms once.",
+    "Failed to confirm the announcement": "Failed to confirm the announcement",
+    "{{count}} more to read": "{{count}} more to read",
+    "I have read it": "I have read it",
+    "Announcement #{{index}} has an invalid popup value": "Announcement #{{index}} has an invalid popup value",
+    "Announcement #{{index}} needs a unique ID to pop up after sign-in": "Announcement #{{index}} needs a unique ID to pop up after sign-in"
   }
 }

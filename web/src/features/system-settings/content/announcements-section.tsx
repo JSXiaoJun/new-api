@@ -59,13 +59,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { toIntlLocale } from '@/i18n/languages'
 import dayjs from '@/lib/dayjs'
 import { formatTimestampRelative } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 
-import { SettingsSwitchField } from '../components/settings-form-layout'
+import {
+  SettingsSwitchContent,
+  SettingsSwitchField,
+  SettingsSwitchItem,
+} from '../components/settings-form-layout'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 
@@ -75,6 +80,7 @@ type Announcement = {
   publishDate: string
   type: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
   extra?: string
+  popup?: boolean
 }
 
 type AnnouncementsSectionProps = {
@@ -93,6 +99,7 @@ const announcementSchema = z.object({
     .string()
     .max(100, 'Extra must be less than 100 characters')
     .optional(),
+  popup: z.boolean(),
 })
 
 type AnnouncementFormValues = z.infer<typeof announcementSchema>
@@ -156,6 +163,7 @@ export function AnnouncementsSection({
       publishDate: new Date().toISOString(),
       type: 'default',
       extra: '',
+      popup: false,
     },
   })
 
@@ -163,11 +171,26 @@ export function AnnouncementsSection({
     try {
       const parsed = JSON.parse(data || '[]')
       if (Array.isArray(parsed)) {
+        // Entries saved before IDs existed, or sharing one, get a fresh ID so
+        // each can be marked as a sign-in popup
+        const usedIds = new Set<number>()
+        let nextId =
+          Math.max(
+            0,
+            ...parsed.map((item) =>
+              Number.isSafeInteger(item.id) ? item.id : 0
+            )
+          ) + 1
         setAnnouncements(
-          parsed.map((item, idx) => ({
-            ...item,
-            id: item.id || idx + 1,
-          }))
+          parsed.map((item) => {
+            let id = item.id
+            if (!Number.isSafeInteger(id) || id <= 0 || usedIds.has(id)) {
+              id = nextId
+              nextId += 1
+            }
+            usedIds.add(id)
+            return { ...item, id }
+          })
         )
       }
     } catch {
@@ -199,6 +222,7 @@ export function AnnouncementsSection({
       publishDate: new Date().toISOString(),
       type: 'default',
       extra: '',
+      popup: false,
     })
     setShowDialog(true)
   }
@@ -210,6 +234,7 @@ export function AnnouncementsSection({
       publishDate: announcement.publishDate,
       type: announcement.type,
       extra: announcement.extra || '',
+      popup: announcement.popup ?? false,
     })
     setShowDialog(true)
   }
@@ -261,7 +286,12 @@ export function AnnouncementsSection({
       )
       toast.success(t('Announcement updated. Click "Save Settings" to apply.'))
     } else {
-      const newId = Math.max(...announcements.map((item) => item.id), 0) + 1
+      // Users' popup confirmations are stored by ID, so a new announcement
+      // must never reuse the ID of a deleted one
+      const newId = Math.max(
+        Date.now(),
+        ...announcements.map((item) => item.id + 1)
+      )
       setAnnouncements((prev) => [...prev, { id: newId, ...values }])
       toast.success(t('Announcement added. Click "Save Settings" to apply.'))
     }
@@ -407,6 +437,20 @@ export function AnnouncementsSection({
                   copyable={false}
                 />
               ),
+            },
+            {
+              id: 'popup',
+              header: t('Sign-in popup'),
+              cell: (announcement) =>
+                announcement.popup ? (
+                  <StatusBadge
+                    label={t('Pop up')}
+                    variant='info'
+                    copyable={false}
+                  />
+                ) : (
+                  '-'
+                ),
             },
             {
               id: 'extra',
@@ -576,6 +620,28 @@ export function AnnouncementsSection({
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='popup'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Pop up after sign-in')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'Signed-in users see it in a popup once it is published and must confirm it before it closes. Each account confirms once.'
+                      )}
+                    </FormDescription>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
               )}
             />
           </form>

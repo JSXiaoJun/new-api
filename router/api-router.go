@@ -149,6 +149,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/usdt/claim", middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("usdt-claim"), controller.ClaimUsdtDeposit)
 				selfRoute.POST("/aff_transfer", middleware.UserCriticalRateLimit("aff-transfer"), controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
+				selfRoute.GET("/announcements/popup", controller.GetPopupAnnouncements)
+				selfRoute.POST("/announcements/popup/ack", controller.AckPopupAnnouncement)
 
 				// 2FA routes
 				selfRoute.GET("/2fa/status", controller.Get2FAStatus)

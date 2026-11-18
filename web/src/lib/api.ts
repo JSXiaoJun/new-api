@@ -69,6 +69,25 @@ export async function getUserGroups(): Promise<{
   return res.data
 }
 
+export type PopupAnnouncement = {
+  id: number
+  content: string
+  publishDate: string
+  type?: string
+  extra?: string
+}
+
+// Published sign-in popup announcements the current user has not confirmed
+export async function getPopupAnnouncements(): Promise<PopupAnnouncement[]> {
+  const res = await api.get('/api/user/announcements/popup')
+  return (requireServerSuccess(res.data)?.data ?? []) as PopupAnnouncement[]
+}
+
+export async function ackPopupAnnouncement(id: number): Promise<void> {
+  const res = await api.post('/api/user/announcements/popup/ack', { id })
+  requireServerSuccess(res.data)
+}
+
 // ============================================================================
 // System APIs
 // ============================================================================

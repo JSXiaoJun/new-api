@@ -1,6 +1,7 @@
 package console_setting
 
 import (
+	"math"
 	"net/url"
 	"regexp"
 	"sort"
@@ -175,7 +176,24 @@ func validateAnnouncements(announcementsStr string) error {
 	validTypes := map[string]bool{
 		"default": true, "ongoing": true, "success": true, "warning": true, "error": true,
 	}
+	idCounts := make(map[int64]int, len(list))
+	for _, ann := range list {
+		if id, ok := AnnouncementID(ann); ok {
+			idCounts[id]++
+		}
+	}
 	for i, ann := range list {
+		if popupAny, exists := ann["popup"]; exists {
+			popup, ok := popupAny.(bool)
+			if !ok {
+				return common.NewMessage("Announcement #{{index}} has an invalid popup value", map[string]any{"index": i + 1})
+			}
+			// 用户的确认记录按 ID 保存，弹窗公告的 ID 必须有效且不与其他公告重复
+			id, hasID := AnnouncementID(ann)
+			if popup && (!hasID || idCounts[id] > 1) {
+				return common.NewMessage("Announcement #{{index}} needs a unique ID to pop up after sign-in", map[string]any{"index": i + 1})
+			}
+		}
 		content, ok := ann["content"].(string)
 		if !ok || content == "" {
 			return common.NewMessage("Announcement #{{index}} is missing the content field", map[string]any{"index": i + 1})
@@ -254,6 +272,45 @@ func GetAnnouncements() []map[string]any {
 		return getPublishTime(list[i]).After(getPublishTime(list[j]))
 	})
 	return list
+}
+
+// maxSafeAnnouncementID is the largest integer a JavaScript number holds exactly.
+const maxSafeAnnouncementID = 1<<53 - 1
+
+// AnnouncementID returns the positive integer ID the dashboard assigns to an
+// announcement. Entries saved before IDs existed report false.
+func AnnouncementID(item map[string]any) (int64, bool) {
+	value, ok := item["id"].(float64)
+	if !ok || value <= 0 || value != math.Trunc(value) || value > maxSafeAnnouncementID {
+		return 0, false
+	}
+	return int64(value), true
+}
+
+// PublishedPopupAnnouncements returns the announcements that pop up after
+// sign-in and whose publish time has passed, oldest first. It is empty while
+// the announcement panel is disabled.
+func PublishedPopupAnnouncements(now time.Time) []map[string]any {
+	if !GetConsoleSetting().AnnouncementsEnabled {
+		return []map[string]any{}
+	}
+	popups := make([]map[string]any, 0)
+	for _, item := range getJSONList(GetConsoleSetting().Announcements) {
+		if popup, _ := item["popup"].(bool); !popup {
+			continue
+		}
+		if _, ok := AnnouncementID(item); !ok {
+			continue
+		}
+		if getPublishTime(item).After(now) {
+			continue
+		}
+		popups = append(popups, item)
+	}
+	sort.SliceStable(popups, func(i, j int) bool {
+		return getPublishTime(popups[i]).Before(getPublishTime(popups[j]))
+	})
+	return popups
 }
 
 func GetFAQ() []map[string]any {

@@ -7955,6 +7955,16 @@
     "Administrators only (testing)": "Только администраторы (тест)",
     "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "Только администраторы видят карточку USDT, получают адреса и проверяют пополнения. Отключите, чтобы открыть пополнение USDT всем.",
     "On-chain transfer": "Перевод в блокчейне",
-    "USDT": "USDT"
+    "USDT": "USDT",
+    "Announcement": "Объявление",
+    "Sign-in popup": "Окно при входе",
+    "Pop up": "Окно",
+    "Pop up after sign-in": "Показывать окном после входа",
+    "Signed-in users see it in a popup once it is published and must confirm it before it closes. Each account confirms once.": "После публикации объявление показывается вошедшим пользователям во всплывающем окне, которое закрывается только после подтверждения. Каждый аккаунт подтверждает один раз.",
+    "Failed to confirm the announcement": "Не удалось подтвердить объявление",
+    "{{count}} more to read": "Ещё к прочтению: {{count}}",
+    "I have read it": "Я прочитал",
+    "Announcement #{{index}} has an invalid popup value": "В объявлении № {{index}} недопустимое значение окна",
+    "Announcement #{{index}} needs a unique ID to pop up after sign-in": "Объявлению № {{index}} нужен уникальный ID, чтобы показываться после входа"
   }
 }

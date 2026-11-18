@@ -7955,6 +7955,16 @@
     "Administrators only (testing)": "僅管理員可見（測試用）",
     "Only administrators see the USDT card and can get addresses or claim deposits. Turn it off to open USDT deposits to all users.": "只有管理員能看到 USDT 儲值卡片、取得儲值地址和查詢入帳。關閉後對所有使用者開放 USDT 儲值。",
     "On-chain transfer": "鏈上轉帳",
-    "USDT": "USDT 支付"
+    "USDT": "USDT 支付",
+    "Announcement": "公告",
+    "Sign-in popup": "登入彈窗",
+    "Pop up": "彈窗",
+    "Pop up after sign-in": "登入後彈窗提醒",
+    "Signed-in users see it in a popup once it is published and must confirm it before it closes. Each account confirms once.": "公告發布後，使用者進入控制台時會彈窗顯示，必須點擊確認才能關閉。每個帳號只需確認一次。",
+    "Failed to confirm the announcement": "確認公告失敗",
+    "{{count}} more to read": "還有 {{count}} 則待閱讀",
+    "I have read it": "我已閱讀",
+    "Announcement #{{index}} has an invalid popup value": "第 {{index}} 個公告的彈窗設定無效",
+    "Announcement #{{index}} needs a unique ID to pop up after sign-in": "第 {{index}} 個公告需要唯一的 ID 才能設為登入彈窗"
   }
 }
