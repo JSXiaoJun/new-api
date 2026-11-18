@@ -100,9 +100,18 @@ func isEpayTopUpEnabled() bool {
 }
 
 func isEpayWebhookConfigured() bool {
-	return strings.TrimSpace(operation_setting.PayAddress) != "" &&
-		strings.TrimSpace(operation_setting.EpayId) != "" &&
-		strings.TrimSpace(operation_setting.EpayKey) != ""
+	// The merchant key is required under RSA as well: every credit is
+	// re-confirmed through the gateway order query, which authenticates with
+	// it, and the in-page QR order is MD5-signed with it.
+	if strings.TrimSpace(operation_setting.PayAddress) == "" || strings.TrimSpace(operation_setting.EpayId) == "" ||
+		strings.TrimSpace(operation_setting.EpayKey) == "" {
+		return false
+	}
+	if paymentSetting := operation_setting.GetPaymentSetting(); paymentSetting.EpaySignType == operation_setting.EpaySignTypeRSA {
+		return strings.TrimSpace(paymentSetting.EpayMerchantPrivateKey) != "" &&
+			strings.TrimSpace(paymentSetting.EpayPlatformPublicKey) != ""
+	}
+	return true
 }
 
 func isEpayWebhookEnabled() bool {

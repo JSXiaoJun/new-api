@@ -77,35 +77,43 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		})
 	}
 
-	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
-		userId := c.GetInt("id")
-		tokenName := c.GetString("token_name")
-		modelName := c.GetString("original_model")
-		tokenId := c.GetInt("token_id")
-		userGroup := c.GetString("group")
-		other := model.NewLogOther()
-		if c.Request != nil && c.Request.URL != nil {
-			other.SetPublic("request_path", c.Request.URL.Path)
-		}
-		other.SetPublic("error_type", err.GetErrorType())
-		other.SetPublic("error_code", err.GetErrorCode())
-		other.SetPublic("status_code", err.StatusCode)
-		// The log keeps the token's group, which for auto tokens is "auto"; the
-		// platform success rate beside the log is counted under the group the
-		// attempt actually routed to.
-		if relayInfo != nil && relayInfo.UsingGroup != "" && relayInfo.UsingGroup != userGroup {
-			other.SetPublic("auto_group", relayInfo.UsingGroup)
-		}
-		AppendRelayLogAdminInfo(c, relayInfo, other)
-		AppendResponseModelLogInfo(relayInfo, other)
-		AppendRelayTermination(c, relayInfo, other)
-		AppendUpstreamPolicyBlock(relayInfo, err, other)
-		AppendTaskPluginContextAuditInfo(c, other)
-		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
-		if startTime.IsZero() {
-			startTime = time.Now()
-		}
-		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelError.ChannelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(upstreamURLs...), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+	RecordRelayErrorLog(c, channelError.ChannelId, err, relayInfo)
+}
+
+// RecordRelayErrorLog writes the error log of a failed relay request when
+// error logs are on. channelId is 0 for a request that reached no channel.
+func RecordRelayErrorLog(c *gin.Context, channelId int, err *types.NewAPIError, relayInfo *relaycommon.RelayInfo) {
+	if !constant.ErrorLogEnabled || !types.IsRecordErrorLog(err) {
+		return
 	}
+	userId := c.GetInt("id")
+	tokenName := c.GetString("token_name")
+	modelName := c.GetString("original_model")
+	tokenId := c.GetInt("token_id")
+	userGroup := c.GetString("group")
+	other := model.NewLogOther()
+	if c.Request != nil && c.Request.URL != nil {
+		other.SetPublic("request_path", c.Request.URL.Path)
+	}
+	other.SetPublic("error_type", err.GetErrorType())
+	other.SetPublic("error_code", err.GetErrorCode())
+	other.SetPublic("status_code", err.StatusCode)
+	// The log keeps the token's group, which for auto tokens is "auto"; the
+	// platform success rate beside the log is counted under the group the
+	// attempt actually routed to.
+	if relayInfo != nil && relayInfo.UsingGroup != "" && relayInfo.UsingGroup != userGroup {
+		other.SetPublic("auto_group", relayInfo.UsingGroup)
+	}
+	AppendRelayLogAdminInfo(c, relayInfo, other)
+	appendRequestPluginRecord(relayInfo, other)
+	AppendResponseModelLogInfo(relayInfo, other)
+	AppendRelayTermination(c, relayInfo, other)
+	AppendUpstreamPolicyBlock(relayInfo, err, other)
+	AppendTaskPluginContextAuditInfo(c, other)
+	startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
+	if startTime.IsZero() {
+		startTime = time.Now()
+	}
+	useTimeSeconds := int(time.Since(startTime).Seconds())
+	model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(common.UpstreamAddresses(c)...), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 }

@@ -54,6 +54,7 @@ const saved = {
   BillingMode: '{}',
   BillingExpr: '{}',
   PluginBillingExpr: '{}',
+  PeakPricing: '{}',
   ExposeRatioEnabled: false,
 }
 

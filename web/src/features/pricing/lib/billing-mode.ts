@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import type { PricingModel } from '../types'
 import { hasTaskUsageSchema, isDynamicPricingModel } from './dynamic-price'
 import { isPerSecondPricingModel, isTokenBasedModel } from './model-helpers'
+import { withBasePricing } from './plugin-pricing'
 
 export type BillingModeLabelKey =
   | 'Per Request'
@@ -29,8 +30,9 @@ export type BillingModeLabelKey =
   | 'Per-second'
 
 export function getBillingModeLabelKey(
-  model: PricingModel
+  listedModel: PricingModel
 ): BillingModeLabelKey {
+  const model = withBasePricing(listedModel)
   // Task-usage models badge as one business category; the metering unit
   // ($/1M token, $/credit, $/second) is already carried by the price line.
   // Scheduled peak pricing overrides the base billing mode during peak hours.

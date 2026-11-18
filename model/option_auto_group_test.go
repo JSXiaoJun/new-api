@@ -43,3 +43,13 @@ func TestValidateOptionValueAcceptsOnlyBooleanAbnormalBillingSwitches(t *testing
 	assert.Error(t, validateOptionValue("abnormal_billing_setting.match_upstream_charge", "true"), "removed switches must be rejected")
 	assert.Error(t, validateOptionValue("abnormal_billing_setting.charge_upstream_billed_failure", "true"), "removed switches must be rejected")
 }
+
+func TestValidateOptionValueRejectsSystemTaskRetentionBelowOneDay(t *testing.T) {
+	for _, value := range []string{"", "0", "-1", "1.5", "invalid"} {
+		t.Run(value, func(t *testing.T) {
+			assert.Error(t, validateOptionValue("system_task_setting.retention_days", value))
+		})
+	}
+	require.NoError(t, validateOptionValue("system_task_setting.retention_days", "1"))
+	require.NoError(t, validateOptionValue("system_task_setting.retention_days", "30"))
+}

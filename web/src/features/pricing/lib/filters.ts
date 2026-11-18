@@ -35,6 +35,7 @@ import {
   isUnconfiguredTaskUsageModel,
 } from './dynamic-price'
 import { isPerSecondPricingModel, isTokenBasedModel } from './model-helpers'
+import { withBasePricing } from './plugin-pricing'
 import { calculateTokenPrice } from './price'
 
 // ----------------------------------------------------------------------------
@@ -84,8 +85,9 @@ export function filterByGroup(
 
 /** Pricing category of the active configuration, shared by filters and counts. */
 export function getModelQuotaType(
-  model: PricingModel
+  listedModel: PricingModel
 ): Exclude<QuotaTypeOption, 'all'> | undefined {
+  const model = withBasePricing(listedModel)
   // Task-usage models retain their own category.
   if (hasTaskUsageSchema(model)) return QUOTA_TYPES.TASK
 
@@ -123,23 +125,19 @@ export function filterByQuotaType(
   quotaType: string
 ): PricingModel[] {
   if (quotaType === QUOTA_TYPES.ALL) return models
-  // Task-usage models retain their own category.
-  if (quotaType === QUOTA_TYPES.TASK) {
-    return models.filter((m) => hasTaskUsageSchema(m))
-  }
-  // Per-second models form their own bucket, disjoint from per-request.
-  if (quotaType === QUOTA_TYPES.SECOND) {
-    return models.filter(
-      (m) => isPerSecondPricingModel(m) && !hasTaskUsageSchema(m)
+  return models.filter((model) => {
+    const modelQuotaType = getModelQuotaType(model)
+    // Task-usage models retain their own category; per-second models form
+    // their own bucket instead of falling into the per-request one.
+    const perSecond =
+      modelQuotaType !== QUOTA_TYPES.TASK &&
+      isPerSecondPricingModel(withBasePricing(model))
+    if (quotaType === QUOTA_TYPES.SECOND) return perSecond
+    return (
+      modelQuotaType === quotaType &&
+      (quotaType !== QUOTA_TYPES.REQUEST || !perSecond)
     )
-  }
-  // Per-second models keep their own bucket instead of falling into the
-  // per-request one.
-  return models.filter(
-    (model) =>
-      getModelQuotaType(model) === quotaType &&
-      (quotaType !== QUOTA_TYPES.REQUEST || !isPerSecondPricingModel(model))
-  )
+  })
 }
 
 /**
@@ -174,9 +172,10 @@ const PRICE_SORTS: Partial<
  * model has no price of that kind.
  */
 function getSortPrice(
-  model: PricingModel,
+  listedModel: PricingModel,
   kind: SortPriceKind
 ): number | undefined {
+  const model = withBasePricing(listedModel)
   if (kind === 'request') {
     const example = getCardExamplePrice(model, { tokenUnit: 'M' })
     if (example) return example.total

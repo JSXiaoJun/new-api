@@ -253,13 +253,21 @@ type epayGatewayOrder struct {
 var errEpayGatewayOrderUnpaid = errors.New("易支付平台订单未支付")
 
 func GetEpayClient() *epay.Client {
+	// The merchant key stays required under RSA: queryEpayOrder confirms every
+	// payment with it before credit, and requestEpayQRCode signs with it.
 	if operation_setting.PayAddress == "" || operation_setting.EpayId == "" || operation_setting.EpayKey == "" {
 		return nil
 	}
-	withUrl, err := epay.NewClient(&epay.Config{
+	config := &epay.Config{
 		PartnerID: operation_setting.EpayId,
 		Key:       operation_setting.EpayKey,
-	}, operation_setting.PayAddress)
+	}
+	if paymentSetting := operation_setting.GetPaymentSetting(); paymentSetting.EpaySignType == operation_setting.EpaySignTypeRSA {
+		config.SignType = epay.SignTypeRSA
+		config.MerchantPrivateKey = paymentSetting.EpayMerchantPrivateKey
+		config.PlatformPublicKey = paymentSetting.EpayPlatformPublicKey
+	}
+	withUrl, err := epay.NewClient(config, operation_setting.PayAddress)
 	if err != nil {
 		return nil
 	}

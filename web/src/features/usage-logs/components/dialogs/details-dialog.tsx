@@ -51,6 +51,7 @@ import {
   Info,
   LogIn,
   FileJson2,
+  Workflow,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -109,6 +110,10 @@ import {
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 import { ResponseModelDetails } from '../model-badge'
 import { PluginAuthorLink } from '../plugin-author-link'
+import {
+  RequestPluginAdminSteps,
+  RequestPluginRecord,
+} from '../request-plugin-record'
 import { TerminationDetails } from '../termination-details'
 import { useShowRawTiming } from '../usage-logs-provider'
 import { DetailRow, DetailSection } from './log-detail-layout'
@@ -1040,6 +1045,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         ) : null}
 
+        {props.isAdmin && adminInfo?.request_plugins?.length ? (
+          <DetailSection label={t('Request processing steps')}>
+            <RequestPluginAdminSteps steps={adminInfo.request_plugins} />
+          </DetailSection>
+        ) : null}
+
         {props.isRoot && other?.root_info ? (
           <DetailSection label={t('Root Diagnostics')}>
             {other.root_info.task_plugin ? (
@@ -1436,6 +1447,19 @@ export function DetailsDialog(props: DetailsDialogProps) {
             )}
           </DetailSection>
         )}
+
+        {other?.request_plugins?.length ? (
+          <DetailSection
+            icon={<Workflow className='size-3.5' aria-hidden='true' />}
+            iconTone='chart-3'
+            label={t('Request processing')}
+          >
+            <RequestPluginRecord
+              items={other.request_plugins}
+              loadIcons={props.isRoot}
+            />
+          </DetailSection>
+        ) : null}
 
         {/* Param override */}
         {other?.po && Array.isArray(other.po) && other.po.length > 0 && (
