@@ -124,13 +124,21 @@ func ensureOpenAIUsageCompletion(_ *gin.Context, usage *dto.Usage, outputText, m
 	usage.CompletionTokens = completionTokens
 	usage.OutputTokens = maxResponsesUsageInt(usage.OutputTokens, completionTokens)
 	usage.TotalTokens = maxResponsesUsageInt(totalTokens, addResponsesUsageTokens(promptTokens, completionTokens))
-	// Settlement prefers billing_usage.openai_usage when a relay conversion
-	// preserved provider-native usage there. Keep that authoritative snapshot
-	// synchronized with the canonical fields we just completed; otherwise the
-	// top-level response can show output tokens while quota settlement still
-	// sees an input-only nested snapshot.
-	if usage.BillingUsage != nil && usage.BillingUsage.OpenAIUsage != nil {
-		mergeResponsesUsageFieldsWithoutBilling(usage.BillingUsage.OpenAIUsage, usage)
+	// Settlement prefers billing_usage when a relay preserved provider-native
+	// usage there. Keep that authoritative snapshot synchronized with the
+	// canonical fields we just completed; otherwise the top-level response can
+	// show output tokens while quota settlement still sees an input-only or
+	// output-less nested snapshot. A Claude snapshot from an upstream new-api
+	// only takes the output side: its input is text-only while prompt_tokens
+	// also counts cache reads and writes.
+	if billing := usage.BillingUsage; billing != nil {
+		switch {
+		case billing.OpenAIUsage != nil:
+			mergeResponsesUsageFieldsWithoutBilling(billing.OpenAIUsage, usage)
+		case billing.ClaudeUsage != nil && billing.ClaudeUsage.OutputTokens < usage.CompletionTokens:
+			billing.ClaudeUsage.OutputTokens = usage.CompletionTokens
+			billing.Estimated = billing.Estimated || estimated
+		}
 	}
 
 	changed = originalPrompt != usage.PromptTokens ||

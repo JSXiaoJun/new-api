@@ -246,6 +246,15 @@ func mergeChatStreamUsage(dst *dto.Usage, src *dto.Usage) bool {
 	dst.CacheReadTokens = maxResponsesUsageInt(dst.CacheReadTokens, src.CacheReadTokens)
 	dst.CacheWriteTokens = maxResponsesUsageInt(dst.CacheWriteTokens, src.CacheWriteTokens)
 	dst.CacheCreationTokens = maxResponsesUsageInt(dst.CacheCreationTokens, src.CacheCreationTokens)
+	dst.ClaudeCacheCreation5mTokens = maxResponsesUsageInt(dst.ClaudeCacheCreation5mTokens, src.ClaudeCacheCreation5mTokens)
+	dst.ClaudeCacheCreation1hTokens = maxResponsesUsageInt(dst.ClaudeCacheCreation1hTokens, src.ClaudeCacheCreation1hTokens)
+	if src.BillingUsage != nil {
+		// An upstream new-api carries the provider-native usage here, including
+		// the Claude 5m/1h cache-write split the flat OpenAI fields cannot hold.
+		// The non-stream handler keeps it from the decoded body; each stream
+		// frame's snapshot is cumulative, so the latest one wins.
+		dst.BillingUsage = dto.CloneBillingUsage(src.BillingUsage)
+	}
 	if src.UsageSemantic != "" {
 		dst.UsageSemantic = src.UsageSemantic
 	}

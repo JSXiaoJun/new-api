@@ -48,6 +48,28 @@ func TestEnsureOpenAIUsageCompletionSynchronizesNestedBillingUsage(t *testing.T)
 	assert.Equal(t, usage.TotalTokens, usage.BillingUsage.OpenAIUsage.TotalTokens)
 }
 
+func TestEnsureOpenAIUsageCompletionFillsClaudeSnapshotOutputOnly(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	usage := &dto.Usage{
+		PromptTokens: 20377,
+		TotalTokens:  20377,
+		BillingUsage: dto.NewClaudeMessagesBillingUsage(&dto.ClaudeUsage{
+			InputTokens:              4,
+			CacheCreationInputTokens: 20373,
+			CacheCreation:            &dto.ClaudeCacheCreationUsage{Ephemeral1hInputTokens: 20373},
+		}),
+	}
+
+	_, estimated := ensureOpenAIUsageCompletion(c, usage, "generated response", "claude-test", 0)
+
+	require.True(t, estimated)
+	claudeUsage := usage.BillingUsage.ClaudeUsage
+	assert.Equal(t, usage.CompletionTokens, claudeUsage.OutputTokens)
+	assert.Equal(t, 4, claudeUsage.InputTokens, "Claude input stays text-only")
+	assert.True(t, usage.BillingUsage.Estimated)
+}
+
 func TestNormalizeResponsesUsageTotalOnlyUsesPromptEstimate(t *testing.T) {
 	usage := normalizeResponsesUsage(&dto.Usage{TotalTokens: 100}, 70)
 
