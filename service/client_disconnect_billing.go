@@ -55,6 +55,33 @@ func (w *detachedClientWriter) Flush() {
 	w.ResponseWriter.Flush()
 }
 
+// FlushError ends the search of FlushWriter and http.ResponseController for
+// an error-aware writer here, instead of at the connection. A failed write to
+// a client that left stays stored in the connection's buffer, so every later
+// flush would report it and stop the Gemini, Responses, and other stream
+// handlers that end on a write error before the upstream usage arrived. Once
+// the client is gone a flush succeeds without doing anything.
+func (w *detachedClientWriter) FlushError() error {
+	if w.clientGone() {
+		return nil
+	}
+	w.ResponseWriter.Flush()
+	var writer http.ResponseWriter = w.ResponseWriter
+	for {
+		if flusher, ok := writer.(interface{ FlushError() error }); ok {
+			if flusher.FlushError() != nil {
+				w.writeFailed.Store(true)
+			}
+			return nil
+		}
+		unwrapper, ok := writer.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return nil
+		}
+		writer = unwrapper.Unwrap()
+	}
+}
+
 // CloseNotify follows the relay context rather than the client connection so
 // handlers built on gin's c.Stream keep reading upstream after a truncation.
 func (w *detachedClientWriter) CloseNotify() <-chan bool {
@@ -83,16 +110,12 @@ func (w *detachedClientWriter) Unwrap() http.ResponseWriter {
 //
 // The returned release func must be called when the request ends.
 func DetachProxiedClientCancellation(c *gin.Context) func() {
-	if !common.CloudflareDisconnectBillingEnabled || c == nil || c.Request == nil || c.Writer == nil ||
-		!billing_setting.ContinueAfterCloudflareTruncation() {
+	if !ContinuesAfterClientDisconnect() || c == nil || c.Request == nil || c.Writer == nil {
 		return func() {}
 	}
 	clientCtx := c.Request.Context()
 	detachedCtx, cancel := context.WithCancel(context.WithoutCancel(clientCtx))
-	maxRun := time.Duration(common.CloudflareDisconnectBillingMaxSeconds) * time.Second
-	if maxRun <= 0 {
-		maxRun = 30 * time.Minute
-	}
+	maxRun := DetachedRelayMaxRun()
 	writer := &detachedClientWriter{
 		ResponseWriter: c.Writer,
 		clientCtx:      clientCtx,
@@ -122,6 +145,22 @@ func DetachProxiedClientCancellation(c *gin.Context) func() {
 		stopWatch()
 		cancel()
 	}
+}
+
+// ContinuesAfterClientDisconnect reports whether a request the upstream
+// already received keeps running after its client left, so it settles the
+// usage the upstream bills.
+func ContinuesAfterClientDisconnect() bool {
+	return common.CloudflareDisconnectBillingEnabled && billing_setting.ContinueAfterCloudflareTruncation()
+}
+
+// DetachedRelayMaxRun bounds how long a relay keeps running after its client
+// left.
+func DetachedRelayMaxRun() time.Duration {
+	if common.CloudflareDisconnectBillingMaxSeconds <= 0 {
+		return 30 * time.Minute
+	}
+	return time.Duration(common.CloudflareDisconnectBillingMaxSeconds) * time.Second
 }
 
 // MarkUpstreamContacted records that the relay is about to send the request

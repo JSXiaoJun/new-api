@@ -773,3 +773,53 @@ func TestResponsesWSErrorAttribution(t *testing.T) {
 		})
 	}
 }
+
+// A client that leaves while its response is running must not end a response
+// the upstream already received and bills: the session keeps reading to the
+// terminal event that carries the usage, as a detached HTTP relay does. A
+// response that never reached the upstream still ends with the client.
+func TestResponsesWSKeepsSentResponseAfterClientLoss(t *testing.T) {
+	oldEnabled := common.CloudflareDisconnectBillingEnabled
+	common.CloudflareDisconnectBillingEnabled = true
+	t.Cleanup(func() { common.CloudflareDisconnectBillingEnabled = oldEnabled })
+
+	for _, upstreamSent := range []bool{false, true} {
+		t.Run(fmt.Sprintf("upstream_sent=%t", upstreamSent), func(t *testing.T) {
+			_, server, cleanup := newTestWebSocketPair(t)
+			defer cleanup()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			state := &responsesWSCallState{done: make(chan struct{})}
+			state.upstreamSent.Store(upstreamSent)
+			s := &responsesWSSession{ctx: ctx, cancel: cancel, client: server, current: state}
+
+			// The client connection broke.
+			require.NoError(t, server.Close())
+			writeErr := s.writeClient(websocket.TextMessage, []byte(`{"type":"response.output_text.delta","delta":"hi"}`))
+			settled := make(chan struct{})
+			go func() {
+				s.awaitResponseAfterClientLoss()
+				close(settled)
+			}()
+			isSettled := func() bool {
+				select {
+				case <-settled:
+					return true
+				default:
+					return false
+				}
+			}
+
+			if !upstreamSent {
+				assert.Error(t, writeErr)
+				require.Eventually(t, isSettled, time.Second, time.Millisecond)
+				return
+			}
+			assert.NoError(t, writeErr)
+			assert.True(t, s.clientGone.Load())
+			assert.Never(t, isSettled, 100*time.Millisecond, 5*time.Millisecond, "the connection must stay until the response settles")
+			close(state.done)
+			require.Eventually(t, isSettled, time.Second, time.Millisecond)
+		})
+	}
+}

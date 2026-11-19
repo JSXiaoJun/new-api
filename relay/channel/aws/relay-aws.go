@@ -48,6 +48,18 @@ func newAwsInvokeContext(parent context.Context) (context.Context, context.Cance
 	return context.WithTimeout(parent, time.Duration(common.RelayTimeout)*time.Second)
 }
 
+// beginAwsInvoke does for a Bedrock SDK call what the shared HTTP request path
+// does before sending: a client that already left after an earlier attempt is
+// not sent upstream again, and from here on a client disconnect no longer
+// cancels the call, so the relay settles what Bedrock bills for it.
+func beginAwsInvoke(c *gin.Context) *types.NewAPIError {
+	if service.ProxiedClientGone(c) {
+		return types.NewError(errors.New("client disconnected before upstream request"), types.ErrorCodeDoRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	service.MarkUpstreamContacted(c)
+	return nil
+}
+
 func newAwsInvokeError(requestContext context.Context, err error, operation string) *types.NewAPIError {
 	options := make([]types.NewAPIErrorOptions, 0, 1)
 	if requestContext.Err() != nil {
@@ -233,7 +245,9 @@ func getAwsModelID(requestModel string) string {
 }
 
 func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
-
+	if apiErr := beginAwsInvoke(c); apiErr != nil {
+		return apiErr, nil
+	}
 	requestContext := c.Request.Context()
 	ctx, cancel := newAwsInvokeContext(requestContext)
 	defer cancel()
@@ -264,6 +278,9 @@ func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types
 }
 
 func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
+	if apiErr := beginAwsInvoke(c); apiErr != nil {
+		return apiErr, nil
+	}
 	requestContext := c.Request.Context()
 	ctx, cancel := newAwsInvokeContext(requestContext)
 	defer cancel()
@@ -321,7 +338,9 @@ streamLoop:
 
 // Nova模型处理函数
 func handleNovaRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
-
+	if apiErr := beginAwsInvoke(c); apiErr != nil {
+		return apiErr, nil
+	}
 	requestContext := c.Request.Context()
 	ctx, cancel := newAwsInvokeContext(requestContext)
 	defer cancel()

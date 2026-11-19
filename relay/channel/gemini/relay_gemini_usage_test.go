@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/tokenkit"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -753,4 +755,58 @@ func TestGeminiHandlersCountGroundingQueries(t *testing.T) {
 			assert.Equal(t, tt.want, counts)
 		})
 	}
+}
+
+// brokenFlushRecorder is a client connection that already failed a write the
+// server had not yet seen as a disconnect: the connection keeps that error and
+// reports it on every flush.
+type brokenFlushRecorder struct {
+	*httptest.ResponseRecorder
+}
+
+func (brokenFlushRecorder) FlushError() error {
+	return errors.New("write: broken pipe")
+}
+
+// A Gemini stream whose client connection broke after the request reached the
+// upstream must keep reading to the final usageMetadata, which carries the
+// output and thinking tokens the upstream bills; stopping at the first failed
+// write settled only the prompt of the first frame.
+func TestGeminiTextGenerationStreamHandlerReadsFinalUsageAfterClientConnectionBreaks(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldTimeout, oldEnabled, oldMax := constant.StreamingTimeout, common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds
+	constant.StreamingTimeout, common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds = 300, true, 1800
+	t.Cleanup(func() {
+		constant.StreamingTimeout, common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds = oldTimeout, oldEnabled, oldMax
+	})
+
+	c, _ := gin.CreateTestContext(brokenFlushRecorder{httptest.NewRecorder()})
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3-pro-preview:streamGenerateContent?alt=sse", nil)
+	release := service.DetachProxiedClientCancellation(c)
+	defer release()
+	service.MarkUpstreamContacted(c)
+
+	frame := func(text string, metadata dto.GeminiUsageMetadata) string {
+		data, err := common.Marshal(dto.GeminiChatResponse{
+			Candidates:    []dto.GeminiChatCandidate{{Content: dto.GeminiChatContent{Role: "model", Parts: []dto.GeminiPart{{Text: text}}}}},
+			UsageMetadata: metadata,
+		})
+		require.NoError(t, err)
+		return "data: " + string(data) + "\n\n"
+	}
+	body := frame("partial", dto.GeminiUsageMetadata{PromptTokenCount: 52000, CachedContentTokenCount: 48000, TotalTokenCount: 52000}) +
+		frame(" rest of the answer", dto.GeminiUsageMetadata{PromptTokenCount: 52000, CachedContentTokenCount: 48000, CandidatesTokenCount: 900, ThoughtsTokenCount: 3100, TotalTokenCount: 56000})
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3-pro-preview",
+		ChannelMeta:     &relaycommon.ChannelMeta{UpstreamModelName: "gemini-3-pro-preview"},
+		DisablePing:     true,
+	}
+
+	usage, apiErr := GeminiTextGenerationStreamHandler(c, info, &http.Response{Body: io.NopCloser(strings.NewReader(body))})
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	assert.Equal(t, 52000, usage.PromptTokens)
+	assert.Equal(t, 48000, usage.PromptTokensDetails.CachedTokens)
+	assert.Equal(t, 4000, usage.CompletionTokens)
+	assert.Equal(t, 3100, usage.CompletionTokenDetails.ReasoningTokens)
 }

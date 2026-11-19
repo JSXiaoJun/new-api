@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -91,6 +92,9 @@ type responsesWSCallState struct {
 	// A nonzero closeCode ends the connection after this request.
 	closeCode   int
 	closeReason string
+	// upstreamSent is set once the create reached the upstream, which may
+	// bill it from then on.
+	upstreamSent atomic.Bool
 }
 
 type responsesWSSession struct {
@@ -105,6 +109,10 @@ type responsesWSSession struct {
 	closeOnce      sync.Once
 
 	clientWriteMu sync.Mutex
+	// clientGone is set once the client left during a response the upstream
+	// already received; writes to it are then dropped while that response
+	// runs to its end.
+	clientGone    atomic.Bool
 	targetWriteMu sync.Mutex
 	connectionMu  sync.Mutex
 	target        *websocket.Conn
@@ -149,6 +157,7 @@ func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn, runner Res
 	for {
 		_, message, err := client.ReadMessage()
 		if err != nil {
+			s.awaitResponseAfterClientLoss()
 			return nil
 		}
 		envelope, streamID, err := parseResponsesWSEnvelope(message)
@@ -205,6 +214,10 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 			if body, err := buildResponsesWSErrorPayload(envelope.EventID, streamID, apiErr, upstreamURLs...); err == nil {
 				outgoing = &responsesWSMessage{kind: websocket.TextMessage, body: body}
 			}
+		}
+		if s.clientGone.Load() {
+			outgoing = nil
+			state.closeCode = websocket.CloseGoingAway
 		}
 		s.clientWriteMu.Lock()
 		s.stateMu.Lock()
@@ -404,6 +417,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	// Both branches above return unless the create payload reached upstream.
 	attempt := info.BeginUpstreamAttempt()
 	attempt.MarkRequestSent()
+	state.upstreamSent.Store(true)
 
 	// The request plugins' reply check reads the text of the response before
 	// the client gets it; without a reply or report instance the events go
@@ -873,13 +887,54 @@ func (s *responsesWSSession) writeTarget(kind int, message []byte) error {
 	return target.WriteMessage(kind, message)
 }
 
+// writeClient sends a message to the client. A failed write during a response
+// the upstream already received marks the client gone instead of failing, so
+// that response still runs to the terminal event carrying its usage.
 func (s *responsesWSSession) writeClient(kind int, message []byte) error {
 	s.clientWriteMu.Lock()
 	defer s.clientWriteMu.Unlock()
-	if err := s.client.SetWriteDeadline(s.clientWriteBudget.Deadline(time.Now(), len(message))); err != nil {
-		return err
+	if s.clientGone.Load() {
+		return nil
 	}
-	return s.client.WriteMessage(kind, message)
+	err := s.client.SetWriteDeadline(s.clientWriteBudget.Deadline(time.Now(), len(message)))
+	if err == nil {
+		err = s.client.WriteMessage(kind, message)
+	}
+	if err != nil && s.keepsResponseAfterClientLoss() {
+		s.clientGone.Store(true)
+		return nil
+	}
+	return err
+}
+
+// keepsResponseAfterClientLoss reports whether the current response reached
+// the upstream and, like a detached HTTP relay, keeps running after the
+// client left so it settles the usage the upstream bills instead of an
+// estimate. A response that never reached the upstream ends with the client.
+func (s *responsesWSSession) keepsResponseAfterClientLoss() bool {
+	if !service.ContinuesAfterClientDisconnect() {
+		return false
+	}
+	state := s.getCurrent()
+	return state != nil && state.upstreamSent.Load()
+}
+
+// awaitResponseAfterClientLoss holds the connection open, at most
+// service.DetachedRelayMaxRun, until the response the upstream already
+// received settles; the client is gone, so nothing more is written to it.
+func (s *responsesWSSession) awaitResponseAfterClientLoss() {
+	state := s.getCurrent()
+	if state == nil || !s.keepsResponseAfterClientLoss() {
+		return
+	}
+	s.clientGone.Store(true)
+	timer := time.NewTimer(service.DetachedRelayMaxRun())
+	defer timer.Stop()
+	select {
+	case <-state.done:
+	case <-timer.C:
+	case <-s.ctx.Done():
+	}
 }
 
 func (s *responsesWSSession) sendError(eventID, streamID string, apiErr *types.NewAPIError) {
