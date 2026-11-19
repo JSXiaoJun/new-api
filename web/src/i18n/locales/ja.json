@@ -3695,7 +3695,7 @@
     "Keep local": "ローカルを保持",
     "Keep original value": "元の値を保持",
     "Keep original value (skip if target exists)": "元の値を保持（ターゲットが存在する場合はスキップ）",
-    "Keep reading upstream after an idle client disconnect and charge actual usage": "アイドル状態のクライアント切断後も上流を最後まで読み、実際の使用量で課金する",
+    "Keep reading upstream to the end after the client disconnects and charge actual usage": "クライアント切断後も上流を最後まで読み、実際の使用量で課金する",
     "Keep reading upstream after the client disconnects": "クライアント切断後も上流を最後まで読む",
     "Keep source price": "取得元の価格を維持",
     "Keep the domains used by existing Passkeys, one per line. If the primary domain changed from www.example.com to example.com, enter www.example.com here.": "既存のパスキーで使用しているドメインを1行に1つ入力します。メインドメインを www.example.com から example.com に変更した場合は、ここに www.example.com を残してください。",
@@ -8161,7 +8161,7 @@
     "Exported {{count}} orders": "{{count}} 件の注文をエクスポートしました",
     "Failed to export recharge orders": "チャージ注文のエクスポートに失敗しました",
     "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "この期間に作成された注文をエクスポートします。このページの注文番号とユーザー ID のフィルターも適用されます。",
-    "Applies when the client connection drops after a long idle period (90 seconds by default), such as a Cloudflare cut or a downstream gateway's stream timeout. When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "長時間データがない状態（既定 90 秒）でクライアント接続が切断された場合に適用されます。例：Cloudflare による切断や下流ゲートウェイのストリームタイムアウト。オンにすると、ゲートウェイは上流を最後まで読み、実際の使用量で課金します。クライアントにはそれ以上何も送られません。オフにすると、公式 new-api と同様に直ちに中継を停止します。",
+    "Applies once the request has reached the upstream, the same as Sub2API: when the client disconnects, for example a user stopping the reply, a Cloudflare cut or a downstream gateway's stream timeout, the gateway keeps reading upstream to the end (30 minutes at most by default) and charges the actual usage; the client receives nothing more. When off, the relay stops right away like official new-api and only the estimated usage is charged.": "リクエストが上流に送信された後に適用されます（Sub2API と同じ）。クライアントが切断した場合（ユーザーによる応答の停止、Cloudflare による切断、下流ゲートウェイのストリームタイムアウトなど）、ゲートウェイは上流を最後まで読み（既定で最大 30 分）、実際の使用量で課金します。クライアントにはそれ以上何も送られません。オフにすると、公式 new-api と同様に直ちに中継を停止し、推定使用量のみを課金します。",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.",
     "Login & Registration Protection": "ログイン・登録保護",
     "Enable simple captcha": "簡易キャプチャを有効にする",
@@ -8316,6 +8316,6 @@
     "Announcement #{{index}} needs a unique ID to pop up after sign-in": "お知らせ #{{index}} をログイン時ポップアップにするには一意の ID が必要です",
     "By clicking sign in, you agree to our": "サインインをクリックすると、以下に同意したことになります：",
     "By creating an account, you agree to our": "アカウントを作成すると、以下に同意したことになります：",
-    "Client connection dropped after a long idle period; the upstream finished and was billed by actual usage": "長時間データがない状態でクライアント接続が切断されました。上流は完了し、実際の使用量で課金しました"
+    "Client disconnected after the request reached the upstream; the upstream finished and was billed by actual usage": "リクエストが上流に送信された後にクライアントが切断しました。上流は完了し、実際の使用量で課金しました"
   }
 }

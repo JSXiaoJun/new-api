@@ -198,21 +198,16 @@ var RelayResponseHeaderTimeout int // unit is second
 var RelayMaxIdleConns int
 var RelayMaxIdleConnsPerHost int
 
-// CloudflareDisconnectBillingEnabled keeps a relay running after the client
-// connection was cut while idle (a Cloudflare truncation, identified by the
-// Cf-Ray header, or a downstream gateway's stream timeout), so the real
-// upstream usage is billed instead of only the prompt estimate.
+// CloudflareDisconnectBillingEnabled keeps a relay running after its client
+// disconnected once the request reached the upstream (a user stopping the
+// reply, a Cloudflare cut, a downstream gateway's stream timeout), so the real
+// upstream usage is billed instead of only the prompt estimate. The name is
+// historical: it first covered Cloudflare truncations only.
 var CloudflareDisconnectBillingEnabled bool
 
 // CloudflareDisconnectBillingMaxSeconds bounds how long such a relay may keep
 // running after the client is gone.
 var CloudflareDisconnectBillingMaxSeconds int
-
-// CloudflareDisconnectBillingMinIdleSeconds is how long the response must have
-// been idle for a disconnect to count as an idle cut (Cloudflare times out
-// after 100 seconds, older new-api downstreams after 120); earlier
-// disconnects are user aborts.
-var CloudflareDisconnectBillingMinIdleSeconds int
 
 var GeminiSafetySetting string
 

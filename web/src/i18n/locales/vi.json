@@ -3695,7 +3695,7 @@
     "Keep local": "Giữ dữ liệu cục bộ",
     "Keep original value": "Giữ giá trị gốc",
     "Keep original value (skip if target exists)": "Giữ giá trị gốc (bỏ qua nếu đích đã tồn tại)",
-    "Keep reading upstream after an idle client disconnect and charge actual usage": "Tiếp tục đọc upstream sau khi máy khách nhàn rỗi ngắt kết nối và tính theo mức sử dụng thực tế",
+    "Keep reading upstream to the end after the client disconnects and charge actual usage": "Tiếp tục đọc upstream đến hết sau khi máy khách ngắt kết nối và tính theo mức sử dụng thực tế",
     "Keep reading upstream after the client disconnects": "Tiếp tục đọc upstream sau khi máy khách ngắt kết nối",
     "Keep source price": "Giữ giá nguồn",
     "Keep the domains used by existing Passkeys, one per line. If the primary domain changed from www.example.com to example.com, enter www.example.com here.": "Giữ các tên miền mà khóa truy cập hiện có sử dụng, mỗi dòng một tên miền. Nếu tên miền chính đổi từ www.example.com sang example.com, hãy giữ www.example.com tại đây.",
@@ -8161,7 +8161,7 @@
     "Exported {{count}} orders": "Đã xuất {{count}} đơn",
     "Failed to export recharge orders": "Xuất đơn nạp tiền thất bại",
     "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "Xuất các đơn được tạo trong khoảng thời gian này. Bộ lọc mã đơn và ID người dùng trên trang này cũng được áp dụng.",
-    "Applies when the client connection drops after a long idle period (90 seconds by default), such as a Cloudflare cut or a downstream gateway's stream timeout. When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "Áp dụng khi kết nối của máy khách bị ngắt sau một thời gian dài không có dữ liệu (mặc định 90 giây), ví dụ Cloudflare cắt kết nối hoặc gateway phía dưới hết thời gian chờ luồng. Khi bật, gateway tiếp tục đọc upstream đến hết và tính theo mức sử dụng thực tế; máy khách không nhận thêm gì. Khi tắt, chuyển tiếp dừng ngay như new-api chính thức.",
+    "Applies once the request has reached the upstream, the same as Sub2API: when the client disconnects, for example a user stopping the reply, a Cloudflare cut or a downstream gateway's stream timeout, the gateway keeps reading upstream to the end (30 minutes at most by default) and charges the actual usage; the client receives nothing more. When off, the relay stops right away like official new-api and only the estimated usage is charged.": "Áp dụng sau khi yêu cầu đã được gửi tới upstream, giống Sub2API: khi máy khách ngắt kết nối (ví dụ người dùng dừng phản hồi, Cloudflare cắt kết nối hoặc gateway phía dưới hết thời gian chờ luồng), gateway tiếp tục đọc upstream đến hết (mặc định tối đa 30 phút) và tính theo mức sử dụng thực tế; máy khách không nhận thêm gì. Khi tắt, chuyển tiếp dừng ngay như new-api chính thức và chỉ tính theo mức ước tính.",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.",
     "Login & Registration Protection": "Bảo vệ đăng nhập và đăng ký",
     "Enable simple captcha": "Bật captcha đơn giản",
@@ -8316,6 +8316,6 @@
     "Announcement #{{index}} needs a unique ID to pop up after sign-in": "Thông báo #{{index}} cần ID duy nhất để hiện sau khi đăng nhập",
     "By clicking sign in, you agree to our": "Bằng cách nhấp đăng nhập, bạn đồng ý với",
     "By creating an account, you agree to our": "Bằng cách tạo tài khoản, bạn đồng ý với",
-    "Client connection dropped after a long idle period; the upstream finished and was billed by actual usage": "Kết nối máy khách bị ngắt sau thời gian dài không có dữ liệu; upstream đã hoàn tất và được tính theo mức sử dụng thực tế"
+    "Client disconnected after the request reached the upstream; the upstream finished and was billed by actual usage": "Máy khách ngắt kết nối sau khi yêu cầu đã tới upstream; upstream đã hoàn tất và được tính theo mức sử dụng thực tế"
   }
 }

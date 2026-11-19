@@ -3695,7 +3695,7 @@
     "Keep local": "保留本地",
     "Keep original value": "保留原值",
     "Keep original value (skip if target exists)": "保留原值（目标已有值时不覆盖）",
-    "Keep reading upstream after an idle client disconnect and charge actual usage": "客户端空闲断开后继续读完上游，按实际用量收费",
+    "Keep reading upstream to the end after the client disconnects and charge actual usage": "客户端断开后继续读完上游，按实际用量收费",
     "Keep reading upstream after the client disconnects": "用户客户端断开后继续读完上游",
     "Keep source price": "保持来源价格",
     "Keep the domains used by existing Passkeys, one per line. If the primary domain changed from www.example.com to example.com, enter www.example.com here.": "每行填写一个已有通行密钥使用的域名。例如，主域名从 www.example.com 改成 example.com 后，应在这里保留 www.example.com。",
@@ -8161,7 +8161,7 @@
     "Exported {{count}} orders": "已导出 {{count}} 条订单",
     "Failed to export recharge orders": "导出充值订单失败",
     "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "导出在此时间范围内创建的订单，本页的订单号和用户 ID 筛选同样生效。",
-    "Applies when the client connection drops after a long idle period (90 seconds by default), such as a Cloudflare cut or a downstream gateway's stream timeout. When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "适用于客户端连接在长时间无数据（默认 90 秒）后被断开的情况，例如 Cloudflare 截断或下游网关的流式超时。开启后，网关会继续把上游读完并按实际用量收费，客户端不会再收到任何内容；关闭后，与官方 new-api 一样立即停止转发。",
+    "Applies once the request has reached the upstream, the same as Sub2API: when the client disconnects, for example a user stopping the reply, a Cloudflare cut or a downstream gateway's stream timeout, the gateway keeps reading upstream to the end (30 minutes at most by default) and charges the actual usage; the client receives nothing more. When off, the relay stops right away like official new-api and only the estimated usage is charged.": "请求已发到上游后生效，与 Sub2API 一致：客户端断开时（例如用户中途停止、Cloudflare 截断或下游网关的流式超时），网关会继续把上游读完（默认最多 30 分钟）并按实际用量收费，客户端不会再收到任何内容。关闭后，与官方 new-api 一样立即停止转发，只按估算用量收费。",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.",
     "Login & Registration Protection": "登录注册保护",
     "Enable simple captcha": "启用简易验证码",
@@ -8316,6 +8316,6 @@
     "Announcement #{{index}} needs a unique ID to pop up after sign-in": "第{{index}}个公告需要唯一的 ID 才能设为登录弹窗",
     "By clicking sign in, you agree to our": "点击登录即表示您同意我们的",
     "By creating an account, you agree to our": "创建账户即表示您同意我们的",
-    "Client connection dropped after a long idle period; the upstream finished and was billed by actual usage": "用户客户端在长时间无数据后断开，上游已完成，按实际用量计费"
+    "Client disconnected after the request reached the upstream; the upstream finished and was billed by actual usage": "用户客户端在请求发到上游后断开，上游已完成，按实际用量计费"
   }
 }

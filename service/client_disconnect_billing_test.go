@@ -100,12 +100,12 @@ func TestUpstreamFailureWithoutClientDisconnectKeepsRefund(t *testing.T) {
 	assert.True(t, info.Billing.(*BillingSession).NeedsRefund())
 }
 
-func newProxiedRequestContext(t *testing.T, cfRay string, minIdleSeconds int) (*gin.Context, *httptest.ResponseRecorder, context.CancelFunc) {
+func newProxiedRequestContext(t *testing.T, cfRay string) (*gin.Context, *httptest.ResponseRecorder, context.CancelFunc) {
 	t.Helper()
-	prevEnabled, prevMax, prevIdle := common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds, common.CloudflareDisconnectBillingMinIdleSeconds
-	common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds, common.CloudflareDisconnectBillingMinIdleSeconds = true, 1800, minIdleSeconds
+	prevEnabled, prevMax := common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds
+	common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds = true, 1800
 	t.Cleanup(func() {
-		common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds, common.CloudflareDisconnectBillingMinIdleSeconds = prevEnabled, prevMax, prevIdle
+		common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds = prevEnabled, prevMax
 	})
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
@@ -120,21 +120,24 @@ func newProxiedRequestContext(t *testing.T, cfRay string, minIdleSeconds int) (*
 	return ctx, recorder, cancel
 }
 
-func TestIdleDisconnectKeepsRelayRunning(t *testing.T) {
+func TestDisconnectAfterUpstreamContactKeepsRelayRunning(t *testing.T) {
 	for name, cfRay := range map[string]string{"through Cloudflare": "8f0c1d2e3a4b5c6d-SJC", "direct or through a downstream gateway": ""} {
 		t.Run(name, func(t *testing.T) {
-			ctx, recorder, cancel := newProxiedRequestContext(t, cfRay, 0)
+			ctx, recorder, cancel := newProxiedRequestContext(t, cfRay)
 			release := DetachProxiedClientCancellation(ctx)
 			defer release()
 
 			_, err := ctx.Writer.WriteString("before")
 			require.NoError(t, err)
+			MarkUpstreamContacted(ctx)
 			assert.False(t, ClientRequestCanceled(ctx))
 
+			// The client leaves while the response is still flowing: a user
+			// stopping the reply is detached just like an idle cut.
 			cancel()
 
 			require.Eventually(t, func() bool { return ProxiedClientGone(ctx) }, time.Second, time.Millisecond)
-			assert.NoError(t, ctx.Request.Context().Err(), "upstream context must survive the idle cut")
+			assert.NoError(t, ctx.Request.Context().Err(), "upstream context must survive the disconnect")
 			assert.True(t, ClientRequestCanceled(ctx), "retry and refund paths must still see the client as gone")
 			n, err := ctx.Writer.WriteString("after")
 			require.NoError(t, err)
@@ -146,7 +149,7 @@ func TestIdleDisconnectKeepsRelayRunning(t *testing.T) {
 				streamSteps++
 				return streamSteps < 3
 			})
-			assert.False(t, clientGone, "c.Stream handlers must keep reading upstream after an idle cut")
+			assert.False(t, clientGone, "c.Stream handlers must keep reading upstream after the disconnect")
 			assert.Equal(t, 3, streamSteps)
 			closeNotify := ctx.Writer.CloseNotify()
 
@@ -161,27 +164,35 @@ func TestIdleDisconnectKeepsRelayRunning(t *testing.T) {
 	}
 }
 
-func TestDisconnectWithoutIdleCutCancelsRelay(t *testing.T) {
+func TestDisconnectBeforeUpstreamContactCancelsRelay(t *testing.T) {
 	tests := []struct {
-		name        string
-		cfRay       string
-		minIdle     int
-		continueOff bool
+		name            string
+		cfRay           string
+		contacted       bool
+		continueOff     bool
+		contactAfterCut bool
 	}{
-		{name: "direct user abort before idle timeout", cfRay: "", minIdle: 90},
-		{name: "user abort through Cloudflare before idle timeout", cfRay: "8f0c1d2e3a4b5c6d-SJC", minIdle: 90},
-		{name: "idle cut with the continue switch off", cfRay: "", minIdle: 0, continueOff: true},
+		{name: "direct client leaves before the upstream call", cfRay: ""},
+		{name: "Cloudflare client leaves before the upstream call", cfRay: "8f0c1d2e3a4b5c6d-SJC"},
+		{name: "upstream contacted with the continue switch off", contacted: true, continueOff: true},
+		{name: "upstream call starts after the client already left", contactAfterCut: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.continueOff {
 				setAbnormalOption(t, "continue_after_cloudflare_truncation", false, true)
 			}
-			ctx, _, cancel := newProxiedRequestContext(t, tt.cfRay, tt.minIdle)
+			ctx, _, cancel := newProxiedRequestContext(t, tt.cfRay)
 			release := DetachProxiedClientCancellation(ctx)
 			defer release()
+			if tt.contacted {
+				MarkUpstreamContacted(ctx)
+			}
 
 			cancel()
+			if tt.contactAfterCut {
+				MarkUpstreamContacted(ctx)
+			}
 
 			select {
 			case <-ctx.Request.Context().Done():
@@ -393,7 +404,7 @@ func setAbnormalOption(t *testing.T, field string, value, defaultValue bool) {
 	})
 }
 
-func TestIdleCutRelayIsChargedActualUsage(t *testing.T) {
+func TestDetachedRelayIsChargedActualUsage(t *testing.T) {
 	tests := []struct {
 		name           string
 		respondedFirst bool
@@ -404,7 +415,7 @@ func TestIdleCutRelayIsChargedActualUsage(t *testing.T) {
 	}{
 		{name: "truncated before upstream answered", viaCloudflare: true, wantCharged: true, wantMessage: "through Cloudflare"},
 		{name: "truncated while upstream was answering", respondedFirst: true, viaCloudflare: true, wantCharged: true, wantMessage: "through Cloudflare"},
-		{name: "downstream stream timeout while upstream was answering", respondedFirst: true, wantCharged: true, wantMessage: "after a long idle period"},
+		{name: "client left while upstream was answering", respondedFirst: true, wantCharged: true, wantMessage: "reached the upstream"},
 		{name: "truncated on a request upstream blocked by a safety policy", respondedFirst: true, policyBlocked: true, wantCharged: false},
 	}
 	for _, tt := range tests {

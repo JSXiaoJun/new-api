@@ -3695,7 +3695,7 @@
     "Keep local": "Сохранять локальные данные",
     "Keep original value": "Сохранить исходное значение",
     "Keep original value (skip if target exists)": "Сохранить исходное значение (пропустить если цель существует)",
-    "Keep reading upstream after an idle client disconnect and charge actual usage": "Дочитывать апстрим после обрыва простаивающего клиента и тарифицировать фактическое использование",
+    "Keep reading upstream to the end after the client disconnects and charge actual usage": "Дочитывать апстрим до конца после отключения клиента и тарифицировать фактическое использование",
     "Keep reading upstream after the client disconnects": "Дочитывать апстрим после отключения клиента",
     "Keep source price": "Сохранить исходную цену",
     "Keep the domains used by existing Passkeys, one per line. If the primary domain changed from www.example.com to example.com, enter www.example.com here.": "Укажите домены существующих ключей доступа, по одному на строку. Если основной домен изменился с www.example.com на example.com, сохраните здесь www.example.com.",
@@ -8161,7 +8161,7 @@
     "Exported {{count}} orders": "Экспортировано заказов: {{count}}",
     "Failed to export recharge orders": "Не удалось экспортировать заказы пополнения",
     "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "Экспортируются заказы, созданные в этом диапазоне времени. Фильтры по номеру заказа и ID пользователя на этой странице также применяются.",
-    "Applies when the client connection drops after a long idle period (90 seconds by default), such as a Cloudflare cut or a downstream gateway's stream timeout. When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "Применяется, когда соединение клиента обрывается после долгого простоя (по умолчанию 90 секунд), например при обрыве Cloudflare или по тайм-ауту потока нижестоящего шлюза. Если включено, шлюз дочитывает апстрим до конца и тарифицирует фактическое использование; клиент больше ничего не получает. Если выключено, ретрансляция сразу останавливается, как в официальном new-api.",
+    "Applies once the request has reached the upstream, the same as Sub2API: when the client disconnects, for example a user stopping the reply, a Cloudflare cut or a downstream gateway's stream timeout, the gateway keeps reading upstream to the end (30 minutes at most by default) and charges the actual usage; the client receives nothing more. When off, the relay stops right away like official new-api and only the estimated usage is charged.": "Действует после отправки запроса в апстрим, как в Sub2API: когда клиент отключается (например, пользователь останавливает ответ, Cloudflare обрывает соединение или срабатывает тайм-аут потока нижестоящего шлюза), шлюз дочитывает апстрим до конца (по умолчанию не более 30 минут) и тарифицирует фактическое использование; клиент больше ничего не получает. Если выключено, ретрансляция сразу останавливается, как в официальном new-api, и тарифицируется только оценка.",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.",
     "Login & Registration Protection": "Защита входа и регистрации",
     "Enable simple captcha": "Включить простую капчу",
@@ -8316,6 +8316,6 @@
     "Announcement #{{index}} needs a unique ID to pop up after sign-in": "Объявлению № {{index}} нужен уникальный ID, чтобы показываться после входа",
     "By clicking sign in, you agree to our": "Нажимая «Войти», вы соглашаетесь с нашими",
     "By creating an account, you agree to our": "Создавая аккаунт, вы соглашаетесь с нашими",
-    "Client connection dropped after a long idle period; the upstream finished and was billed by actual usage": "Соединение клиента оборвалось после долгого простоя; апстрим завершил ответ, списано фактическое использование"
+    "Client disconnected after the request reached the upstream; the upstream finished and was billed by actual usage": "Клиент отключился после отправки запроса в апстрим; апстрим завершил ответ, списано фактическое использование"
   }
 }

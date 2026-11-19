@@ -1,11 +1,13 @@
 package openai
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -197,4 +199,60 @@ func TestOaiStreamHandlerKeepsUpstreamClaudeCacheWriteSplit(t *testing.T) {
 	assert.Equal(t, 4.0, params.P)
 	assert.Equal(t, 0.0, params.CC)
 	assert.Equal(t, 20373.0, params.CC1h)
+}
+
+// A user stopping an OpenAI-format stream must not cut off the final usage
+// frame once the request reached the upstream: the detached relay keeps
+// reading and settles what the upstream reports, as Sub2API does.
+func TestOaiStreamHandlerKeepsReadingUsageAfterClientStops(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+	oldTimeout, oldEnabled, oldMax := constant.StreamingTimeout, common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds
+	constant.StreamingTimeout, common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds = 30, true, 1800
+	t.Cleanup(func() {
+		constant.StreamingTimeout, common.CloudflareDisconnectBillingEnabled, common.CloudflareDisconnectBillingMaxSeconds = oldTimeout, oldEnabled, oldMax
+	})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	clientCtx, clientLeaves := context.WithCancel(context.Background())
+	t.Cleanup(clientLeaves)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(clientCtx)
+	c.Set(common.RequestIdKey, "chat-stream-client-stops")
+	release := service.DetachProxiedClientCancellation(c)
+	defer release()
+	service.MarkUpstreamContacted(c)
+
+	upstream, upstreamWriter := io.Pipe()
+	go func() {
+		_, _ = io.WriteString(upstreamWriter, `data: {"id":"c1","model":"claude-opus-5-5","choices":[{"index":0,"delta":{"content":"partial"}}]}`+"\n\n")
+		clientLeaves()
+		require.Eventually(t, func() bool { return service.ProxiedClientGone(c) }, time.Second, time.Millisecond)
+		_, _ = io.WriteString(upstreamWriter, `data: {"id":"c1","model":"claude-opus-5-5","choices":[{"index":0,"delta":{"content":" rest of the answer"},"finish_reason":"stop"}]}`+"\n\n")
+		_, _ = io.WriteString(upstreamWriter, `data: {"id":"c1","model":"claude-opus-5-5","choices":[],"usage":{"prompt_tokens":311000,"completion_tokens":57,"total_tokens":311057,"prompt_tokens_details":{"cached_tokens":310990}}}`+"\n\n")
+		_, _ = io.WriteString(upstreamWriter, "data: [DONE]\n\n")
+		_ = upstreamWriter.Close()
+	}()
+
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:        &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5-5"},
+		RelayMode:          relayconstant.RelayModeChatCompletions,
+		RelayFormat:        types.RelayFormatOpenAI,
+		ShouldIncludeUsage: true,
+		DisablePing:        true,
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       upstream,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+	}
+
+	usage, apiErr := OaiStreamHandler(c, info, resp)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	assert.Equal(t, 311000, usage.PromptTokens)
+	assert.Equal(t, 310990, usage.PromptTokensDetails.CachedTokens)
+	assert.Equal(t, 57, usage.CompletionTokens)
+	assert.NotContains(t, recorder.Body.String(), "rest of the answer", "nothing reaches a client that left")
 }

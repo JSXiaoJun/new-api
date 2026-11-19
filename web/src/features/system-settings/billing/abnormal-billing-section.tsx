@@ -51,9 +51,9 @@ const SWITCHES: Array<{
   {
     name: 'continue_after_cloudflare_truncation',
     labelKey:
-      'Keep reading upstream after an idle client disconnect and charge actual usage',
+      'Keep reading upstream to the end after the client disconnects and charge actual usage',
     descriptionKey:
-      "Applies when the client connection drops after a long idle period (90 seconds by default), such as a Cloudflare cut or a downstream gateway's stream timeout. When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.",
+      "Applies once the request has reached the upstream, the same as Sub2API: when the client disconnects, for example a user stopping the reply, a Cloudflare cut or a downstream gateway's stream timeout, the gateway keeps reading upstream to the end (30 minutes at most by default) and charges the actual usage; the client receives nothing more. When off, the relay stops right away like official new-api and only the estimated usage is charged.",
   },
   {
     name: 'charge_policy_block',

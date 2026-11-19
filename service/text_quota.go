@@ -529,7 +529,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		}
 	}
 	if !waived && ProxiedClientGone(ctx) {
-		extraContent = append(extraContent, idleDisconnectBilledMessage(ctx))
+		extraContent = append(extraContent, detachedClientBilledMessage(ctx))
 	}
 
 	switch {

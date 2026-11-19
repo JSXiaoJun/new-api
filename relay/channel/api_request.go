@@ -606,11 +606,14 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	}
 
 	common2.SetContextKey(c, appconstant.ContextKeyUpstreamRequestOrigin, req.URL.Scheme+"://"+req.URL.Host)
-	// A detached Cloudflare request or task submission keeps its context alive
-	// after the client leaves; only work already sent upstream should continue.
+	// A detached request or task submission keeps its context alive after the
+	// client leaves; only work already sent upstream should continue.
 	if service.ProxiedClientGone(c) || service.TaskCallerGone(c) {
 		return nil, types.NewError(errors.New("client disconnected before upstream request"), types.ErrorCodeDoRequestFailed, types.ErrOptionWithSkipRetry())
 	}
+	// From here on the upstream may bill this request, so a client that leaves
+	// no longer cancels it.
+	service.MarkUpstreamContacted(c)
 	info.MarkUpstreamStart()
 	attempt := info.UpstreamAttempt()
 	requestCtx := req.Context()
