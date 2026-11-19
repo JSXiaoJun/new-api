@@ -742,6 +742,33 @@ func TestBuildTieredTokenParams_GPT_NoCacheVar(t *testing.T) {
 	}
 }
 
+// An OpenAI-shaped usage relayed from Claude (an upstream new-api, OpenRouter)
+// carries 1h cache writes inside its cache-write total. They settle at the 1h
+// price, through cc1h or at twice the cc price when cc1h has no price.
+func TestBuildTieredTokenParams_OpenAIShapedClaude1hWrites(t *testing.T) {
+	usage := &dto.Usage{
+		PromptTokens:                1000,
+		CompletionTokens:            10,
+		ClaudeCacheCreation1hTokens: 300,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:         200,
+			CachedCreationTokens: 500,
+		},
+	}
+	for _, tc := range []struct {
+		expr string
+		want float64
+	}{
+		// P=300, CR=200, CC=200 (5m), CC1h=300.
+		{expr: `tier("base", p * 5 + c * 25 + cr * 0.5 + cc * 6.25 + cc1h * 10)`, want: (300*5 + 10*25 + 200*0.5 + 200*6.25 + 300*10) * 0.5},
+		// No cc1h price: the 1h writes join cc at the 1h multiplier (2 / 1.25).
+		{expr: `tier("base", p * 5 + c * 25 + cr * 0.5 + cc * 6.25)`, want: (300*5 + 10*25 + 200*0.5 + (200+300*1.6)*6.25) * 0.5},
+	} {
+		got := tieredQuota(tc.expr, usage, false, 1.0)
+		assert.InDelta(t, tc.want, got, 0.01, tc.expr)
+	}
+}
+
 func TestBuildTieredTokenParams_GPT_WithImage(t *testing.T) {
 	usage := &dto.Usage{
 		PromptTokens:     1000,

@@ -329,10 +329,14 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		if !dCachedCreationTokens.IsZero() || hasSplitCacheCreationTokens {
 			if !summary.IsClaudeUsageSemantic && !legacyClaudeDerived {
 				baseTokens = baseTokens.Sub(dCachedCreationTokens)
-				// The total includes the 12h writes, which have their own ratio.
+				// The total includes the 12h writes and any Claude 1h writes an
+				// OpenAI-shaped usage carries; each has its own ratio.
 				dCachedCreationTokens12h := decimal.NewFromInt(int64(summary.CacheCreationTokens12h))
-				cachedCreationTokensWithRatio = dCachedCreationTokens.Sub(dCachedCreationTokens12h).Mul(dCacheCreationRatio)
+				cache1h := min(summary.CacheCreationTokens1h, max(summary.CacheCreationTokens-summary.CacheCreationTokens12h, 0))
+				dCachedCreationTokens1h := decimal.NewFromInt(int64(cache1h))
+				cachedCreationTokensWithRatio = dCachedCreationTokens.Sub(dCachedCreationTokens12h).Sub(dCachedCreationTokens1h).Mul(dCacheCreationRatio)
 				cachedCreationTokensWithRatio = cachedCreationTokensWithRatio.Add(dCachedCreationTokens12h.Mul(dCacheCreationRatio12h))
+				cachedCreationTokensWithRatio = cachedCreationTokensWithRatio.Add(dCachedCreationTokens1h.Mul(dCacheCreationRatio1h))
 			} else {
 				remaining := max(summary.CacheCreationTokens-summary.CacheCreationTokens5m-summary.CacheCreationTokens1h, 0)
 				cachedCreationTokensWithRatio = decimal.NewFromInt(int64(remaining)).Mul(dCacheCreationRatio)

@@ -116,7 +116,17 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 		// count that cc takes out of p, and an unpriced cc leaves p the extra.
 		cc12h = float64(usage.PromptTokensDetails.CacheWrite12hTokens())
 		cc -= cc12h
+		// An OpenAI-shaped usage relayed from Claude can carry 1h writes in
+		// the same total; they keep their own price, or join cc at the 1h
+		// multiplier when it has none.
+		cc1h = min(float64(max(usage.ClaudeCacheCreation1hTokens, 0)), max(cc, 0))
+		cc -= cc1h
 		ccTokens := cc
+		if !usedVars["cc1h"] {
+			ccTokens += cc1h
+			cc += cc1h * hosttypes.ClaudeCacheCreation1hMultiplier
+			cc1h = 0
+		}
 		if usedVars["cc12h"] {
 			p -= cc12h
 		} else {

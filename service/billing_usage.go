@@ -64,15 +64,18 @@ func usageFromBillingUsage(usage *dto.Usage) (*dto.Usage, bool) {
 	if usage == nil || usage.BillingUsage == nil {
 		return nil, false
 	}
-	// An upstream gateway can attach a snapshot whose cache reads disagree
-	// with the response's own usage fields; the response's fields win then.
-	// Prompt totals are not compared here because the top-level prompt means
-	// different things across usage semantics.
+	// An upstream gateway can attach a snapshot whose cache reads or writes
+	// disagree with the response's own usage fields; the response's fields win
+	// then. Prompt totals are not compared here because the top-level prompt
+	// means different things across usage semantics.
 	cacheReads := max(usage.PromptTokensDetails.CachedTokens, usage.PromptCacheHitTokens, usage.CacheReadInputTokens, usage.CacheReadTokens)
+	cacheWrites := max(usage.PromptTokensDetails.CacheCreationTokensTotal(), usage.CacheCreationInputTokens, usage.CacheCreationTokens,
+		usage.CacheWriteTokens, usage.ClaudeCacheCreation5mTokens+usage.ClaudeCacheCreation1hTokens)
 	if usage.InputTokensDetails != nil {
 		cacheReads = max(cacheReads, usage.InputTokensDetails.CachedTokens)
+		cacheWrites = max(cacheWrites, usage.InputTokensDetails.CacheCreationTokensTotal())
 	}
-	if !usage.BillingUsage.AgreesWithReportedInput(0, cacheReads) {
+	if !usage.BillingUsage.AgreesWithReportedInput(0, cacheReads, cacheWrites) {
 		return nil, false
 	}
 	return usage.BillingUsage.CanonicalUsage()

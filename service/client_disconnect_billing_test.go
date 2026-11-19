@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http/httptest"
 	"strconv"
@@ -9,9 +10,11 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -201,6 +204,85 @@ func TestDisconnectBeforeUpstreamContactCancelsRelay(t *testing.T) {
 			}
 			assert.True(t, ClientRequestCanceled(ctx))
 			assert.False(t, ProxiedClientGone(ctx))
+		})
+	}
+}
+
+// A request whose upstream broke off a stream after reporting usage is
+// charged that usage, as the upstream bills it, and its user sees an ordinary
+// consume log with no error log; admins keep the failure. This holds when the
+// client left too. Anything else the upstream did not bill, or that is free by
+// setting, is still refunded.
+func TestUpstreamBilledFailureSettlement(t *testing.T) {
+	oldErrorLog := constant.ErrorLogEnabled
+	constant.ErrorLogEnabled = true
+	t.Cleanup(func() { constant.ErrorLogEnabled = oldErrorLog })
+	reported := &dto.Usage{PromptTokens: 1_000, TotalTokens: 1_000}
+	for _, tc := range []struct {
+		name        string
+		usage       *dto.Usage
+		perCall     bool
+		policyBlock bool
+		clientLeft  bool
+		wantCharged int
+	}{
+		{name: "reported usage is charged", usage: reported, wantCharged: 1_000},
+		{name: "nothing reported is refunded"},
+		{name: "a per-call model is refunded", usage: reported, perCall: true},
+		{name: "a free safety block is refunded", usage: reported, policyBlock: true},
+		{name: "a client that left still pays what upstream reported", usage: reported, clientLeft: true, wantCharged: 1_000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			priceData := tokenPriced()
+			if tc.perCall {
+				priceData.UsePrice = true
+				priceData.ModelPrice = 0.01
+			}
+			ctx, info, cancel := newDisconnectBillingCase(t, priceData)
+			info.IsStream = true
+			info.MarkUpstreamStart()
+			info.UpstreamAttempt().MarkRequestSent()
+			info.UpstreamAttempt().MarkResponse()
+			info.UpstreamAttempt().ReportUsage(tc.usage)
+			info.StreamStatus = relaycommon.NewStreamStatus()
+			info.StreamStatus.RequireTerminal()
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonHandlerStop, errors.New("upstream error event"))
+			if tc.policyBlock {
+				setPolicyBlock(info)
+			}
+			if tc.clientLeft {
+				cancel()
+			}
+
+			charges := ChargesUpstreamBilledFailure(ctx, info)
+			if charges {
+				MarkUpstreamBilledFailure(ctx)
+			}
+			RecordRelayErrorLog(ctx, 703, relaytypes.NewError(errors.New("Upstream request failed"), relaytypes.ErrorCodeBadResponse), info)
+			settled := SettleUpstreamBilledFailure(ctx, info)
+			info.Billing.Refund(ctx)
+
+			assert.Equal(t, tc.wantCharged > 0, charges)
+			assert.Equal(t, tc.wantCharged > 0, settled)
+			require.Eventually(t, func() bool {
+				return disconnectStartQuota-getUserQuota(t, disconnectUserId) == tc.wantCharged
+			}, 5*time.Second, 10*time.Millisecond, "the user pays %d", tc.wantCharged)
+			var errorLogs int64
+			require.NoError(t, model.LOG_DB.Model(&model.Log{}).Where("type = ?", model.LogTypeError).Count(&errorLogs).Error)
+			if tc.wantCharged == 0 {
+				assert.EqualValues(t, 1, errorLogs, "a refunded failure keeps its error log")
+				return
+			}
+			assert.Zero(t, errorLogs)
+			log := lastConsumeLog(t)
+			assert.Equal(t, tc.wantCharged, log.Quota)
+			assert.Equal(t, 1_000, log.PromptTokens)
+			var other map[string]any
+			require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+			assert.NotContains(t, other, "stream_status")
+			assert.NotContains(t, other, "termination")
+			adminInfo, _ := other["admin_info"].(map[string]any)
+			assert.Contains(t, adminInfo, "upstream_billed_failure")
 		})
 	}
 }

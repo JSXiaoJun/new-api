@@ -281,11 +281,12 @@ func (usage *BillingUsage) CanonicalUsage() (*Usage, bool) {
 
 // AgreesWithReportedInput reports whether a snapshot carried across relay hops
 // matches the input the response reports in its own protocol fields: the
-// prompt total and the cache reads. A relay can attach a stale or partial
-// snapshot, such as an OpenAI one without the cache reads the native Gemini
-// fields report, and settlement prefers the snapshot, so one that disagrees
-// must give way to the native fields. A count of zero means not reported.
-func (usage *BillingUsage) AgreesWithReportedInput(promptTokens, cacheReadTokens int) bool {
+// prompt total, the cache reads and the cache writes. A relay can attach a
+// stale or partial snapshot, such as an OpenAI one without the cache reads the
+// native Gemini fields report, and settlement prefers the snapshot, so one
+// that disagrees must give way to the native fields. A count of zero means not
+// reported and is not compared.
+func (usage *BillingUsage) AgreesWithReportedInput(promptTokens, cacheReadTokens, cacheWriteTokens int) bool {
 	canonical, ok := usage.CanonicalUsage()
 	if !ok {
 		return false
@@ -298,7 +299,11 @@ func (usage *BillingUsage) AgreesWithReportedInput(promptTokens, cacheReadTokens
 	if promptTokens > 0 && snapshotPrompt != promptTokens {
 		return false
 	}
-	return cacheReadTokens <= 0 || canonical.PromptTokensDetails.CachedTokens == cacheReadTokens
+	if cacheReadTokens > 0 && canonical.PromptTokensDetails.CachedTokens != cacheReadTokens {
+		return false
+	}
+	snapshotWrites := max(canonical.PromptTokensDetails.CacheCreationTokensTotal(), canonical.ClaudeCacheCreation5mTokens+canonical.ClaudeCacheCreation1hTokens)
+	return cacheWriteTokens <= 0 || snapshotWrites == cacheWriteTokens
 }
 
 func (usage *BillingUsage) canonicalOpenAIUsage() *Usage {

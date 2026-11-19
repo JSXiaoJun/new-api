@@ -267,6 +267,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if service.ClientRequestCanceled(c) {
 			break
 		}
+		if decision.Action != "retry" && service.ChargesUpstreamBilledFailure(c, relayInfo) {
+			// Settled at the usage upstream reported and billed, with an
+			// ordinary consume log instead of an error log.
+			service.MarkUpstreamBilledFailure(c)
+		}
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError, relayInfo)
 
 		if decision.Action != "retry" {

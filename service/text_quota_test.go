@@ -550,9 +550,9 @@ func TestCalculateTextQuotaSummaryUsesClaudeBillingUsageBeforeTopLevelUsage(t *t
 	require.Equal(t, 118, summary.Quota)
 }
 
-// An upstream gateway's snapshot is settled only while its cache reads match
-// the response's own usage fields. A snapshot missing the cache reads the
-// response reports would bill them at the full input price.
+// An upstream gateway's snapshot is settled only while its cache reads and
+// writes match the response's own usage fields. A snapshot missing the cache
+// reads the response reports would bill them at the full input price.
 func TestCalculateTextQuotaSummaryIgnoresBillingUsageWithOtherCacheReads(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -570,34 +570,42 @@ func TestCalculateTextQuotaSummaryIgnoresBillingUsageWithOtherCacheReads(t *test
 		},
 		StartTime: time.Now(),
 	}
-	snapshot := func(cacheRead int) *dto.BillingUsage {
+	snapshot := func(cacheRead, cacheWrite int) *dto.BillingUsage {
 		return dto.NewClaudeMessagesBillingUsage(&dto.ClaudeUsage{
 			InputTokens:              100,
 			CacheReadInputTokens:     cacheRead,
-			CacheCreationInputTokens: 20,
+			CacheCreationInputTokens: cacheWrite,
 			OutputTokens:             7,
-			CacheCreation:            &dto.ClaudeCacheCreationUsage{Ephemeral1hInputTokens: 20},
+			CacheCreation:            &dto.ClaudeCacheCreationUsage{Ephemeral1hInputTokens: cacheWrite},
 		})
 	}
 
 	for _, tc := range []struct {
 		name            string
 		snapshotReads   int
+		snapshotWrites  int
 		wantCacheTokens int
 		wantCache1h     int
 	}{
-		{name: "agreeing snapshot keeps the 1h split", snapshotReads: 900, wantCacheTokens: 900, wantCache1h: 20},
-		{name: "snapshot without the cache reads gives way", snapshotReads: 0, wantCacheTokens: 900, wantCache1h: 0},
+		{name: "agreeing snapshot keeps the 1h split", snapshotReads: 900, snapshotWrites: 20, wantCacheTokens: 900, wantCache1h: 20},
+		{name: "snapshot without the cache reads gives way", snapshotReads: 0, snapshotWrites: 20, wantCacheTokens: 900, wantCache1h: 20},
+		{name: "snapshot with other cache writes gives way", snapshotReads: 900, snapshotWrites: 5, wantCacheTokens: 900, wantCache1h: 20},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			usage := &dto.Usage{PromptTokens: 1020, CompletionTokens: 7, TotalTokens: 1027, BillingUsage: snapshot(tc.snapshotReads)}
+			// As an upstream new-api relaying Claude reports it.
+			usage := &dto.Usage{PromptTokens: 1020, CompletionTokens: 7, TotalTokens: 1027, UsageSemantic: "openai", UsageSource: "anthropic",
+				BillingUsage: snapshot(tc.snapshotReads, tc.snapshotWrites)}
 			usage.PromptTokensDetails.CachedTokens = 900
 			usage.PromptTokensDetails.CachedCreationTokens = 20
+			usage.ClaudeCacheCreation1hTokens = 20
 
 			summary := calculateTextQuotaSummary(ctx, relayInfo, effectiveBillingUsage(usage))
 
 			assert.Equal(t, tc.wantCacheTokens, summary.CacheTokens)
 			assert.Equal(t, tc.wantCache1h, summary.CacheCreationTokens1h)
+			// Prompt 1020 = 100 input + 900 reads + 20 1h writes, whichever
+			// usage settles: 100 + 900*0.1 + 20*2 + 7*2 = 244.
+			assert.Equal(t, 244, summary.Quota)
 		})
 	}
 }

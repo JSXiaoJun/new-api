@@ -226,6 +226,59 @@ func ClientRequestCanceled(c *gin.Context) bool {
 	return c != nil && c.Request != nil && (c.Request.Context().Err() != nil || ProxiedClientGone(c))
 }
 
+// upstreamBilledFailureKey marks a failed request settled at the usage its
+// upstream reported before failing.
+const upstreamBilledFailureKey = "upstream_billed_failure"
+
+// ChargesUpstreamBilledFailure reports whether a failed request is charged the
+// usage the upstream reported before it broke off the response, as the
+// upstream (Sub2API and other gateways) bills it: a Claude stream reports its
+// input and cache reads in message_start, and a Gemini stream reports usage in
+// every frame. This holds whether or not the client is still there, since the
+// reported usage is what the upstream bills either way. Per-call priced and
+// free models, and safety-policy blocks that are free by setting, are
+// refunded.
+func ChargesUpstreamBilledFailure(c *gin.Context, info *relaycommon.RelayInfo) bool {
+	if info == nil || info.Billing == nil || info.ChannelMeta == nil ||
+		info.PriceData.UsePrice || info.PriceData.FreeModel || policyBlockIsFree(info) {
+		return false
+	}
+	usage := info.UpstreamAttempt().ReportedUsage()
+	return usage != nil && (usage.PromptTokens > 0 || usage.CompletionTokens > 0 ||
+		usage.PromptTokensDetails.CachedTokens > 0 || usage.PromptTokensDetails.CachedCreationTokens > 0)
+}
+
+// MarkUpstreamBilledFailure records that the final attempt's failure is
+// settled like upstream, so the request gets an ordinary consume log and no
+// user-visible error log. Call it only once no retry follows.
+func MarkUpstreamBilledFailure(c *gin.Context) {
+	if c != nil {
+		c.Set(upstreamBilledFailureKey, true)
+	}
+}
+
+// SettleUpstreamBilledFailure charges a failed request the usage its final
+// attempt reported (see ChargesUpstreamBilledFailure) and returns true when
+// the session was settled. The consume log reads like a successful request to
+// its user; the failure is kept for admins.
+func SettleUpstreamBilledFailure(c *gin.Context, info *relaycommon.RelayInfo) bool {
+	if !ChargesUpstreamBilledFailure(c, info) {
+		return false
+	}
+	MarkUpstreamBilledFailure(c)
+	// The upstream answered and billed this usage, so no failure waiver
+	// applies to it.
+	c.Set(abnormalChargeCaseKey, abnormalChargeNone)
+	PostTextConsumeQuota(c, info, info.UpstreamAttempt().ReportedUsage(), nil)
+	return true
+}
+
+// upstreamBilledFailure reports whether the request is settled as a failure
+// charged like upstream.
+func upstreamBilledFailure(c *gin.Context) bool {
+	return c != nil && c.GetBool(upstreamBilledFailureKey)
+}
+
 // SettleClientDisconnectBilling handles a relay that failed because the client
 // disconnected after the request had already been sent upstream (non-stream
 // requests, or streams cancelled before the first byte). Upstream providers

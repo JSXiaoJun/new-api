@@ -83,7 +83,8 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 // RecordRelayErrorLog writes the error log of a failed relay request when
 // error logs are on. channelId is 0 for a request that reached no channel.
 func RecordRelayErrorLog(c *gin.Context, channelId int, err *types.NewAPIError, relayInfo *relaycommon.RelayInfo) {
-	if !constant.ErrorLogEnabled || !types.IsRecordErrorLog(err) {
+	// A failure charged like upstream gets an ordinary consume log instead.
+	if !constant.ErrorLogEnabled || !types.IsRecordErrorLog(err) || upstreamBilledFailure(c) {
 		return
 	}
 	userId := c.GetInt("id")

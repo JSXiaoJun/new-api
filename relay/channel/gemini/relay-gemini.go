@@ -285,6 +285,12 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	}
 
 	if streamErr != nil {
+		if hasBillableUsageMetadata {
+			// Gemini reports usage in every frame, and the upstream bills a
+			// stream it broke off for what it reported; keep that for failure
+			// settlement.
+			info.UpstreamAttempt().ReportUsage(usage)
+		}
 		return usage, types.NewOpenAIError(streamErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	if info.StreamStatus != nil && !info.StreamStatus.IsNormalEnd() {

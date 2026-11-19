@@ -25,7 +25,7 @@ func UsageFromGeminiMetadata(metadata *dto.GeminiUsageMetadata, fallbackPromptTo
 	// A relay's snapshot that disagrees with the native counts, for example
 	// one missing the cache reads, gives way to a snapshot of the native ones.
 	billingUsage := dto.CloneBillingUsage(metadata.BillingUsage)
-	if billingUsage != nil && !billingUsage.AgreesWithReportedInput(promptTokens, metadata.CachedContentTokenCount) {
+	if billingUsage != nil && !billingUsage.AgreesWithReportedInput(promptTokens, metadata.CachedContentTokenCount, 0) {
 		billingUsage = nil
 	}
 	if promptTokens <= 0 && fallbackPromptTokens > 0 {

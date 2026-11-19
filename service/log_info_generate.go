@@ -248,8 +248,18 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendBillingInfo(relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	appendRequestPluginRecord(relayInfo, other)
-	appendStreamStatus(relayInfo, other)
-	AppendRelayTermination(ctx, relayInfo, other)
+	if upstreamBilledFailure(ctx) {
+		// A failure charged the usage upstream billed reads, like upstream's
+		// own log, as an ordinary request to its user; admins keep the
+		// stream end and termination.
+		failure := model.NewLogOther()
+		appendStreamStatus(relayInfo, failure)
+		AppendRelayTermination(ctx, relayInfo, failure)
+		other.SetAdmin("upstream_billed_failure", failure.Snapshot())
+	} else {
+		appendStreamStatus(relayInfo, other)
+		AppendRelayTermination(ctx, relayInfo, other)
+	}
 	AppendUpstreamPolicyBlock(relayInfo, nil, other)
 	return other
 }
