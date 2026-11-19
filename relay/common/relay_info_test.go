@@ -398,3 +398,25 @@ func TestInitChannelMetaResetsPerAttemptStreamStateAndPreservesRequestState(t *t
 func ptr[T any](value T) *T {
 	return &value
 }
+
+func TestObserveCacheWriteTTL(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"no cache_control", `{"messages":[{"role":"user","content":"hi"}]}`, false},
+		{"all breakpoints 1h", `{"system":[{"type":"text","text":"s","cache_control":{"type":"ephemeral","ttl":"1h"}}],"tools":[{"name":"t","input_schema":{"type":"object"},"cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"1h"}}]}]}`, true},
+		{"top-level automatic 1h", `{"cache_control":{"type":"ephemeral","ttl":"1h"},"messages":[{"role":"user","content":"hi"}]}`, true},
+		{"one breakpoint without ttl is 5m", `{"system":[{"type":"text","text":"s","cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]}]}`, false},
+		{"explicit 5m", `{"cache_control":{"type":"ephemeral","ttl":"5m"},"system":"1h"}`, false},
+		{"ttl text inside a message is not a breakpoint", `{"messages":[{"role":"user","content":"\"cache_control\":{\"ttl\":\"1h\"}"}]}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			info := &RelayInfo{CacheWritesAll1h: !tc.want}
+			info.ObserveCacheWriteTTL([]byte(tc.body))
+			assert.Equal(t, tc.want, info.CacheWritesAll1h)
+		})
+	}
+}

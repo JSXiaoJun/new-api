@@ -120,53 +120,57 @@ func newProxiedRequestContext(t *testing.T, cfRay string, minIdleSeconds int) (*
 	return ctx, recorder, cancel
 }
 
-func TestCloudflareTruncationKeepsRelayRunning(t *testing.T) {
-	ctx, recorder, cancel := newProxiedRequestContext(t, "8f0c1d2e3a4b5c6d-SJC", 0)
-	release := DetachProxiedClientCancellation(ctx)
-	defer release()
+func TestIdleDisconnectKeepsRelayRunning(t *testing.T) {
+	for name, cfRay := range map[string]string{"through Cloudflare": "8f0c1d2e3a4b5c6d-SJC", "direct or through a downstream gateway": ""} {
+		t.Run(name, func(t *testing.T) {
+			ctx, recorder, cancel := newProxiedRequestContext(t, cfRay, 0)
+			release := DetachProxiedClientCancellation(ctx)
+			defer release()
 
-	_, err := ctx.Writer.WriteString("before")
-	require.NoError(t, err)
-	assert.False(t, ClientRequestCanceled(ctx))
+			_, err := ctx.Writer.WriteString("before")
+			require.NoError(t, err)
+			assert.False(t, ClientRequestCanceled(ctx))
 
-	cancel()
+			cancel()
 
-	require.Eventually(t, func() bool { return ProxiedClientGone(ctx) }, time.Second, time.Millisecond)
-	assert.NoError(t, ctx.Request.Context().Err(), "upstream context must survive the Cloudflare truncation")
-	assert.True(t, ClientRequestCanceled(ctx), "retry and refund paths must still see the client as gone")
-	n, err := ctx.Writer.WriteString("after")
-	require.NoError(t, err)
-	assert.Equal(t, len("after"), n)
-	assert.Equal(t, "before", recorder.Body.String(), "writes after the disconnect are discarded")
+			require.Eventually(t, func() bool { return ProxiedClientGone(ctx) }, time.Second, time.Millisecond)
+			assert.NoError(t, ctx.Request.Context().Err(), "upstream context must survive the idle cut")
+			assert.True(t, ClientRequestCanceled(ctx), "retry and refund paths must still see the client as gone")
+			n, err := ctx.Writer.WriteString("after")
+			require.NoError(t, err)
+			assert.Equal(t, len("after"), n)
+			assert.Equal(t, "before", recorder.Body.String(), "writes after the disconnect are discarded")
 
-	streamSteps := 0
-	clientGone := ctx.Stream(func(w io.Writer) bool {
-		streamSteps++
-		return streamSteps < 3
-	})
-	assert.False(t, clientGone, "c.Stream handlers must keep reading upstream after a truncation")
-	assert.Equal(t, 3, streamSteps)
-	closeNotify := ctx.Writer.CloseNotify()
+			streamSteps := 0
+			clientGone := ctx.Stream(func(w io.Writer) bool {
+				streamSteps++
+				return streamSteps < 3
+			})
+			assert.False(t, clientGone, "c.Stream handlers must keep reading upstream after an idle cut")
+			assert.Equal(t, 3, streamSteps)
+			closeNotify := ctx.Writer.CloseNotify()
 
-	release()
-	assert.Error(t, ctx.Request.Context().Err(), "release must cancel the detached relay")
-	select {
-	case <-closeNotify:
-	case <-time.After(time.Second):
-		t.Fatal("CloseNotify must fire once the relay ends")
+			release()
+			assert.Error(t, ctx.Request.Context().Err(), "release must cancel the detached relay")
+			select {
+			case <-closeNotify:
+			case <-time.After(time.Second):
+				t.Fatal("CloseNotify must fire once the relay ends")
+			}
+		})
 	}
 }
 
-func TestDisconnectWithoutCloudflareTruncationCancelsRelay(t *testing.T) {
+func TestDisconnectWithoutIdleCutCancelsRelay(t *testing.T) {
 	tests := []struct {
 		name        string
 		cfRay       string
 		minIdle     int
 		continueOff bool
 	}{
-		{name: "direct connection", cfRay: "", minIdle: 90},
+		{name: "direct user abort before idle timeout", cfRay: "", minIdle: 90},
 		{name: "user abort through Cloudflare before idle timeout", cfRay: "8f0c1d2e3a4b5c6d-SJC", minIdle: 90},
-		{name: "Cloudflare truncation with the continue switch off", cfRay: "8f0c1d2e3a4b5c6d-SJC", minIdle: 0, continueOff: true},
+		{name: "idle cut with the continue switch off", cfRay: "", minIdle: 0, continueOff: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -389,15 +393,18 @@ func setAbnormalOption(t *testing.T, field string, value, defaultValue bool) {
 	})
 }
 
-func TestCloudflareTruncatedRelayIsChargedActualUsage(t *testing.T) {
+func TestIdleCutRelayIsChargedActualUsage(t *testing.T) {
 	tests := []struct {
 		name           string
 		respondedFirst bool
 		policyBlocked  bool
+		viaCloudflare  bool
 		wantCharged    bool
+		wantMessage    string
 	}{
-		{name: "truncated before upstream answered", wantCharged: true},
-		{name: "truncated while upstream was answering", respondedFirst: true, wantCharged: true},
+		{name: "truncated before upstream answered", viaCloudflare: true, wantCharged: true, wantMessage: "through Cloudflare"},
+		{name: "truncated while upstream was answering", respondedFirst: true, viaCloudflare: true, wantCharged: true, wantMessage: "through Cloudflare"},
+		{name: "downstream stream timeout while upstream was answering", respondedFirst: true, wantCharged: true, wantMessage: "after a long idle period"},
 		{name: "truncated on a request upstream blocked by a safety policy", respondedFirst: true, policyBlocked: true, wantCharged: false},
 	}
 	for _, tt := range tests {
@@ -415,7 +422,7 @@ func TestCloudflareTruncatedRelayIsChargedActualUsage(t *testing.T) {
 			if tt.respondedFirst {
 				truncatedAt = time.Now().Add(time.Hour)
 			}
-			writer := &detachedClientWriter{ResponseWriter: ctx.Writer, clientCtx: context.Background(), relayCtx: context.Background()}
+			writer := &detachedClientWriter{ResponseWriter: ctx.Writer, clientCtx: context.Background(), relayCtx: context.Background(), viaCloudflare: tt.viaCloudflare}
 			writer.truncatedAtUnixNs.Store(truncatedAt.UnixNano())
 			writer.truncated.Store(true)
 			ctx.Set(detachedClientWriterKey, writer)
@@ -427,6 +434,7 @@ func TestCloudflareTruncatedRelayIsChargedActualUsage(t *testing.T) {
 			if tt.wantCharged {
 				assert.Equal(t, 1_200, charged)
 				assert.Contains(t, log.Content, "billed by actual usage")
+				assert.Contains(t, log.Content, tt.wantMessage)
 				return
 			}
 			assert.Zero(t, charged)

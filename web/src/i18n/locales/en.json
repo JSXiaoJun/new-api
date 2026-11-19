@@ -3695,7 +3695,7 @@
     "Keep local": "Keep local",
     "Keep original value": "Keep original value",
     "Keep original value (skip if target exists)": "Keep original value (skip if target exists)",
-    "Keep reading upstream after a Cloudflare truncation and charge actual usage": "Keep reading upstream after a Cloudflare truncation and charge actual usage",
+    "Keep reading upstream after an idle client disconnect and charge actual usage": "Keep reading upstream after an idle client disconnect and charge actual usage",
     "Keep reading upstream after the client disconnects": "Keep reading upstream after the client disconnects",
     "Keep source price": "Keep source price",
     "Keep the domains used by existing Passkeys, one per line. If the primary domain changed from www.example.com to example.com, enter www.example.com here.": "Keep the domains used by existing Passkeys, one per line. If the primary domain changed from www.example.com to example.com, enter www.example.com here.",
@@ -8161,7 +8161,7 @@
     "Exported {{count}} orders": "Exported {{count}} orders",
     "Failed to export recharge orders": "Failed to export recharge orders",
     "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "Orders created in this time range are exported. The order number and user ID filters on this page also apply.",
-    "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.",
+    "Applies when the client connection drops after a long idle period (90 seconds by default), such as a Cloudflare cut or a downstream gateway's stream timeout. When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "Applies when the client connection drops after a long idle period (90 seconds by default), such as a Cloudflare cut or a downstream gateway's stream timeout. When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.",
     "Login & Registration Protection": "Login & Registration Protection",
     "Enable simple captcha": "Enable simple captcha",
@@ -8315,6 +8315,7 @@
     "Announcement #{{index}} has an invalid popup value": "Announcement #{{index}} has an invalid popup value",
     "Announcement #{{index}} needs a unique ID to pop up after sign-in": "Announcement #{{index}} needs a unique ID to pop up after sign-in",
     "By clicking sign in, you agree to our": "By clicking sign in, you agree to our",
-    "By creating an account, you agree to our": "By creating an account, you agree to our"
+    "By creating an account, you agree to our": "By creating an account, you agree to our",
+    "Client connection dropped after a long idle period; the upstream finished and was billed by actual usage": "Client connection dropped after a long idle period; the upstream finished and was billed by actual usage"
   }
 }

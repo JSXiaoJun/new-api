@@ -39,7 +39,7 @@ const defaults: AbnormalBillingValues = {
 
 const policyLabel = 'Charge requests blocked by an upstream safety policy'
 const cloudflareLabel =
-  'Keep reading upstream after a Cloudflare truncation and charge actual usage'
+  'Keep reading upstream after an idle client disconnect and charge actual usage'
 
 let testI18n: i18n
 

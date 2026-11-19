@@ -15,13 +15,15 @@ import (
 
 const detachedClientWriterKey = "detached_client_writer"
 
-// detachedClientWriter keeps a relay running after Cloudflare truncated the
-// connection: once the client is gone, writes are discarded and reported as
+// detachedClientWriter keeps a relay running after the client connection was
+// cut while idle (a Cloudflare truncation, or a downstream gateway's stream
+// timeout): once the client is gone, writes are discarded and reported as
 // successful so handlers keep reading upstream until the real usage arrives.
 type detachedClientWriter struct {
 	gin.ResponseWriter
 	clientCtx         context.Context
 	relayCtx          context.Context
+	viaCloudflare     bool
 	writeFailed       atomic.Bool
 	truncated         atomic.Bool
 	lastWriteUnixNs   atomic.Int64
@@ -68,20 +70,23 @@ func (w *detachedClientWriter) Unwrap() http.ResponseWriter {
 }
 
 // DetachProxiedClientCancellation decouples the relay from the inbound
-// connection for requests arriving through Cloudflare. Cloudflare drops the
-// origin connection after about 100 seconds without response bytes, while the
-// upstream keeps generating and bills the full output. Detaching lets the
-// relay finish and settle the real usage instead of only the prompt estimate.
+// connection so a connection cut while idle does not cancel the upstream
+// call. Cloudflare drops the origin connection after about 100 seconds
+// without response bytes, and a downstream gateway drops it after its own
+// stream timeout (120 seconds in older new-api releases), while the upstream
+// keeps generating, or stops and bills the input and cache it already read.
+// Detaching lets the relay finish and settle the real usage instead of only
+// the prompt estimate, which is zero when token counting is off.
 //
 // Only a disconnect after CloudflareDisconnectBillingMinIdleSeconds without
-// response bytes counts as a Cloudflare truncation; an earlier disconnect is a
-// user abort and cancels the relay as before. A truncated relay may run at
-// most CloudflareDisconnectBillingMaxSeconds before it is cancelled.
+// response bytes counts as an idle cut; an earlier disconnect is a user abort
+// and cancels the relay as before. A detached relay may run at most
+// CloudflareDisconnectBillingMaxSeconds before it is cancelled.
 //
 // The returned release func must be called when the request ends.
 func DetachProxiedClientCancellation(c *gin.Context) func() {
 	if !common.CloudflareDisconnectBillingEnabled || c == nil || c.Request == nil || c.Writer == nil ||
-		c.GetHeader("Cf-Ray") == "" || !billing_setting.ContinueAfterCloudflareTruncation() {
+		!billing_setting.ContinueAfterCloudflareTruncation() {
 		return func() {}
 	}
 	clientCtx := c.Request.Context()
@@ -91,7 +96,12 @@ func DetachProxiedClientCancellation(c *gin.Context) func() {
 		maxRun = 30 * time.Minute
 	}
 	minIdle := time.Duration(common.CloudflareDisconnectBillingMinIdleSeconds) * time.Second
-	writer := &detachedClientWriter{ResponseWriter: c.Writer, clientCtx: clientCtx, relayCtx: detachedCtx}
+	writer := &detachedClientWriter{
+		ResponseWriter: c.Writer,
+		clientCtx:      clientCtx,
+		relayCtx:       detachedCtx,
+		viaCloudflare:  c.GetHeader("Cf-Ray") != "",
+	}
 	writer.lastWriteUnixNs.Store(time.Now().UnixNano())
 	stopWatch := context.AfterFunc(clientCtx, func() {
 		if time.Since(time.Unix(0, writer.lastWriteUnixNs.Load())) < minIdle {
@@ -118,8 +128,8 @@ func DetachProxiedClientCancellation(c *gin.Context) func() {
 	}
 }
 
-// ProxiedClientGone reports whether Cloudflare truncated a detached request
-// while the relay kept running.
+// ProxiedClientGone reports whether the client connection of a detached
+// request was cut while idle and the relay kept running.
 func ProxiedClientGone(c *gin.Context) bool {
 	if c == nil {
 		return false
@@ -132,7 +142,19 @@ func ProxiedClientGone(c *gin.Context) bool {
 	return ok && writer.truncated.Load()
 }
 
-// proxiedClientGoneAt returns when Cloudflare truncated a detached request.
+// idleDisconnectBilledMessage is the log line of a detached request that was
+// charged its actual usage after the client connection was cut while idle.
+func idleDisconnectBilledMessage(c *gin.Context) *common.Message {
+	if value, ok := c.Get(detachedClientWriterKey); ok {
+		if writer, ok := value.(*detachedClientWriter); ok && writer.viaCloudflare {
+			return common.NewMessage("Client disconnected through Cloudflare after the upstream finished, billed by actual usage")
+		}
+	}
+	return common.NewMessage("Client connection dropped after a long idle period; the upstream finished and was billed by actual usage")
+}
+
+// proxiedClientGoneAt returns when the client connection of a detached
+// request was cut.
 func proxiedClientGoneAt(c *gin.Context) (time.Time, bool) {
 	if c == nil {
 		return time.Time{}, false

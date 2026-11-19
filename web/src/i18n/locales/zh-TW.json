@@ -3695,7 +3695,7 @@
     "Keep local": "保留本機",
     "Keep original value": "保留原值",
     "Keep original value (skip if target exists)": "保留原值（目標已有值時不覆蓋）",
-    "Keep reading upstream after a Cloudflare truncation and charge actual usage": "Cloudflare 截斷後繼續讀完上游，按實際用量收費",
+    "Keep reading upstream after an idle client disconnect and charge actual usage": "用戶端閒置中斷後繼續讀完上游，按實際用量收費",
     "Keep reading upstream after the client disconnects": "客戶端斷開後繼續讀完上游",
     "Keep source price": "保留來源價格",
     "Keep the domains used by existing Passkeys, one per line. If the primary domain changed from www.example.com to example.com, enter www.example.com here.": "每行填寫一個既有通行金鑰使用的網域。例如，主要網域從 www.example.com 改為 example.com 後，應在此保留 www.example.com。",
@@ -8161,7 +8161,7 @@
     "Exported {{count}} orders": "已匯出 {{count}} 筆訂單",
     "Failed to export recharge orders": "匯出儲值訂單失敗",
     "Orders created in this time range are exported. The order number and user ID filters on this page also apply.": "匯出在此時間範圍內建立的訂單，本頁的訂單號和使用者 ID 篩選同樣生效。",
-    "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "Applies to requests through Cloudflare that it cut after a long idle period (90 seconds by default). When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.",
+    "Applies when the client connection drops after a long idle period (90 seconds by default), such as a Cloudflare cut or a downstream gateway's stream timeout. When on, the gateway keeps reading upstream to the end and charges the actual usage; the client still receives nothing more. When off, the relay stops right away like official new-api.": "適用於用戶端連線在長時間無資料（預設 90 秒）後被中斷的情況，例如 Cloudflare 截斷或下游閘道的串流逾時。開啟後，閘道會繼續把上游讀完並按實際用量收費，用戶端不會再收到任何內容；關閉後，與官方 new-api 一樣立即停止轉發。",
     "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.": "Upstream refused the request with a safety policy, such as the OpenAI cyber_policy that Sub2API and New API pass through. When off, such a request is never charged, the same as Sub2API, which does not bill these blocks. When on, it is charged like any other abnormal request.",
     "Login & Registration Protection": "登入註冊保護",
     "Enable simple captcha": "啟用簡易驗證碼",
@@ -8315,6 +8315,7 @@
     "Announcement #{{index}} has an invalid popup value": "第 {{index}} 個公告的彈窗設定無效",
     "Announcement #{{index}} needs a unique ID to pop up after sign-in": "第 {{index}} 個公告需要唯一的 ID 才能設為登入彈窗",
     "By clicking sign in, you agree to our": "點擊登入即表示您同意我們的",
-    "By creating an account, you agree to our": "建立帳戶即表示您同意我們的"
+    "By creating an account, you agree to our": "建立帳戶即表示您同意我們的",
+    "Client connection dropped after a long idle period; the upstream finished and was billed by actual usage": "用戶端在長時間無資料後中斷連線，上游已完成，依實際用量計費"
   }
 }

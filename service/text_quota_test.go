@@ -363,6 +363,64 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	require.Equal(t, 1488, chatSummary.Quota)
 }
 
+func TestUnsplitClaudeCacheWritesFollowRequestTTL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	priceData := hosttypes.PriceData{
+		ModelRatio:           1,
+		CompletionRatio:      1,
+		CacheCreationRatio:   1.25,
+		CacheCreation5mRatio: 1.25,
+		CacheCreation1hRatio: 2,
+		GroupRatioInfo:       hosttypes.GroupRatioInfo{GroupRatio: 1},
+	}
+	cases := []struct {
+		name           string
+		all1h          bool
+		semantic       string
+		split5m        int
+		cacheWrites    int
+		wantAttributed bool
+		wantQuota      int
+	}{
+		{"1h request without split bills 1h", true, "anthropic", 0, 1000, true, 100 + 2000},
+		{"request with a 5m breakpoint keeps 5m", false, "anthropic", 0, 1000, false, 100 + 1250},
+		{"reported split wins", true, "anthropic", 1000, 1000, false, 100 + 1250},
+		{"no cache writes", true, "anthropic", 0, 0, false, 100},
+		{"openai usage is untouched", true, "openai", 0, 1000, false, -1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			relayInfo := &relaycommon.RelayInfo{
+				RelayFormat:             types.RelayFormatClaude,
+				FinalRequestRelayFormat: types.RelayFormatClaude,
+				OriginModelName:         "claude-opus-5-5",
+				PriceData:               priceData,
+				StartTime:               time.Now(),
+				CacheWritesAll1h:        tc.all1h,
+			}
+			usage := &dto.Usage{
+				PromptTokens:                100,
+				UsageSemantic:               tc.semantic,
+				PromptTokensDetails:         dto.InputTokenDetails{CachedCreationTokens: tc.cacheWrites},
+				ClaudeCacheCreation5mTokens: tc.split5m,
+			}
+
+			attributed := attributeUnsplitCacheWritesTo1h(relayInfo, usage)
+
+			assert.Equal(t, tc.wantAttributed, attributed)
+			if tc.wantAttributed {
+				assert.Equal(t, tc.cacheWrites, usage.ClaudeCacheCreation1hTokens)
+			} else {
+				assert.Zero(t, usage.ClaudeCacheCreation1hTokens)
+			}
+			if tc.wantQuota >= 0 {
+				assert.Equal(t, tc.wantQuota, calculateTextQuotaSummary(ctx, relayInfo, usage).Quota)
+			}
+		})
+	}
+}
+
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

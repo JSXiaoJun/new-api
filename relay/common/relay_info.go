@@ -241,6 +241,11 @@ type RelayInfo struct {
 	// upstream that bills page fetches under its own price list; empty keeps
 	// the protocol default web_fetch.
 	WebFetchBillingKey string
+	// CacheWritesAll1h is set by ObserveCacheWriteTTL when every
+	// cache_control breakpoint of this attempt's upstream body asks for the
+	// 1-hour TTL. Settlement then bills Claude cache writes that upstream
+	// reports without the 5m/1h split at the 1-hour price.
+	CacheWritesAll1h bool
 	// requestInferredToolKey is the tool-price key RecordRequestInferredToolCall
 	// billed for the current channel attempt.
 	requestInferredToolKey string
@@ -374,6 +379,7 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	info.VendorToolUsage = nil
 	info.WebSearchBillingKey = ""
 	info.WebFetchBillingKey = ""
+	info.CacheWritesAll1h = false
 	if info.requestInferredToolKey != "" && info.ResponsesUsageInfo != nil {
 		delete(info.ResponsesUsageInfo.BuiltInTools, info.requestInferredToolKey)
 	}

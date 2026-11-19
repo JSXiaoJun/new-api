@@ -416,6 +416,30 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 	return "openai"
 }
 
+// attributeUnsplitCacheWritesTo1h bills Claude cache writes reported without
+// the 5m/1h split as 1-hour writes when every breakpoint of the upstream
+// request asked for 1h. Resellers of Anthropic often return only
+// cache_creation_input_tokens while billing the TTL the request asked for, and
+// the unsplit total would otherwise settle at the 5-minute price. A reported
+// split always wins. usage must be the settlement copy, not the caller's.
+func attributeUnsplitCacheWritesTo1h(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) bool {
+	if usage == nil || relayInfo == nil || !relayInfo.CacheWritesAll1h {
+		return false
+	}
+	if usageSemanticFromUsage(relayInfo, usage) != "anthropic" {
+		return false
+	}
+	if usage.ClaudeCacheCreation5mTokens > 0 || usage.ClaudeCacheCreation1hTokens > 0 {
+		return false
+	}
+	total := usage.PromptTokensDetails.CacheCreationTokensTotal()
+	if total <= 0 {
+		return false
+	}
+	usage.ClaudeCacheCreation1hTokens = total
+	return true
+}
+
 // pricedTextUsage is the charge the text settlement computes for one usage,
 // before any abnormal-request waiver.
 type pricedTextUsage struct {
@@ -464,6 +488,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	originUsage := usage
 	billingUsage := effectiveBillingUsage(usage)
 	billingUsage = normalizeUsageForBilling(billingUsage, relayInfo.GetEstimatePromptTokens())
+	cacheTTLFromRequest := attributeUnsplitCacheWritesTo1h(relayInfo, billingUsage)
 	if usage == nil {
 		extraContent = append(extraContent, common.NewMessage("Upstream returned no usage"))
 	}
@@ -504,7 +529,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		}
 	}
 	if !waived && ProxiedClientGone(ctx) {
-		extraContent = append(extraContent, common.NewMessage("Client disconnected through Cloudflare after the upstream finished, billed by actual usage"))
+		extraContent = append(extraContent, idleDisconnectBilledMessage(ctx))
 	}
 
 	switch {
@@ -571,6 +596,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if summary.CacheCreationTokens1h > 0 {
 		other.SetPublic("cache_creation_tokens_1h", summary.CacheCreationTokens1h)
 		other.SetPublic("cache_creation_ratio_1h", summary.CacheCreationRatio1h)
+	}
+	if cacheTTLFromRequest {
+		other.SetAdmin("cache_ttl_source", "request")
 	}
 	if summary.CacheCreationTokens12h > 0 {
 		other.SetPublic("cache_creation_tokens_12h", summary.CacheCreationTokens12h)

@@ -15,9 +15,10 @@ const AbnormalBillingOptionPrefix = "abnormal_billing_setting."
 // upstream is charged the estimated input, and an upstream or gateway failure
 // before the response started is always refunded.
 //
-// ContinueAfterCloudflareTruncation keeps a relay running after Cloudflare
-// cut an idle connection so the real usage is settled. Upstream new-api has
-// no such behavior.
+// ContinueAfterCloudflareTruncation keeps a relay running after the client
+// connection was cut while idle (Cloudflare, or a downstream gateway's stream
+// timeout) so the real usage is settled. Upstream new-api has no such
+// behavior. The key keeps its historical name.
 //
 // ChargePolicyBlock charges a request upstream refused by a safety policy
 // (cyber_policy and the like). Off, such a request is never charged, as
@@ -47,7 +48,7 @@ func ChargePolicyBlock() bool {
 }
 
 // ContinueAfterCloudflareTruncation reports whether a relay keeps reading
-// upstream after Cloudflare truncated the client connection.
+// upstream after the client connection was cut while idle.
 func ContinueAfterCloudflareTruncation() bool {
 	return abnormalBillingSetting.ContinueAfterCloudflareTruncation
 }
