@@ -550,6 +550,58 @@ func TestCalculateTextQuotaSummaryUsesClaudeBillingUsageBeforeTopLevelUsage(t *t
 	require.Equal(t, 118, summary.Quota)
 }
 
+// An upstream gateway's snapshot is settled only while its cache reads match
+// the response's own usage fields. A snapshot missing the cache reads the
+// response reports would bill them at the full input price.
+func TestCalculateTextQuotaSummaryIgnoresBillingUsageWithOtherCacheReads(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		RelayFormat:     types.RelayFormatOpenAI,
+		OriginModelName: "claude-opus-5-5",
+		PriceData: hosttypes.PriceData{
+			ModelRatio:           1,
+			CompletionRatio:      2,
+			CacheRatio:           0.1,
+			CacheCreationRatio:   1.25,
+			CacheCreation5mRatio: 1.25,
+			CacheCreation1hRatio: 2,
+			GroupRatioInfo:       hosttypes.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+	snapshot := func(cacheRead int) *dto.BillingUsage {
+		return dto.NewClaudeMessagesBillingUsage(&dto.ClaudeUsage{
+			InputTokens:              100,
+			CacheReadInputTokens:     cacheRead,
+			CacheCreationInputTokens: 20,
+			OutputTokens:             7,
+			CacheCreation:            &dto.ClaudeCacheCreationUsage{Ephemeral1hInputTokens: 20},
+		})
+	}
+
+	for _, tc := range []struct {
+		name            string
+		snapshotReads   int
+		wantCacheTokens int
+		wantCache1h     int
+	}{
+		{name: "agreeing snapshot keeps the 1h split", snapshotReads: 900, wantCacheTokens: 900, wantCache1h: 20},
+		{name: "snapshot without the cache reads gives way", snapshotReads: 0, wantCacheTokens: 900, wantCache1h: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			usage := &dto.Usage{PromptTokens: 1020, CompletionTokens: 7, TotalTokens: 1027, BillingUsage: snapshot(tc.snapshotReads)}
+			usage.PromptTokensDetails.CachedTokens = 900
+			usage.PromptTokensDetails.CachedCreationTokens = 20
+
+			summary := calculateTextQuotaSummary(ctx, relayInfo, effectiveBillingUsage(usage))
+
+			assert.Equal(t, tc.wantCacheTokens, summary.CacheTokens)
+			assert.Equal(t, tc.wantCache1h, summary.CacheCreationTokens1h)
+		})
+	}
+}
+
 func TestCalculateTextQuotaSummaryUsesGeminiBillingUsageBeforeTopLevelUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

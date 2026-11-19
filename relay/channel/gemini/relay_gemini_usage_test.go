@@ -810,3 +810,34 @@ func TestGeminiTextGenerationStreamHandlerReadsFinalUsageAfterClientConnectionBr
 	assert.Equal(t, 4000, usage.CompletionTokens)
 	assert.Equal(t, 3100, usage.CompletionTokenDetails.ReasoningTokens)
 }
+
+// Captured from a Vertex Gemini channel behind another gateway: the native
+// usageMetadata reports the cache reads, while the gateway's attached
+// billing_usage snapshot does not. Settling the snapshot billed every cached
+// token at the full input price.
+func TestGeminiTextGenerationStreamHandlerKeepsNativeCacheReadsOverRelaySnapshot(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 300
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-4-argon:streamGenerateContent?alt=sse", nil)
+	body := `data: {"candidates":[{"content":{"role":"model","parts":[{"text":"OK"}]}}],"usageMetadata":{"trafficType":"ON_DEMAND"}}` + "\n\n" +
+		`data: {"candidates":[{"content":{"role":"model","parts":[{"text":""}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":25419,"candidatesTokenCount":5,"totalTokenCount":25424,"cachedContentTokenCount":25419,"trafficType":"ON_DEMAND","promptTokensDetails":[{"modality":"TEXT","tokenCount":25419}],"cacheTokensDetails":[{"modality":"TEXT","tokenCount":25419}],"candidatesTokensDetails":[{"modality":"TEXT","tokenCount":5}],"billing_usage":{"openai_usage":{"claude_cache_creation_1_h_tokens":0,"claude_cache_creation_5_m_tokens":0,"completion_tokens":5,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0,"text_tokens":0},"input_tokens":0,"input_tokens_details":null,"output_tokens":0,"prompt_tokens":25419,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0,"image_tokens":0,"text_tokens":0},"total_tokens":25424},"semantic":"openai","source":"oai_chat"}}}` + "\n\n"
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-4-argon",
+		ChannelMeta:     &relaycommon.ChannelMeta{UpstreamModelName: "gemini-4-argon"},
+		DisablePing:     true,
+	}
+
+	usage, apiErr := GeminiTextGenerationStreamHandler(c, info, &http.Response{Body: io.NopCloser(strings.NewReader(body))})
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	require.NotNil(t, usage.BillingUsage)
+	settled, ok := usage.BillingUsage.CanonicalUsage()
+	require.True(t, ok)
+	assert.Equal(t, 25419, settled.PromptTokens)
+	assert.Equal(t, 25419, settled.PromptTokensDetails.CachedTokens)
+	assert.Equal(t, 5, settled.CompletionTokens)
+}

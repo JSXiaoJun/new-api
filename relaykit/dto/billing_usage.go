@@ -279,6 +279,28 @@ func (usage *BillingUsage) CanonicalUsage() (*Usage, bool) {
 	return nil, false
 }
 
+// AgreesWithReportedInput reports whether a snapshot carried across relay hops
+// matches the input the response reports in its own protocol fields: the
+// prompt total and the cache reads. A relay can attach a stale or partial
+// snapshot, such as an OpenAI one without the cache reads the native Gemini
+// fields report, and settlement prefers the snapshot, so one that disagrees
+// must give way to the native fields. A count of zero means not reported.
+func (usage *BillingUsage) AgreesWithReportedInput(promptTokens, cacheReadTokens int) bool {
+	canonical, ok := usage.CanonicalUsage()
+	if !ok {
+		return false
+	}
+	snapshotPrompt := canonical.PromptTokens
+	if canonical.UsageSemantic == BillingUsageSemanticAnthropic {
+		// Anthropic input_tokens leaves out cache reads and writes.
+		snapshotPrompt = canonical.InputTokens
+	}
+	if promptTokens > 0 && snapshotPrompt != promptTokens {
+		return false
+	}
+	return cacheReadTokens <= 0 || canonical.PromptTokensDetails.CachedTokens == cacheReadTokens
+}
+
 func (usage *BillingUsage) canonicalOpenAIUsage() *Usage {
 	canonical := cloneOpenAIUsage(usage.OpenAIUsage)
 	if canonical.InputTokensDetails != nil {

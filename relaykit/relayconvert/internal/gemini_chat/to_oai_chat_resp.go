@@ -22,6 +22,12 @@ func UsageFromGeminiMetadata(metadata *dto.GeminiUsageMetadata, fallbackPromptTo
 	}
 
 	promptTokens := metadata.PromptTokenCount + metadata.ToolUsePromptTokenCount
+	// A relay's snapshot that disagrees with the native counts, for example
+	// one missing the cache reads, gives way to a snapshot of the native ones.
+	billingUsage := dto.CloneBillingUsage(metadata.BillingUsage)
+	if billingUsage != nil && !billingUsage.AgreesWithReportedInput(promptTokens, metadata.CachedContentTokenCount) {
+		billingUsage = nil
+	}
 	if promptTokens <= 0 && fallbackPromptTokens > 0 {
 		promptTokens = fallbackPromptTokens
 	}
@@ -30,7 +36,7 @@ func UsageFromGeminiMetadata(metadata *dto.GeminiUsageMetadata, fallbackPromptTo
 		PromptTokens:     promptTokens,
 		CompletionTokens: metadata.CandidatesTokenCount + metadata.ThoughtsTokenCount,
 		TotalTokens:      metadata.TotalTokenCount,
-		BillingUsage:     dto.CloneBillingUsage(metadata.BillingUsage),
+		BillingUsage:     billingUsage,
 	}
 	if usage.BillingUsage == nil {
 		usage.BillingUsage = dto.NewGeminiChatBillingUsage(metadata)
