@@ -138,7 +138,19 @@ describe('Lobe icons', () => {
         'SGLang',
         'Sub2API',
         'Wan',
+        'Kimi',
       ])
     )
   })
+
+  it.each(['Kimi', 'Kimi.Color', 'Kimi.Avatar'])(
+    'draws %s as the pink Kimi mark on a tinted tile so the K stays visible',
+    (name) => {
+      const { container } = render(getLobeIcon(name, 26))
+      const svg = container.querySelector('svg')
+      expect(svg).toHaveAttribute('width', '26')
+      expect(svg?.querySelector('rect')).toHaveAttribute('fill', '#ec4899')
+      expect(svg?.querySelector('path')).toHaveAttribute('fill', 'currentColor')
+    }
+  )
 })

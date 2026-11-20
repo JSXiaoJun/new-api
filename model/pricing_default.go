@@ -44,7 +44,7 @@ var defaultVendorIcons = map[string]string{
 	"OpenAI":     "OpenAI",
 	"Anthropic":  "Claude.Color",
 	"Google":     "Gemini.Color",
-	"Moonshot":   "Moonshot",
+	"Moonshot":   "Kimi",
 	"智谱":         "Zhipu.Color",
 	"阿里巴巴":       "Qwen.Color",
 	"DeepSeek":   "DeepSeek.Color",

@@ -35,10 +35,13 @@ import {
 } from 'react'
 
 import sglangLogo from '@/assets/brand-icons/sglang.svg'
+import { IconKimi } from '@/assets/custom/icon-kimi'
 import { IconSub2api } from '@/assets/custom/icon-sub2api'
 import { IconWan } from '@/assets/custom/icon-wan'
 
 const CUSTOM_ICONS: Record<string, ComponentType<{ size?: number }>> = {
+  // Every Kimi variant uses the pink tile: the package's Color K is white.
+  Kimi: IconKimi,
   SGLang: (props) => (
     <img
       src={sglangLogo}

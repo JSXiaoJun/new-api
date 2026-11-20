@@ -45,7 +45,7 @@ export const GROUP_VENDORS: readonly GroupVendorDefinition[] = [
   {
     id: 'domestic',
     labelKey: 'Domestic models',
-    icons: ['DeepSeek.Color', 'Kimi.Color'],
+    icons: ['DeepSeek.Color', 'Kimi'],
   },
   { id: 'google', labelKey: 'Google', icons: ['Gemini.Color'] },
   { id: 'xai', labelKey: 'xAI', icons: ['XAI'] },

@@ -63,6 +63,15 @@ describe('resolveModelProvider', () => {
     )
   })
 
+  it('shows the Kimi icon for Moonshot and Kimi models', () => {
+    for (const model of ['kimi-k2', 'moonshot-v1-8k']) {
+      expect(resolveModelProvider(model)).toMatchObject({
+        name: 'Moonshot',
+        icon: 'Kimi',
+      })
+    }
+  })
+
   it('returns null for unknown models', () => {
     expect(resolveModelProvider('totally-unknown-model')).toBeNull()
   })

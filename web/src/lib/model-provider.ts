@@ -126,7 +126,7 @@ const MODEL_PROVIDER_RULES: readonly ModelProviderRule[] = [
     pattern: /(?:^|[/.:])(?:text-embedding-v\d+|gui-plus|z-image)(?:$|[-_.:])/,
   },
   { name: 'Wan', icon: 'Wan', pattern: /(?:^|[/.:])wan(?:x?\d|[-_])/ },
-  { name: 'Moonshot', icon: 'Moonshot.Color', keywords: ['moonshot', 'kimi-'] },
+  { name: 'Moonshot', icon: 'Kimi', keywords: ['moonshot', 'kimi-'] },
   {
     name: 'MiniMax',
     icon: 'Minimax.Color',
