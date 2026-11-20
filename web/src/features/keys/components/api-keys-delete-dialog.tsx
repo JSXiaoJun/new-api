@@ -34,11 +34,12 @@ import { handleServerError } from '@/lib/handle-server-error'
 
 import { deleteApiKey } from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
-import { useApiKeys } from './api-keys-provider'
+import { useApiKeys, useApiKeysDialog } from './api-keys-provider'
 
 export function ApiKeysDeleteDialog() {
   const { t } = useTranslation()
-  const { open, setOpen, currentRow, triggerRefresh } = useApiKeys()
+  const { setOpen, triggerRefresh } = useApiKeys()
+  const { open, currentRow } = useApiKeysDialog()
   const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDelete = async () => {

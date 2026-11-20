@@ -52,12 +52,23 @@ type DialogType =
 
 type UpstreamUpdateState = ReturnType<typeof useChannelUpstreamUpdates>
 
-type ChannelsContextType = {
+type UpstreamUpdateActions = Pick<
+  UpstreamUpdateState,
+  'openModal' | 'detectChannelUpdates'
+>
+
+// Dialog state lives in its own context: opening or closing a dialog must not
+// re-render every channel row, card, and cell that only needs the setters.
+type ChannelsDialogContextType = {
   open: DialogType
-  setOpen: (open: DialogType) => void
   currentRow: Channel | null
-  setCurrentRow: (row: Channel | null) => void
   currentTag: string | null
+  upstream: UpstreamUpdateState
+}
+
+type ChannelsContextType = {
+  setOpen: (open: DialogType) => void
+  setCurrentRow: (row: Channel | null) => void
   setCurrentTag: (tag: string | null) => void
   enableTagMode: boolean
   setEnableTagMode: (enabled: boolean) => void
@@ -69,7 +80,7 @@ type ChannelsContextType = {
   setSensitiveVisible: (visible: boolean) => void
   priorityActionContainer: HTMLDivElement | null
   setPriorityActionContainer: (container: HTMLDivElement | null) => void
-  upstream: UpstreamUpdateState
+  upstreamActions: UpstreamUpdateActions
 }
 
 // ============================================================================
@@ -79,6 +90,10 @@ type ChannelsContextType = {
 const ChannelsContext = createContext<ChannelsContextType | undefined>(
   undefined
 )
+
+const ChannelsDialogContext = createContext<
+  ChannelsDialogContextType | undefined
+>(undefined)
 
 // ============================================================================
 // Provider
@@ -113,17 +128,19 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
     await queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all })
   }, [queryClient])
   const upstream = useChannelUpstreamUpdates(refreshChannels)
+  const { openModal, detectChannelUpdates } = upstream
+  const upstreamActions = useMemo<UpstreamUpdateActions>(
+    () => ({ openModal, detectChannelUpdates }),
+    [openModal, detectChannelUpdates]
+  )
 
   // useState setters are stable, so the context value only needs to change when
-  // an actual state value changes. Memoizing avoids handing every consumer
+  // an actual list state value changes. Memoizing avoids handing every consumer
   // (including all channel cards/cells) a brand-new object on each render.
   const value = useMemo<ChannelsContextType>(
     () => ({
-      open,
       setOpen,
-      currentRow,
       setCurrentRow,
-      currentTag,
       setCurrentTag,
       enableTagMode,
       setEnableTagMode,
@@ -135,24 +152,28 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
       setSensitiveVisible,
       priorityActionContainer,
       setPriorityActionContainer,
-      upstream,
+      upstreamActions,
     }),
     [
-      open,
-      currentRow,
-      currentTag,
       enableTagMode,
       sorting,
       batchMode,
       sensitiveVisible,
       priorityActionContainer,
-      upstream,
+      upstreamActions,
     ]
+  )
+
+  const dialogValue = useMemo<ChannelsDialogContextType>(
+    () => ({ open, currentRow, currentTag, upstream }),
+    [open, currentRow, currentTag, upstream]
   )
 
   return (
     <ChannelsContext.Provider value={value}>
-      {children}
+      <ChannelsDialogContext.Provider value={dialogValue}>
+        {children}
+      </ChannelsDialogContext.Provider>
     </ChannelsContext.Provider>
   )
 }
@@ -165,6 +186,18 @@ export function useChannels() {
   const context = useContext(ChannelsContext)
   if (!context) {
     throw new Error('useChannels must be used within ChannelsProvider')
+  }
+  return context
+}
+
+/**
+ * Open dialog, its target row/tag, and upstream update state. Read it only in
+ * dialogs and other single components; rows should use `useChannels()`.
+ */
+export function useChannelsDialog() {
+  const context = useContext(ChannelsDialogContext)
+  if (!context) {
+    throw new Error('useChannelsDialog must be used within ChannelsProvider')
   }
   return context
 }

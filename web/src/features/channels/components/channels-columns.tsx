@@ -130,7 +130,7 @@ function parseIonetMeta(otherInfo: string | null | undefined): null | {
  * Upstream update tags (+N / -N) shown on channel name for model-fetchable channels
  */
 function UpstreamUpdateTags({ channel }: { channel: Channel }) {
-  const { upstream, setCurrentRow } = useChannels()
+  const { upstreamActions, setCurrentRow } = useChannels()
   const modelFetchable = useChannelModelFetchable(channel)
   if (!modelFetchable) {
     return null
@@ -159,7 +159,7 @@ function UpstreamUpdateTags({ channel }: { channel: Channel }) {
           onClick={(e: React.MouseEvent) => {
             e.stopPropagation()
             setCurrentRow(channel)
-            upstream.openModal(
+            upstreamActions.openModal(
               channel,
               meta.pendingAddModels,
               meta.pendingRemoveModels,
@@ -178,7 +178,7 @@ function UpstreamUpdateTags({ channel }: { channel: Channel }) {
           onClick={(e: React.MouseEvent) => {
             e.stopPropagation()
             setCurrentRow(channel)
-            upstream.openModal(
+            upstreamActions.openModal(
               channel,
               meta.pendingAddModels,
               meta.pendingRemoveModels,

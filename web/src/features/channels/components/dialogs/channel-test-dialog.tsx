@@ -95,7 +95,7 @@ import type {
   GetChannelsResponse,
   SearchChannelsResponse,
 } from '../../types'
-import { useChannels } from '../channels-provider'
+import { useChannelsDialog } from '../channels-provider'
 
 type ChannelTestDialogProps = {
   open: boolean
@@ -326,7 +326,7 @@ export function ChannelTestDialog({
   open,
   onOpenChange,
 }: ChannelTestDialogProps) {
-  const { currentRow } = useChannels()
+  const { currentRow } = useChannelsDialog()
 
   if (!currentRow) {
     return null

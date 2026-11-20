@@ -28,7 +28,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 import { handleCopyChannel } from '../../lib'
-import { useChannels } from '../channels-provider'
+import { useChannelsDialog } from '../channels-provider'
 
 type CopyChannelDialogProps = {
   open: boolean
@@ -40,7 +40,7 @@ export function CopyChannelDialog({
   onOpenChange,
 }: CopyChannelDialogProps) {
   const { t } = useTranslation()
-  const { currentRow } = useChannels()
+  const { currentRow } = useChannelsDialog()
   const queryClient = useQueryClient()
   const [suffix, setSuffix] = useState('_copy')
   const [resetBalance, setResetBalance] = useState(true)

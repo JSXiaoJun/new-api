@@ -43,7 +43,7 @@ import {
 } from '../../api'
 import { channelsQueryKeys } from '../../lib'
 import type { TagOperationParams } from '../../types'
-import { useChannels } from '../channels-provider'
+import { useChannelsDialog } from '../channels-provider'
 
 type EditTagDialogProps = {
   open: boolean
@@ -52,7 +52,7 @@ type EditTagDialogProps = {
 
 export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
   const { t } = useTranslation()
-  const { currentTag } = useChannels()
+  const { currentTag } = useChannelsDialog()
   const queryClient = useQueryClient()
 
   // Form state

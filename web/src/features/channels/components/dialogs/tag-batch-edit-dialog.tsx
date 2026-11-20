@@ -41,7 +41,7 @@ import {
 } from '../../api'
 import { channelsQueryKeys } from '../../lib'
 import type { TagOperationParams } from '../../types'
-import { useChannels } from '../channels-provider'
+import { useChannelsDialog } from '../channels-provider'
 import { ModelMappingEditor } from '../model-mapping-editor'
 
 type TagBatchEditDialogProps = {
@@ -54,7 +54,7 @@ export function TagBatchEditDialog({
   onOpenChange,
 }: TagBatchEditDialogProps) {
   const { t } = useTranslation()
-  const { currentTag } = useChannels()
+  const { currentTag } = useChannelsDialog()
   const queryClient = useQueryClient()
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)

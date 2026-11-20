@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { CHANNEL_TYPE_VLLM, CHANNEL_TYPE_SGLANG } from '../constants'
-import { useChannels } from './channels-provider'
+import { useChannels, useChannelsDialog } from './channels-provider'
 import { BalanceQueryDialog } from './dialogs/balance-query-dialog'
 import { ChannelTestDialog } from './dialogs/channel-test-dialog'
 import { CopyChannelDialog } from './dialogs/copy-channel-dialog'
@@ -31,7 +31,8 @@ import { UpstreamUpdateDialog } from './dialogs/upstream-update-dialog'
 import { ChannelMutateDrawer } from './drawers/channel-mutate-drawer'
 
 export function ChannelsDialogs() {
-  const { open, setOpen, currentRow, upstream } = useChannels()
+  const { setOpen } = useChannels()
+  const { open, currentRow, upstream } = useChannelsDialog()
 
   return (
     <>

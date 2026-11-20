@@ -24,11 +24,15 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { patchPlanStatus } from '../../api'
-import { useSubscriptions } from '../subscriptions-provider'
+import {
+  useSubscriptions,
+  useSubscriptionsDialog,
+} from '../subscriptions-provider'
 
 export function ToggleStatusDialog() {
   const { t } = useTranslation()
-  const { open, setOpen, currentRow, triggerRefresh } = useSubscriptions()
+  const { setOpen, triggerRefresh } = useSubscriptions()
+  const { open, currentRow } = useSubscriptionsDialog()
   const [loading, setLoading] = useState(false)
 
   if (open !== 'toggle-status' || !currentRow) return null

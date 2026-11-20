@@ -24,7 +24,11 @@ import { SectionPageLayout } from '@/components/layout'
 import { UsersDeleteDialog } from './components/users-delete-dialog'
 import { UsersMutateDrawer } from './components/users-mutate-drawer'
 import { UsersPrimaryButtons } from './components/users-primary-buttons'
-import { UsersProvider, useUsers } from './components/users-provider'
+import {
+  UsersProvider,
+  useUsers,
+  useUsersDialog,
+} from './components/users-provider'
 import { UsersTable } from './components/users-table'
 
 const UserQuotaHistoryDialog = lazy(() =>
@@ -33,22 +37,12 @@ const UserQuotaHistoryDialog = lazy(() =>
   }))
 )
 
-function UsersContent() {
-  const { t } = useTranslation()
-  const { open, setOpen, currentRow } = useUsers()
+function UsersDialogs() {
+  const { setOpen } = useUsers()
+  const { open, currentRow } = useUsersDialog()
 
   return (
     <>
-      <SectionPageLayout fixedContent>
-        <SectionPageLayout.Title>{t('Users')}</SectionPageLayout.Title>
-        <SectionPageLayout.Actions>
-          <UsersPrimaryButtons />
-        </SectionPageLayout.Actions>
-        <SectionPageLayout.Content>
-          <UsersTable />
-        </SectionPageLayout.Content>
-      </SectionPageLayout>
-
       <UsersMutateDrawer
         open={open === 'create' || open === 'update'}
         onOpenChange={(isOpen) => !isOpen && setOpen(null)}
@@ -70,9 +64,20 @@ function UsersContent() {
 }
 
 export function Users() {
+  const { t } = useTranslation()
   return (
     <UsersProvider>
-      <UsersContent />
+      <SectionPageLayout fixedContent>
+        <SectionPageLayout.Title>{t('Users')}</SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          <UsersPrimaryButtons />
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          <UsersTable />
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
+
+      <UsersDialogs />
     </UsersProvider>
   )
 }

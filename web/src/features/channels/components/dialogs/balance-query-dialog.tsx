@@ -39,7 +39,7 @@ import { getCodexUsage, updateChannelBalance } from '../../api'
 import { channelsQueryKeys } from '../../lib'
 import { formatChannelBalanceSummary } from '../../lib/channel-balance'
 import { ChannelBalanceDetails } from '../channel-balance-details'
-import { useChannels } from '../channels-provider'
+import { useChannels, useChannelsDialog } from '../channels-provider'
 import {
   CodexUsageDialog,
   type CodexUsageDialogData,
@@ -53,7 +53,8 @@ type BalanceQueryDialogProps = {
 
 export function BalanceQueryDialog(props: BalanceQueryDialogProps) {
   const { t, i18n } = useTranslation()
-  const { currentRow, setCurrentRow } = useChannels()
+  const { setCurrentRow } = useChannels()
+  const { currentRow } = useChannelsDialog()
   const queryClient = useQueryClient()
   const [isQuerying, setIsQuerying] = useState(false)
   const [balance, setBalance] = useState<number | null>(null)

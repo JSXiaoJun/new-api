@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState } from 'react'
+import React, { createContext, useContext, useMemo, useState } from 'react'
 
 import type {
   Model,
@@ -45,16 +45,23 @@ type DialogType =
   | 'description'
   | null
 
-type ModelsContextType = {
+type DescriptionData = { modelName: string; description: string }
+
+// Dialog state lives in its own context: opening or closing a dialog must not
+// re-render the model table rows that only need the setters.
+type ModelsDialogContextType = {
   open: DialogType
-  setOpen: (open: DialogType) => void
   currentRow: Model | null
-  setCurrentRow: (model: Model | null) => void
   currentVendor: Vendor | null
+  descriptionData: DescriptionData | null
+}
+
+type ModelsContextType = {
+  setOpen: (open: DialogType) => void
+  setCurrentRow: (model: Model | null) => void
   setCurrentVendor: (vendor: Vendor | null) => void
   selectedVendor: string | null
   setSelectedVendor: (vendor: string | null) => void
-  descriptionData: { modelName: string; description: string } | null
   setDescriptionData: (
     data: { modelName: string; description: string } | null
   ) => void
@@ -72,6 +79,10 @@ type ModelsContextType = {
 
 const ModelsContext = createContext<ModelsContextType | undefined>(undefined)
 
+const ModelsDialogContext = createContext<ModelsDialogContextType | undefined>(
+  undefined
+)
+
 // ============================================================================
 // Provider
 // ============================================================================
@@ -81,10 +92,8 @@ export function ModelsProvider({ children }: { children: React.ReactNode }) {
   const [currentRow, setCurrentRow] = useState<Model | null>(null)
   const [currentVendor, setCurrentVendor] = useState<Vendor | null>(null)
   const [selectedVendor, setSelectedVendor] = useState<string | null>(null)
-  const [descriptionData, setDescriptionData] = useState<{
-    modelName: string
-    description: string
-  } | null>(null)
+  const [descriptionData, setDescriptionData] =
+    useState<DescriptionData | null>(null)
   const [syncWizardOptions, setSyncWizardOptions] = useState<{
     locale: SyncLocale
     source: SyncSource
@@ -94,26 +103,32 @@ export function ModelsProvider({ children }: { children: React.ReactNode }) {
   })
   const [tabCategory, setTabCategory] = useState<ModelTabCategory>('metadata')
 
+  const value = useMemo<ModelsContextType>(
+    () => ({
+      setOpen,
+      setCurrentRow,
+      setCurrentVendor,
+      selectedVendor,
+      setSelectedVendor,
+      setDescriptionData,
+      syncWizardOptions,
+      setSyncWizardOptions,
+      tabCategory,
+      setTabCategory,
+    }),
+    [selectedVendor, syncWizardOptions, tabCategory]
+  )
+
+  const dialogValue = useMemo<ModelsDialogContextType>(
+    () => ({ open, currentRow, currentVendor, descriptionData }),
+    [open, currentRow, currentVendor, descriptionData]
+  )
+
   return (
-    <ModelsContext.Provider
-      value={{
-        open,
-        setOpen,
-        currentRow,
-        setCurrentRow,
-        currentVendor,
-        setCurrentVendor,
-        selectedVendor,
-        setSelectedVendor,
-        descriptionData,
-        setDescriptionData,
-        syncWizardOptions,
-        setSyncWizardOptions,
-        tabCategory,
-        setTabCategory,
-      }}
-    >
-      {children}
+    <ModelsContext.Provider value={value}>
+      <ModelsDialogContext.Provider value={dialogValue}>
+        {children}
+      </ModelsDialogContext.Provider>
     </ModelsContext.Provider>
   )
 }
@@ -126,6 +141,18 @@ export function useModels() {
   const context = useContext(ModelsContext)
   if (!context) {
     throw new Error('useModels must be used within ModelsProvider')
+  }
+  return context
+}
+
+/**
+ * Open dialog and its target model/vendor/description. Read it only in dialogs;
+ * table rows should use `useModels()`.
+ */
+export function useModelsDialog() {
+  const context = useContext(ModelsDialogContext)
+  if (!context) {
+    throw new Error('useModelsDialog must be used within ModelsProvider')
   }
   return context
 }

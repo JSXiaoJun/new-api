@@ -57,7 +57,7 @@ import {
   type OllamaModel,
   type PullProgress,
 } from '../../lib/ollama-utils'
-import { useChannels } from '../channels-provider'
+import { useChannelsDialog } from '../channels-provider'
 
 const CHANNEL_TYPE_OLLAMA = 4
 
@@ -70,7 +70,7 @@ export function OllamaModelsDialog({
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const { currentRow } = useChannels()
+  const { currentRow } = useChannelsDialog()
 
   const isOllamaChannel = currentRow?.type === CHANNEL_TYPE_OLLAMA
   const channelId = currentRow?.id

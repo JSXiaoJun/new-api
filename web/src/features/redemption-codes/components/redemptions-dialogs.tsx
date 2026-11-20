@@ -18,10 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { RedemptionsDeleteDialog } from './redemptions-delete-dialog'
 import { RedemptionsMutateDrawer } from './redemptions-mutate-drawer'
-import { useRedemptions } from './redemptions-provider'
+import { useRedemptions, useRedemptionsDialog } from './redemptions-provider'
 
 export function RedemptionsDialogs() {
-  const { open, setOpen, currentRow } = useRedemptions()
+  const { setOpen } = useRedemptions()
+  const { open, currentRow } = useRedemptionsDialog()
   const isUpdate = open === 'update'
 
   return (

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import React, { useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import useDialogState from '@/hooks/use-dialog'
@@ -26,14 +26,19 @@ import { fetchTokenKey, fetchTokenKeysBatch } from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import type { ApiKey, ApiKeysDialogType } from '../types'
 
-type ApiKeysContextType = {
+// Dialog state lives in its own context: opening or closing a dialog must not
+// re-render every key row and cell that only needs the setters.
+type ApiKeysDialogContextType = {
   open: ApiKeysDialogType | null
-  setOpen: (str: ApiKeysDialogType | null) => void
   currentRow: ApiKey | null
+  resolvedKey: string
+}
+
+type ApiKeysContextType = {
+  setOpen: (str: ApiKeysDialogType | null) => void
   setCurrentRow: React.Dispatch<React.SetStateAction<ApiKey | null>>
   refreshTrigger: number
   triggerRefresh: () => void
-  resolvedKey: string
   setResolvedKey: React.Dispatch<React.SetStateAction<string>>
   resolveRealKey: (id: number) => Promise<string | null>
   resolveRealKeysBatch: (ids: number[]) => Promise<Record<number, string>>
@@ -44,6 +49,9 @@ type ApiKeysContextType = {
 }
 
 const ApiKeysContext = React.createContext<ApiKeysContextType | null>(null)
+
+const ApiKeysDialogContext =
+  React.createContext<ApiKeysDialogContextType | null>(null)
 
 export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation()
@@ -154,26 +162,43 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
     [resolvedKeys, t]
   )
 
+  const value = useMemo<ApiKeysContextType>(
+    () => ({
+      setOpen,
+      setCurrentRow,
+      refreshTrigger,
+      triggerRefresh,
+      setResolvedKey,
+      resolveRealKey,
+      resolveRealKeysBatch,
+      resolvedKeys,
+      loadingKeys,
+      copiedKeyId,
+      markKeyCopied,
+    }),
+    [
+      setOpen,
+      refreshTrigger,
+      triggerRefresh,
+      resolveRealKey,
+      resolveRealKeysBatch,
+      resolvedKeys,
+      loadingKeys,
+      copiedKeyId,
+      markKeyCopied,
+    ]
+  )
+
+  const dialogValue = useMemo<ApiKeysDialogContextType>(
+    () => ({ open, currentRow, resolvedKey }),
+    [open, currentRow, resolvedKey]
+  )
+
   return (
-    <ApiKeysContext
-      value={{
-        open,
-        setOpen,
-        currentRow,
-        setCurrentRow,
-        refreshTrigger,
-        triggerRefresh,
-        resolvedKey,
-        setResolvedKey,
-        resolveRealKey,
-        resolveRealKeysBatch,
-        resolvedKeys,
-        loadingKeys,
-        copiedKeyId,
-        markKeyCopied,
-      }}
-    >
-      {children}
+    <ApiKeysContext value={value}>
+      <ApiKeysDialogContext value={dialogValue}>
+        {children}
+      </ApiKeysDialogContext>
     </ApiKeysContext>
   )
 }
@@ -187,4 +212,19 @@ export const useApiKeys = () => {
   }
 
   return apiKeysContext
+}
+
+/**
+ * Open dialog, its target key, and the revealed key it shows. Read it only in
+ * dialogs; table rows should use `useApiKeys()`.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const useApiKeysDialog = () => {
+  const context = React.useContext(ApiKeysDialogContext)
+
+  if (!context) {
+    throw new Error('useApiKeysDialog has to be used within <ApiKeysProvider>')
+  }
+
+  return context
 }

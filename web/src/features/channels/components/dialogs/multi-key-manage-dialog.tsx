@@ -73,7 +73,7 @@ import {
 import { formatChannelBalanceSummary } from '../../lib/channel-balance'
 import type { KeyStatus, MultiKeyConfirmAction } from '../../types'
 import { ChannelBalanceDetails } from '../channel-balance-details'
-import { useChannels } from '../channels-provider'
+import { useChannelsDialog } from '../channels-provider'
 import { StatisticsCard } from './multi-key-statistics-card'
 import { MultiKeyTableRowActions } from './multi-key-table-row-actions'
 
@@ -87,7 +87,7 @@ export function MultiKeyManageDialog({
   onOpenChange,
 }: MultiKeyManageDialogProps) {
   const { t, i18n } = useTranslation()
-  const { currentRow } = useChannels()
+  const { currentRow } = useChannelsDialog()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   // A plugin channel queries the balance of each key.
   const keyBalances =

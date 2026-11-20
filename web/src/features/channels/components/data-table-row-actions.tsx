@@ -85,7 +85,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const channel = row.original
   const modelFetchable = useChannelModelFetchable(channel)
   const balanceQueryable = useChannelBalanceQueryable(channel)
-  const { setOpen, setCurrentRow, upstream } = useChannels()
+  const { setOpen, setCurrentRow, upstreamActions } = useChannels()
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((s) => s.auth.user)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -306,7 +306,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           {/* Detect Upstream Updates (only for fetchable channel types) */}
           {modelFetchable && (
             <DropdownMenuItem
-              onClick={() => upstream.detectChannelUpdates(channel)}
+              onClick={() => upstreamActions.detectChannelUpdates(channel)}
             >
               {t('Upstream Updates')}
               <DropdownMenuShortcut>

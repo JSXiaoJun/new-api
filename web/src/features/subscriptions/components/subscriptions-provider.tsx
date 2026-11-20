@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import React, { useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 
 import {
   getOptionValue,
@@ -24,14 +24,19 @@ import {
 } from '@/features/system-settings/hooks/use-system-options'
 import useDialogState from '@/hooks/use-dialog'
 
-import { type PlanRecord, type SubscriptionsDialogType } from '../types'
+import type { PlanRecord, SubscriptionsDialogType } from '../types'
 
 const CURRENT_COMPLIANCE_TERMS_VERSION = 'v1'
 
-type SubscriptionsContextType = {
+// Dialog state lives in its own context: opening or closing a dialog must not
+// re-render every plan row that only needs the setters.
+type SubscriptionsDialogContextType = {
   open: SubscriptionsDialogType | null
-  setOpen: (str: SubscriptionsDialogType | null) => void
   currentRow: PlanRecord | null
+}
+
+type SubscriptionsContextType = {
+  setOpen: (str: SubscriptionsDialogType | null) => void
   setCurrentRow: React.Dispatch<React.SetStateAction<PlanRecord | null>>
   refreshTrigger: number
   triggerRefresh: () => void
@@ -40,6 +45,9 @@ type SubscriptionsContextType = {
 
 const SubscriptionsContext =
   React.createContext<SubscriptionsContextType | null>(null)
+
+const SubscriptionsDialogContext =
+  React.createContext<SubscriptionsDialogContextType | null>(null)
 
 export function SubscriptionsProvider({
   children,
@@ -59,21 +67,32 @@ export function SubscriptionsProvider({
     complianceOptions['payment_setting.compliance_terms_version'] ===
       CURRENT_COMPLIANCE_TERMS_VERSION
 
-  const triggerRefresh = () => setRefreshTrigger((prev) => prev + 1)
+  const triggerRefresh = useCallback(
+    () => setRefreshTrigger((prev) => prev + 1),
+    []
+  )
+
+  const value = useMemo<SubscriptionsContextType>(
+    () => ({
+      setOpen,
+      setCurrentRow,
+      refreshTrigger,
+      triggerRefresh,
+      complianceConfirmed,
+    }),
+    [setOpen, refreshTrigger, triggerRefresh, complianceConfirmed]
+  )
+
+  const dialogValue = useMemo<SubscriptionsDialogContextType>(
+    () => ({ open, currentRow }),
+    [open, currentRow]
+  )
 
   return (
-    <SubscriptionsContext
-      value={{
-        open,
-        setOpen,
-        currentRow,
-        setCurrentRow,
-        refreshTrigger,
-        triggerRefresh,
-        complianceConfirmed,
-      }}
-    >
-      {children}
+    <SubscriptionsContext value={value}>
+      <SubscriptionsDialogContext value={dialogValue}>
+        {children}
+      </SubscriptionsDialogContext>
     </SubscriptionsContext>
   )
 }
@@ -84,6 +103,21 @@ export const useSubscriptions = () => {
   if (!ctx) {
     throw new Error(
       'useSubscriptions has to be used within <SubscriptionsProvider>'
+    )
+  }
+  return ctx
+}
+
+/**
+ * Open dialog and its target plan. Read it only in dialogs; table rows should
+ * use `useSubscriptions()`.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const useSubscriptionsDialog = () => {
+  const ctx = React.useContext(SubscriptionsDialogContext)
+  if (!ctx) {
+    throw new Error(
+      'useSubscriptionsDialog has to be used within <SubscriptionsProvider>'
     )
   }
   return ctx

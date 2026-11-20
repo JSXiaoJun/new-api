@@ -68,7 +68,7 @@ import {
 } from '../lib'
 import type { ChannelSortBy } from '../types'
 import { ChannelSortControl } from './channel-priority-controls'
-import { useChannels } from './channels-provider'
+import { useChannels, useChannelsDialog } from './channels-provider'
 
 const route = getRouteApi('/_authenticated/channels/')
 
@@ -85,8 +85,8 @@ export function ChannelsPrimaryButtons() {
     batchMode,
     setBatchMode,
     setPriorityActionContainer,
-    upstream,
   } = useChannels()
+  const { upstream } = useChannelsDialog()
   const queryClient = useQueryClient()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showConsistencyDialog, setShowConsistencyDialog] = useState(false)

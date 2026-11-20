@@ -26,10 +26,15 @@ import useDialogState from '@/hooks/use-dialog'
 
 import type { User, UsersDialogType } from '../types'
 
-type UsersContextType = {
+// Dialog state lives in its own context: opening or closing a dialog must not
+// re-render every user row that only needs the setters.
+type UsersDialogContextType = {
   open: UsersDialogType | null
-  setOpen: (str: UsersDialogType | null) => void
   currentRow: User | null
+}
+
+type UsersContextType = {
+  setOpen: (str: UsersDialogType | null) => void
   setCurrentRow: React.Dispatch<React.SetStateAction<User | null>>
   refreshTrigger: number
   triggerRefresh: () => void
@@ -42,6 +47,10 @@ type UsersContextType = {
 }
 
 const UsersContext = React.createContext<UsersContextType | null>(null)
+
+const UsersDialogContext = React.createContext<UsersDialogContextType | null>(
+  null
+)
 
 export function UsersProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useDialogState<UsersDialogType>(null)
@@ -58,11 +67,9 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
     []
   )
 
-  const value = useMemo(
+  const value = useMemo<UsersContextType>(
     () => ({
-      open,
       setOpen,
-      currentRow,
       setCurrentRow,
       refreshTrigger,
       triggerRefresh,
@@ -70,9 +77,7 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
       verificationActive,
     }),
     [
-      open,
       setOpen,
-      currentRow,
       refreshTrigger,
       triggerRefresh,
       requestVerification,
@@ -80,9 +85,14 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
     ]
   )
 
+  const dialogValue = useMemo<UsersDialogContextType>(
+    () => ({ open, currentRow }),
+    [open, currentRow]
+  )
+
   return (
     <UsersContext value={value}>
-      {children}
+      <UsersDialogContext value={dialogValue}>{children}</UsersDialogContext>
       <SecureVerificationDialog {...verification.dialogProps} />
     </UsersContext>
   )
@@ -97,4 +107,19 @@ export const useUsers = () => {
   }
 
   return usersContext
+}
+
+/**
+ * Open dialog and its target user. Read it only in dialogs; table rows should
+ * use `useUsers()`.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const useUsersDialog = () => {
+  const context = React.useContext(UsersDialogContext)
+
+  if (!context) {
+    throw new Error('useUsersDialog has to be used within <UsersProvider>')
+  }
+
+  return context
 }

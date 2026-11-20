@@ -23,17 +23,11 @@ import { PriceSyncDialog } from './dialogs/price-sync-dialog'
 import { SyncWizardDialog } from './dialogs/sync-wizard-dialog'
 import { VendorMutateDialog } from './dialogs/vendor-mutate-dialog'
 import { ModelMutateDrawer } from './drawers/model-mutate-drawer'
-import { useModels } from './models-provider'
+import { useModels, useModelsDialog } from './models-provider'
 
 export function ModelsDialogs() {
-  const {
-    open,
-    setOpen,
-    currentRow,
-    currentVendor,
-    descriptionData,
-    setDescriptionData,
-  } = useModels()
+  const { setOpen, setDescriptionData } = useModels()
+  const { open, currentRow, currentVendor, descriptionData } = useModelsDialog()
 
   return (
     <>

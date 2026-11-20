@@ -19,10 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import { ResetSubscriptionsDialog } from './dialogs/reset-subscriptions-dialog'
 import { ToggleStatusDialog } from './dialogs/toggle-status-dialog'
 import { SubscriptionsMutateDrawer } from './subscriptions-mutate-drawer'
-import { useSubscriptions } from './subscriptions-provider'
+import {
+  useSubscriptions,
+  useSubscriptionsDialog,
+} from './subscriptions-provider'
 
 export function SubscriptionsDialogs() {
-  const { open, setOpen, currentRow } = useSubscriptions()
+  const { setOpen } = useSubscriptions()
+  const { open, currentRow } = useSubscriptionsDialog()
   const isUpdate = open === 'update'
 
   return (

@@ -16,16 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import React, { useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 
 import useDialogState from '@/hooks/use-dialog'
 
-import { type Redemption, type RedemptionsDialogType } from '../types'
+import type { Redemption, RedemptionsDialogType } from '../types'
+
+// Dialog state lives in its own context: opening or closing a dialog must not
+// re-render every redemption row that only needs the setters.
+type RedemptionsDialogContextType = {
+  open: RedemptionsDialogType | null
+  currentRow: Redemption | null
+}
 
 type RedemptionsContextType = {
-  open: RedemptionsDialogType | null
   setOpen: (str: RedemptionsDialogType | null) => void
-  currentRow: Redemption | null
   setCurrentRow: React.Dispatch<React.SetStateAction<Redemption | null>>
   refreshTrigger: number
   triggerRefresh: () => void
@@ -34,6 +39,9 @@ type RedemptionsContextType = {
 const RedemptionsContext = React.createContext<RedemptionsContextType | null>(
   null
 )
+
+const RedemptionsDialogContext =
+  React.createContext<RedemptionsDialogContextType | null>(null)
 
 export function RedemptionsProvider({
   children,
@@ -44,20 +52,26 @@ export function RedemptionsProvider({
   const [currentRow, setCurrentRow] = useState<Redemption | null>(null)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
-  const triggerRefresh = () => setRefreshTrigger((prev) => prev + 1)
+  const triggerRefresh = useCallback(
+    () => setRefreshTrigger((prev) => prev + 1),
+    []
+  )
+
+  const value = useMemo<RedemptionsContextType>(
+    () => ({ setOpen, setCurrentRow, refreshTrigger, triggerRefresh }),
+    [setOpen, refreshTrigger, triggerRefresh]
+  )
+
+  const dialogValue = useMemo<RedemptionsDialogContextType>(
+    () => ({ open, currentRow }),
+    [open, currentRow]
+  )
 
   return (
-    <RedemptionsContext
-      value={{
-        open,
-        setOpen,
-        currentRow,
-        setCurrentRow,
-        refreshTrigger,
-        triggerRefresh,
-      }}
-    >
-      {children}
+    <RedemptionsContext value={value}>
+      <RedemptionsDialogContext value={dialogValue}>
+        {children}
+      </RedemptionsDialogContext>
     </RedemptionsContext>
   )
 }
@@ -73,4 +87,21 @@ export const useRedemptions = () => {
   }
 
   return redemptionsContext
+}
+
+/**
+ * Open dialog and its target code. Read it only in dialogs; table rows should
+ * use `useRedemptions()`.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const useRedemptionsDialog = () => {
+  const context = React.useContext(RedemptionsDialogContext)
+
+  if (!context) {
+    throw new Error(
+      'useRedemptionsDialog has to be used within <RedemptionsProvider>'
+    )
+  }
+
+  return context
 }

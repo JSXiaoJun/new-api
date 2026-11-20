@@ -34,11 +34,12 @@ import { handleServerError } from '@/lib/handle-server-error'
 
 import { deleteRedemption } from '../api'
 import { SUCCESS_MESSAGES } from '../constants'
-import { useRedemptions } from './redemptions-provider'
+import { useRedemptions, useRedemptionsDialog } from './redemptions-provider'
 
 export function RedemptionsDeleteDialog() {
   const { t } = useTranslation()
-  const { open, setOpen, currentRow, triggerRefresh } = useRedemptions()
+  const { setOpen, triggerRefresh } = useRedemptions()
+  const { open, currentRow } = useRedemptionsDialog()
   const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDelete = async () => {

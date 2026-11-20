@@ -25,11 +25,15 @@ import { Switch } from '@/components/ui/switch'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { resetPlanSubscriptions } from '../../api'
-import { useSubscriptions } from '../subscriptions-provider'
+import {
+  useSubscriptions,
+  useSubscriptionsDialog,
+} from '../subscriptions-provider'
 
 export function ResetSubscriptionsDialog() {
   const { t } = useTranslation()
-  const { open, setOpen, currentRow, triggerRefresh } = useSubscriptions()
+  const { setOpen, triggerRefresh } = useSubscriptions()
+  const { open, currentRow } = useSubscriptionsDialog()
   const [advanceResetTime, setAdvanceResetTime] = useState(true)
   const [resetting, setResetting] = useState(false)
   const isOpen = open === 'reset-subscriptions'

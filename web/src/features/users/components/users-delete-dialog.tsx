@@ -27,18 +27,13 @@ import { AuthOperationError } from '@/lib/secure-verification'
 import { deleteUser } from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import { getUserActionMessage } from '../lib'
-import { useUsers } from './users-provider'
+import { useUsers, useUsersDialog } from './users-provider'
 
 export function UsersDeleteDialog() {
   const { t } = useTranslation()
-  const {
-    open,
-    setOpen,
-    currentRow,
-    triggerRefresh,
-    requestVerification,
-    verificationActive,
-  } = useUsers()
+  const { setOpen, triggerRefresh, requestVerification, verificationActive } =
+    useUsers()
+  const { open, currentRow } = useUsersDialog()
   const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDelete = async () => {
