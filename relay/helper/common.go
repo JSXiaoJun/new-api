@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // streamKeepAliveWriter 在业务写入前保活，写入开始时等待心跳退出。
@@ -227,13 +230,46 @@ func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {
 	return nil
 }
 
+// MaskUpstreamErrorFrame masks the selected channel's upstream addresses in
+// the error text of a stream frame the gateway forwards, as ToOpenAIError does
+// for the errors it returns itself: an OpenAI or Claude error chunk, a
+// Responses error event and a failed response. Frames without an error are
+// returned unchanged, so model output is never rewritten.
+func MaskUpstreamErrorFrame(c *gin.Context, data string) string {
+	if !strings.Contains(data, `"error"`) {
+		return data
+	}
+	paths := []string{"error", "error.message", "response.error.message"}
+	if gjson.Get(data, "type").String() == "error" {
+		paths = append(paths, "message")
+	}
+	var upstreamURLs []string
+	if c != nil {
+		upstreamURLs = common.UpstreamAddresses(c)
+	}
+	for _, path := range paths {
+		value := gjson.Get(data, path)
+		if value.Type != gjson.String {
+			continue
+		}
+		masked := common.MaskUserFacingError(value.String(), upstreamURLs...)
+		if masked == value.String() {
+			continue
+		}
+		if updated, err := sjson.Set(data, path, masked); err == nil {
+			data = updated
+		}
+	}
+	return data
+}
+
 func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
 	if requestContextDone(c) {
 		return
 	}
 
 	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s\n", data)})
+	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s\n", MaskUpstreamErrorFrame(c, data))})
 	_ = FlushWriter(c)
 }
 
@@ -246,7 +282,7 @@ func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data st
 	if err := event.Render(c.Writer); err != nil {
 		return err
 	}
-	event.Data = fmt.Sprintf("data: %s", data)
+	event.Data = fmt.Sprintf("data: %s", MaskUpstreamErrorFrame(c, data))
 	if err := event.Render(c.Writer); err != nil {
 		return err
 	}
@@ -262,7 +298,7 @@ func StringData(c *gin.Context, str string) error {
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
 	}
 
-	c.Render(-1, common.CustomEvent{Data: "data: " + str})
+	c.Render(-1, common.CustomEvent{Data: "data: " + MaskUpstreamErrorFrame(c, str)})
 	return FlushWriter(c)
 }
 

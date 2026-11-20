@@ -138,3 +138,9 @@ func MaskEmail(email string) string {
 func MaskSensitiveInfo(str string, upstreamURLs ...string) string {
 	return kitutil.MaskSensitiveInfo(str, upstreamURLs...)
 }
+
+// MaskUserFacingError masks every site an error text names before a customer
+// sees it; see kitutil.MaskUserFacingError.
+func MaskUserFacingError(str string, upstreamURLs ...string) string {
+	return kitutil.MaskUserFacingError(str, upstreamURLs...)
+}

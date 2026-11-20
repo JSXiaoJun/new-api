@@ -152,3 +152,38 @@ func TestMaskSensitiveInfoMasksOnlyTheUpstreamAddress(t *testing.T) {
 		})
 	}
 }
+
+// A customer-facing error names no site at all, so an upstream cannot use it to
+// point customers elsewhere, while dotted identifiers stay readable.
+func TestMaskUserFacingErrorMasksEverySite(t *testing.T) {
+	tests := []struct {
+		name         string
+		upstreamURLs []string
+		input        string
+		want         string
+	}{
+		{
+			name:         "sites other than the upstream",
+			upstreamURLs: []string{"https://api.upstream.example.com"},
+			input:        `quota exhausted, top up at https://shop.other-relay.net/pay?ref=1 or www.other-relay.cn, mail sales@other-relay.co.uk`,
+			want:         `quota exhausted, top up at https://***.net/***?ref=*** or ***.***.cn, mail sales@***.co.uk`,
+		},
+		{
+			name:         "upstream and its IP without a channel address",
+			upstreamURLs: nil,
+			input:        `request to https://api.upstream.example.com/v1/chat failed: dial tcp 10.0.0.1:443, see platform.openai.com/docs`,
+			want:         `request to https://***.com/***/*** failed: dial tcp ***.***.***.***:443, see ***.***.com/docs`,
+		},
+		{
+			name:         "dotted identifiers, file and model names stay readable",
+			upstreamURLs: nil,
+			input:        `messages.0.content.1: unknown event response.output_text.delta for gpt-4.1 in user.info, image.png and config.yaml`,
+			want:         `messages.0.content.1: unknown event response.output_text.delta for gpt-4.1 in user.info, image.png and config.yaml`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, MaskUserFacingError(tt.input, tt.upstreamURLs...))
+		})
+	}
+}

@@ -23,6 +23,10 @@ var (
 	maskBracketedIPv6Pattern = regexp.MustCompile(`\[([0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*)(%[^\]\s]*)?\]`)
 	// maskApiKeyPattern matches patterns like 'api_key:xxx' or "api_key:xxx" to mask the API key value
 	maskApiKeyPattern = regexp.MustCompile(`(['"]?)api_key:([^\s'"]+)(['"]?)`)
+	// maskDomainPattern matches a bare domain on a TLD that sites commonly use.
+	// Dotted identifiers such as response.output_text.delta or user.info, file
+	// names and model names such as gpt-4.1 do not end in one of these.
+	maskDomainPattern = regexp.MustCompile(`(?i)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|cn|io|ai|cc|co|xyz|top|vip|dev|site|online|shop|club|icu|cloud|tech|biz|uk|jp|hk|tw|sg|kr|ru)\b`)
 )
 
 // maskHostTail returns the tail parts of a domain/host that should be preserved.
@@ -100,6 +104,22 @@ func maskURLQuery(rawQuery string) string {
 // https://docs.example.org/errors -> unchanged
 // https://auth.example.org/token?client_secret=s -> https://auth.example.org/token?client_secret=***
 func MaskSensitiveInfo(str string, upstreamURLs ...string) string {
+	return maskText(str, false, upstreamURLs)
+}
+
+// MaskUserFacingError masks an error text before a customer sees it, since an
+// upstream may write anything into it: on top of what MaskSensitiveInfo masks,
+// every URL is masked like an upstream one and every bare domain is masked, so
+// an upstream cannot point customers at its own or any other site.
+// Example: please top up at https://shop.example.net/pay or mail sales@example.org
+// -> please top up at https://***.net/*** or mail sales@***.org
+func MaskUserFacingError(str string, upstreamURLs ...string) string {
+	return maskText(str, true, upstreamURLs)
+}
+
+// maskText masks the upstream addresses and credentials in str, and with
+// everyHost every other URL host and bare domain as well.
+func maskText(str string, everyHost bool, upstreamURLs []string) string {
 	// Mask API keys (e.g., "api_key:AIzaSyAAAaUooTUni8AdaOkSRMda30n_Q4vrV70" -> "api_key:***")
 	str = maskApiKeyPattern.ReplaceAllString(str, "${1}api_key:***${3}")
 
@@ -133,7 +153,7 @@ func MaskSensitiveInfo(str string, upstreamURLs ...string) string {
 			return match
 		}
 		host := strings.TrimSuffix(u.Hostname(), ".")
-		if !slices.ContainsFunc(upstreamHosts, func(upstreamHost string) bool { return strings.EqualFold(upstreamHost, host) }) {
+		if !everyHost && !slices.ContainsFunc(upstreamHosts, func(upstreamHost string) bool { return strings.EqualFold(upstreamHost, host) }) {
 			if u.RawQuery == "" && u.User == nil {
 				return match
 			}
@@ -197,6 +217,9 @@ func MaskSensitiveInfo(str string, upstreamURLs ...string) string {
 		return "[***]"
 	})
 	str = maskIPPattern.ReplaceAllString(str, "***.***.***.***")
+	if everyHost {
+		str = maskDomainPattern.ReplaceAllStringFunc(str, maskHostForPlainDomain)
+	}
 	if len(upstreamHosts) == 0 {
 		return str
 	}

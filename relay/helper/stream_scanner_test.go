@@ -13,8 +13,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -778,4 +780,87 @@ func TestSetEventStreamHeadersBoundsStreamWritesByBudget(t *testing.T) {
 	require.NotEmpty(t, recorder.deadlines)
 	assert.False(t, recorder.deadlines[0].Before(before.Add(streamWriteTimeout+450*time.Second)))
 	assert.Contains(t, recorder.Body.String(), "data: AAAA")
+}
+
+// Error frames forwarded from the upstream stream hide the channel's address
+// the way the gateway's own errors do, and every other frame stays byte-exact.
+func TestStreamWritersMaskUpstreamAddressInErrorFrames(t *testing.T) {
+	const upstreamText = "see https://relay.example.net/v1/chat and relay.example.net at 10.0.0.5"
+	const maskedText = "see https://***.net/***/*** and ***.***.net at ***.***.***.***"
+	cases := []struct {
+		name  string
+		write func(c *gin.Context, data string) error
+		data  string
+		want  string
+	}{
+		{
+			name:  "chat content is untouched",
+			write: StringData,
+			data:  `{"choices":[{"delta":{"content":"` + upstreamText + `"}}]}`,
+			want:  `{"choices":[{"delta":{"content":"` + upstreamText + `"}}]}`,
+		},
+		{
+			name:  "chat error chunk",
+			write: StringData,
+			data:  `{"error":{"message":"` + upstreamText + `","code":"cyber_policy"}}`,
+			want:  `{"error":{"message":"` + maskedText + `","code":"cyber_policy"}}`,
+		},
+		{
+			name:  "string error chunk",
+			write: StringData,
+			data:  `{"error":"` + upstreamText + `"}`,
+			want:  `{"error":"` + maskedText + `"}`,
+		},
+		{
+			name:  "error chunk naming another site",
+			write: StringData,
+			data:  `{"error":{"message":"top up at https://shop.other-relay.net/pay or other-relay.cn"}}`,
+			want:  `{"error":{"message":"top up at https://***.net/*** or ***.cn"}}`,
+		},
+		{
+			name: "responses error event",
+			write: func(c *gin.Context, data string) error {
+				return ResponseChunkData(c, dto.ResponsesStreamResponse{Type: "error"}, data)
+			},
+			data: `{"type":"error","code":"server_error","message":"` + upstreamText + `"}`,
+			want: `{"type":"error","code":"server_error","message":"` + maskedText + `"}`,
+		},
+		{
+			name: "responses failed event",
+			write: func(c *gin.Context, data string) error {
+				return ResponseChunkData(c, dto.ResponsesStreamResponse{Type: "response.failed"}, data)
+			},
+			data: `{"type":"response.failed","response":{"status":"failed","error":{"code":"server_error","message":"` + upstreamText + `"}}}`,
+			want: `{"type":"response.failed","response":{"status":"failed","error":{"code":"server_error","message":"` + maskedText + `"}}}`,
+		},
+		{
+			name: "responses text delta is untouched",
+			write: func(c *gin.Context, data string) error {
+				return ResponseChunkData(c, dto.ResponsesStreamResponse{Type: "response.output_text.delta"}, data)
+			},
+			data: `{"type":"response.output_text.delta","delta":"` + upstreamText + `"}`,
+			want: `{"type":"response.output_text.delta","delta":"` + upstreamText + `"}`,
+		},
+		{
+			name: "claude error event",
+			write: func(c *gin.Context, data string) error {
+				ClaudeChunkData(c, dto.ClaudeResponse{Type: "error"}, data)
+				return nil
+			},
+			data: `{"type":"error","error":{"type":"overloaded_error","message":"` + upstreamText + `"}}`,
+			want: `{"type":"error","error":{"type":"overloaded_error","message":"` + maskedText + `"}}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, "https://relay.example.net")
+
+			require.NoError(t, tc.write(c, tc.data))
+
+			assert.Contains(t, recorder.Body.String(), "data: "+tc.want)
+		})
+	}
 }

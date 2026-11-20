@@ -179,9 +179,10 @@ func TestProcessChannelErrorLogRecordsRoutedAutoGroup(t *testing.T) {
 	}
 }
 
-// Only addresses the admin configured are masked: a channel on the base URL
-// new-api presets reaches a public official endpoint, and so do adaptors that
-// build official endpoints themselves.
+// Only addresses the admin configured count as the upstream's: a channel on the
+// base URL new-api presets reaches a public official endpoint, and so do
+// adaptors that build official endpoints themselves. Errors shown to customers
+// mask every site anyway; see kitutil.MaskUserFacingError.
 func TestUpstreamAddressesMaskOnlyConfiguredAddresses(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -238,9 +239,8 @@ func TestUpstreamAddressesMaskOnlyConfiguredAddresses(t *testing.T) {
 			common.SetContextKey(c, constant.ContextKeyChannelType, tc.channelType)
 			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, tc.baseURL)
 			common.SetContextKey(c, constant.ContextKeyUpstreamRequestOrigin, tc.origin)
-			apiErr := types.NewErrorWithStatusCode(errors.New(tc.message), types.ErrorCodeBadResponseStatusCode, http.StatusBadGateway)
 
-			assert.Equal(t, tc.want, apiErr.ToOpenAIError(common.UpstreamAddresses(c)...).Message)
+			assert.Equal(t, tc.want, common.MaskSensitiveInfo(tc.message, common.UpstreamAddresses(c)...))
 		})
 	}
 }

@@ -149,7 +149,8 @@ func (e *NewAPIError) ErrorWithStatusCode() string {
 }
 
 // MaskSensitiveError masks the upstream addresses of the channel that produced
-// the error in the error text; see kitutil.MaskSensitiveInfo.
+// the error, and every other site it names, in the error text; see
+// kitutil.MaskUserFacingError.
 func (e *NewAPIError) MaskSensitiveError(upstreamURLs ...string) string {
 	if e == nil {
 		return ""
@@ -161,7 +162,7 @@ func (e *NewAPIError) MaskSensitiveError(upstreamURLs ...string) string {
 	if e.errorCode == ErrorCodeCountTokenFailed {
 		return errStr
 	}
-	return kitutil.MaskSensitiveInfo(errStr, upstreamURLs...)
+	return kitutil.MaskUserFacingError(errStr, upstreamURLs...)
 }
 
 func (e *NewAPIError) MaskSensitiveErrorWithStatusCode(upstreamURLs ...string) string {
@@ -209,7 +210,7 @@ func (e *NewAPIError) ToOpenAIError(upstreamURLs ...string) OpenAIError {
 		}
 	}
 	if e.errorCode != ErrorCodeCountTokenFailed {
-		result.Message = kitutil.MaskSensitiveInfo(result.Message, upstreamURLs...)
+		result.Message = kitutil.MaskUserFacingError(result.Message, upstreamURLs...)
 	}
 	if result.Message == "" {
 		result.Message = string(e.errorType)
@@ -239,7 +240,7 @@ func (e *NewAPIError) ToClaudeError(upstreamURLs ...string) ClaudeError {
 		}
 	}
 	if e.errorCode != ErrorCodeCountTokenFailed {
-		result.Message = kitutil.MaskSensitiveInfo(result.Message, upstreamURLs...)
+		result.Message = kitutil.MaskUserFacingError(result.Message, upstreamURLs...)
 	}
 	if result.Message == "" {
 		result.Message = string(e.errorType)
