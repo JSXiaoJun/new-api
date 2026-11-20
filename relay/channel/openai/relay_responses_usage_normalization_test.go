@@ -280,3 +280,24 @@ func TestMergeResponsesUsageKeepsNestedBillingUsageMonotonic(t *testing.T) {
 	assert.Equal(t, 7, dst.BillingUsage.OpenAIUsage.CompletionTokens)
 	assert.Equal(t, 57, dst.BillingUsage.OpenAIUsage.TotalTokens)
 }
+
+// An upstream new-api relaying Claude behind /v1/responses reports the 5m/1h
+// cache-write split only in the claude_cache_creation_* fields. Normalizing
+// must keep it, or every write settles at the 5m price once the nested
+// snapshot is not used.
+func TestNormalizeResponsesUsageKeepsClaudeCacheWriteSplit(t *testing.T) {
+	src := &dto.Usage{
+		InputTokens:                 30000,
+		OutputTokens:                300,
+		InputTokensDetails:          &dto.InputTokenDetails{CachedTokens: 24000, CachedCreationTokens: 5000},
+		ClaudeCacheCreation5mTokens: 2000,
+		ClaudeCacheCreation1hTokens: 3000,
+	}
+
+	usage := normalizeResponsesUsage(src, 0)
+
+	require.NotNil(t, usage)
+	assert.Equal(t, 2000, usage.ClaudeCacheCreation5mTokens)
+	assert.Equal(t, 3000, usage.ClaudeCacheCreation1hTokens)
+	assert.Equal(t, 5000, usage.PromptTokensDetails.CachedCreationTokens)
+}

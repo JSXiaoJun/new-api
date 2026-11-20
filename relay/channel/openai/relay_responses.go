@@ -537,6 +537,10 @@ func mergeResponsesUsage(dst *dto.Usage, src *dto.Usage) {
 	dst.CacheCreationInputTokens = maxResponsesUsageInt(dst.CacheCreationInputTokens, src.CacheCreationInputTokens)
 	dst.CacheWriteTokens = maxResponsesUsageInt(dst.CacheWriteTokens, src.CacheWriteTokens)
 	dst.CacheCreationTokens = maxResponsesUsageInt(dst.CacheCreationTokens, src.CacheCreationTokens)
+	// An upstream new-api relaying Claude reports the 5m/1h cache-write split
+	// only in these fields; without them every write settles at the 5m price.
+	dst.ClaudeCacheCreation5mTokens = maxResponsesUsageInt(dst.ClaudeCacheCreation5mTokens, src.ClaudeCacheCreation5mTokens)
+	dst.ClaudeCacheCreation1hTokens = maxResponsesUsageInt(dst.ClaudeCacheCreation1hTokens, src.ClaudeCacheCreation1hTokens)
 	inputDetails := dto.InputTokenDetails{}
 	if src.InputTokensDetails != nil {
 		inputDetails = *src.InputTokensDetails
@@ -611,6 +615,10 @@ func mergeResponsesUsageFieldsWithoutBilling(dst, src *dto.Usage) {
 	dst.CacheCreationInputTokens = maxResponsesUsageInt(dst.CacheCreationInputTokens, src.CacheCreationInputTokens)
 	dst.CacheWriteTokens = maxResponsesUsageInt(dst.CacheWriteTokens, src.CacheWriteTokens)
 	dst.CacheCreationTokens = maxResponsesUsageInt(dst.CacheCreationTokens, src.CacheCreationTokens)
+	// An upstream new-api relaying Claude reports the 5m/1h cache-write split
+	// only in these fields; without them every write settles at the 5m price.
+	dst.ClaudeCacheCreation5mTokens = maxResponsesUsageInt(dst.ClaudeCacheCreation5mTokens, src.ClaudeCacheCreation5mTokens)
+	dst.ClaudeCacheCreation1hTokens = maxResponsesUsageInt(dst.ClaudeCacheCreation1hTokens, src.ClaudeCacheCreation1hTokens)
 	dst.PromptTokensDetails.CachedTokens = maxResponsesUsageInt(dst.PromptTokensDetails.CachedTokens, src.PromptTokensDetails.CachedTokens, inputDetails.CachedTokens, src.PromptCacheHitTokens, src.CacheReadInputTokens, src.CacheReadTokens)
 	dst.PromptTokensDetails.CachedCreationTokens = maxResponsesUsageInt(dst.PromptTokensDetails.CachedCreationTokens, src.PromptTokensDetails.CachedCreationTokens, inputDetails.CachedCreationTokens, src.CacheCreationInputTokens, src.CacheCreationTokens)
 	dst.PromptTokensDetails.CacheCreationTokens = maxResponsesUsageInt(dst.PromptTokensDetails.CacheCreationTokens, src.PromptTokensDetails.CacheCreationTokens, inputDetails.CacheCreationTokens, src.CacheCreationTokens)

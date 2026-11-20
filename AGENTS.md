@@ -137,6 +137,8 @@ Inside `relaykit/`, use `kitutil.*` from `relaykit/relayconvert/kitutil/json.go`
 
 Tasks that touch none of these (for example unrelated frontend work, authentication, database migrations, or protocol conversion that leaves usage untouched) do not need to read it.
 
+Billing changes are checked end to end with the simulated upstream in `scripts/billing-e2e/` (every provider dialect, client protocol and failure scenario, both pricing modes); `.agents/rules/billing.md` says when it is mandatory, and `scripts/billing-e2e/README.md` how to run it.
+
 **Backend test quality:** Backend tests must protect real behavior, API contracts, billing/accounting invariants, data compatibility, or regression paths.
 
 - **Do not scatter tests for a small change:** For a focused feature or fix, extend an existing suitable test file first. If a new test file is necessary, add at most one and consolidate the key regression cases there. MUST NOT create separate test files for the same small feature across `controller/`, `service/`, `setting/`, or other layers merely because its call chain crosses those layers. Do not repeat fixtures and assertions at each layer. Keep the cases compact and focused on observable behavior; the number of production files touched is not a reason to add more test files.
