@@ -129,6 +129,78 @@ describe('Recharge order filters', () => {
     }
   )
 
+  test('choosing a payment method resets the page, filters the list and clears on reset', async () => {
+    const user = userEvent.setup()
+    await screen.findByText('MATCH-order')
+    await user.click(screen.getByRole('button', { name: 'Go to next page' }))
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
+        params: { p: 2, page_size: 20, keyword: undefined, user_id: undefined },
+      })
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Payment Method' }))
+    await user.click(await screen.findByRole('option', { name: 'USDT' }))
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
+        params: {
+          p: 1,
+          page_size: 20,
+          keyword: undefined,
+          user_id: undefined,
+          payment_method: 'usdt',
+        },
+      })
+    })
+
+    await user.click(await screen.findByRole('option', { name: 'WeChat Pay' }))
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
+        params: {
+          p: 1,
+          page_size: 20,
+          keyword: undefined,
+          user_id: undefined,
+          payment_method: 'wxpay',
+        },
+      })
+    })
+    expect(
+      screen.getByRole('button', { name: /^Payment Method.*WeChat Pay$/ })
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('option', { name: 'WeChat Pay' }))
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
+        params: {
+          p: 1,
+          page_size: 20,
+          keyword: undefined,
+          user_id: undefined,
+          payment_method: undefined,
+        },
+      })
+    })
+    expect(
+      screen.getByRole('button', { name: 'Payment Method' })
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('option', { name: 'Alipay' }))
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
+        params: {
+          p: 1,
+          page_size: 20,
+          keyword: undefined,
+          user_id: undefined,
+          payment_method: undefined,
+        },
+      })
+    })
+  })
+
   test('reset clears both filters and returns to the first unfiltered page', async () => {
     const user = userEvent.setup()
     await screen.findByText('MATCH-order')

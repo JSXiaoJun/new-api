@@ -17,7 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { type ReactNode, useState } from 'react'
+import { RefreshCw } from 'lucide-react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
@@ -31,32 +32,99 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatQuota, formatTimestamp } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 import { getUsdtDeposits } from '../api'
 import { DEPOSIT_STATUS, USDT_QUERY_KEYS } from '../lib'
 import type { UsdtDeposit } from '../types'
 
-const PAGE_SIZE = 10
+/** How long the refresh button stays disabled after a click. */
+export const USDT_REFRESH_COOLDOWN_MS = 3_000
+/** Shortest spin of the refresh icon, so a fast refresh is still visible. */
+const MIN_SPIN_MS = 800
 
-export function UsdtDepositHistory() {
+/**
+ * The user's latest USDT deposits. The list refreshes itself every 15
+ * seconds and on demand, and reports newly credited deposits so the wallet
+ * can refresh the balance.
+ */
+export function UsdtDepositHistory(props: { onCredited: () => void }) {
   const { t } = useTranslation()
-  const [page, setPage] = useState(1)
+  const [coolingDown, setCoolingDown] = useState(false)
+  const [spinning, setSpinning] = useState(false)
   const query = useQuery({
-    queryKey: USDT_QUERY_KEYS.deposits(page),
-    queryFn: () => getUsdtDeposits(page, PAGE_SIZE),
+    queryKey: USDT_QUERY_KEYS.deposits,
+    queryFn: getUsdtDeposits,
     refetchInterval: 15_000,
   })
-  const items = query.data?.items ?? []
-  const total = query.data?.total ?? 0
-  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const items = query.data ?? []
+  const creditedIdsRef = useRef<Set<number> | null>(null)
+  const onCredited = props.onCredited
+
+  useEffect(() => {
+    if (!query.data) return
+    const credited = new Set(
+      query.data.filter((d) => d.status === 'credited').map((d) => d.id)
+    )
+    const previous = creditedIdsRef.current
+    creditedIdsRef.current = credited
+    if (previous && [...credited].some((id) => !previous.has(id))) {
+      onCredited()
+    }
+  }, [query.data, onCredited])
+
+  useEffect(() => {
+    if (query.isFetching) {
+      setSpinning(true)
+      return
+    }
+    const timer = window.setTimeout(() => setSpinning(false), MIN_SPIN_MS)
+    return () => window.clearTimeout(timer)
+  }, [query.isFetching])
+
+  useEffect(() => {
+    if (!coolingDown) return
+    const timer = window.setTimeout(
+      () => setCoolingDown(false),
+      USDT_REFRESH_COOLDOWN_MS
+    )
+    return () => window.clearTimeout(timer)
+  }, [coolingDown])
 
   return (
     <section className='space-y-2' aria-label={t('USDT deposit history')}>
-      <div className='flex items-center justify-between'>
-        <h3 className='text-sm font-medium'>{t('USDT deposit history')}</h3>
-        <span className='text-muted-foreground text-xs'>
-          {t('Refreshes every 15 seconds')}
-        </span>
+      <div className='flex items-center justify-between gap-2'>
+        <h3 className='text-sm font-medium'>
+          {t('USDT deposit history')}
+          <span className='text-muted-foreground ms-2 text-xs font-normal'>
+            {t('Latest 10 only')}
+          </span>
+        </h3>
+        <div className='text-muted-foreground flex items-center gap-1 text-xs'>
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon'
+            className='text-muted-foreground hover:text-foreground size-7'
+            aria-label={t('Refresh')}
+            title={t('Refresh')}
+            aria-busy={query.isFetching}
+            disabled={spinning || coolingDown}
+            onClick={() => {
+              setCoolingDown(true)
+              void query.refetch()
+            }}
+          >
+            <RefreshCw
+              aria-hidden='true'
+              className={cn(
+                'size-3.5',
+                spinning && 'animate-spin motion-reduce:animate-none'
+              )}
+            />
+          </Button>
+          <span>{t('Refreshes every 15 seconds')}</span>
+        </div>
       </div>
       {items.length === 0 ? (
         <p className='text-muted-foreground rounded-lg border border-dashed p-4 text-center text-sm'>
@@ -80,26 +148,6 @@ export function UsdtDepositHistory() {
             ))}
           </TableBody>
         </Table>
-      )}
-      {lastPage > 1 && (
-        <div className='flex justify-end gap-2'>
-          <Button
-            size='sm'
-            variant='outline'
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            {t('Previous')}
-          </Button>
-          <Button
-            size='sm'
-            variant='outline'
-            disabled={page >= lastPage}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            {t('Next')}
-          </Button>
-        </div>
       )}
     </section>
   )

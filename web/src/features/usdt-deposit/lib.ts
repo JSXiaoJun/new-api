@@ -22,7 +22,7 @@ import type { UsdtDepositStatus, UsdtOutcome } from './types'
 
 export const USDT_QUERY_KEYS = {
   info: ['usdt', 'info'] as const,
-  deposits: (page: number) => ['usdt', 'deposits', page] as const,
+  deposits: ['usdt', 'deposits'] as const,
   settings: ['usdt', 'settings'] as const,
   adminDeposits: (page: number, filters: string) =>
     ['usdt', 'admin-deposits', page, filters] as const,
@@ -49,7 +49,7 @@ export interface ClaimSummary {
   belowMin: number
 }
 
-/** Summarizes the outcomes of one claimed transaction for the user. */
+/** Summarizes the outcomes of one checked transaction. */
 export function summarizeOutcomes(outcomes: UsdtOutcome[]): ClaimSummary {
   const summary: ClaimSummary = {
     creditedQuota: 0,

@@ -40,11 +40,13 @@ export type GetTopUpOrdersParams = {
   page_size?: number
   keyword?: string
   user_id?: number
+  payment_method?: string
 }
 
 export type ExportTopUpOrdersParams = {
   keyword?: string
   user_id?: number
+  payment_method?: string
   /** Creation time bounds in seconds. */
   start_timestamp?: number
   end_timestamp?: number

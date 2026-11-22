@@ -832,9 +832,8 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 	return topups, total, nil
 }
 
-// SearchAllTopUps 按订单号和用户 ID 搜索全平台充值记录（管理员使用，不限制时间窗口）。
-// userId 为 0 时不限制用户。
-func SearchAllTopUps(keyword string, pageInfo *common.PageInfo, userId int) (topups []*AdminTopUp, total int64, err error) {
+// SearchAllTopUps 按订单号、用户 ID 和支付方式搜索全平台充值记录（管理员使用，不限制时间窗口）。
+func SearchAllTopUps(filter TopUpFilter, pageInfo *common.PageInfo) (topups []*AdminTopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -845,17 +844,10 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo, userId int) (top
 		}
 	}()
 
-	query := tx.Model(&TopUp{})
-	if userId != 0 {
-		query = query.Where("user_id = ?", userId)
-	}
-	if keyword != "" {
-		pattern, perr := sanitizeLikePattern(keyword)
-		if perr != nil {
-			tx.Rollback()
-			return nil, 0, perr
-		}
-		query = query.Where("trade_no LIKE ? ESCAPE '!'", pattern)
+	query, err := filter.apply(tx.Model(&TopUp{}))
+	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
 	}
 
 	if err = query.Limit(searchTopUpCountHardLimit).Count(&total).Error; err != nil {
@@ -883,13 +875,37 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo, userId int) (top
 	return topups, total, nil
 }
 
-// TopUpExportFilter selects the top-up orders of an export. Zero fields do
-// not filter; the timestamps bound the order creation time.
-type TopUpExportFilter struct {
+// TopUpFilter selects top-up orders for the admin order list and export. Zero
+// fields do not filter; the timestamps bound the order creation time.
+type TopUpFilter struct {
 	Keyword        string
 	UserId         int
+	PaymentMethod  string
 	StartTimestamp int64
 	EndTimestamp   int64
+}
+
+func (filter TopUpFilter) apply(query *gorm.DB) (*gorm.DB, error) {
+	if filter.UserId != 0 {
+		query = query.Where("user_id = ?", filter.UserId)
+	}
+	if filter.Keyword != "" {
+		pattern, err := sanitizeLikePattern(filter.Keyword)
+		if err != nil {
+			return nil, err
+		}
+		query = query.Where("trade_no LIKE ? ESCAPE '!'", pattern)
+	}
+	if filter.PaymentMethod != "" {
+		query = query.Where("payment_method = ?", filter.PaymentMethod)
+	}
+	if filter.StartTimestamp != 0 {
+		query = query.Where("create_time >= ?", filter.StartTimestamp)
+	}
+	if filter.EndTimestamp != 0 {
+		query = query.Where("create_time <= ?", filter.EndTimestamp)
+	}
+	return query, nil
 }
 
 const topUpExportBatchSize = 500
@@ -897,24 +913,11 @@ const topUpExportBatchSize = 500
 // StreamAllTopUps calls fn with each top-up order matching filter, newest
 // first, with its user. Orders are read in batches by id, so an export never
 // holds the whole result in memory or keeps one query open.
-func StreamAllTopUps(ctx context.Context, filter TopUpExportFilter, fn func(*AdminTopUp) error) error {
+func StreamAllTopUps(ctx context.Context, filter TopUpFilter, fn func(*AdminTopUp) error) error {
 	db := DB.WithContext(ctx)
-	query := db.Model(&TopUp{})
-	if filter.UserId != 0 {
-		query = query.Where("user_id = ?", filter.UserId)
-	}
-	if filter.Keyword != "" {
-		pattern, err := sanitizeLikePattern(filter.Keyword)
-		if err != nil {
-			return err
-		}
-		query = query.Where("trade_no LIKE ? ESCAPE '!'", pattern)
-	}
-	if filter.StartTimestamp != 0 {
-		query = query.Where("create_time >= ?", filter.StartTimestamp)
-	}
-	if filter.EndTimestamp != 0 {
-		query = query.Where("create_time <= ?", filter.EndTimestamp)
+	query, err := filter.apply(db.Model(&TopUp{}))
+	if err != nil {
+		return err
 	}
 	query = query.Session(&gorm.Session{})
 

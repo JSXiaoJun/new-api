@@ -1133,10 +1133,14 @@ func topUpUserIdFromQuery(c *gin.Context) (int, bool) {
 // GetAllTopUps 管理员获取全平台充值记录
 func GetAllTopUps(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	keyword := c.Query("keyword")
 	userId, ok := topUpUserIdFromQuery(c)
 	if !ok {
 		return
+	}
+	filter := model.TopUpFilter{
+		Keyword:       c.Query("keyword"),
+		UserId:        userId,
+		PaymentMethod: strings.TrimSpace(c.Query("payment_method")),
 	}
 
 	var (
@@ -1144,8 +1148,8 @@ func GetAllTopUps(c *gin.Context) {
 		total  int64
 		err    error
 	)
-	if keyword != "" || userId > 0 {
-		topups, total, err = model.SearchAllTopUps(keyword, pageInfo, userId)
+	if filter.Keyword != "" || filter.UserId > 0 || filter.PaymentMethod != "" {
+		topups, total, err = model.SearchAllTopUps(filter, pageInfo)
 	} else {
 		topups, total, err = model.GetAllTopUps(pageInfo)
 	}
@@ -1159,17 +1163,19 @@ func GetAllTopUps(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
-// ExportAllTopUps streams the top-up orders matching the order number, user
-// and creation time search as one JSON order per line, newest first, and ends
-// with an API response object: success with the order count, or the failure.
+// ExportAllTopUps streams the top-up orders matching the order number, user,
+// payment method and creation time search as one JSON order per line, newest
+// first, and ends with an API response object: success with the order count,
+// or the failure.
 func ExportAllTopUps(c *gin.Context) {
 	userId, ok := topUpUserIdFromQuery(c)
 	if !ok {
 		return
 	}
-	filter := model.TopUpExportFilter{
-		Keyword: strings.TrimSpace(c.Query("keyword")),
-		UserId:  userId,
+	filter := model.TopUpFilter{
+		Keyword:       strings.TrimSpace(c.Query("keyword")),
+		UserId:        userId,
+		PaymentMethod: strings.TrimSpace(c.Query("payment_method")),
 	}
 	filter.StartTimestamp, _ = strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	filter.EndTimestamp, _ = strconv.ParseInt(c.Query("end_timestamp"), 10, 64)

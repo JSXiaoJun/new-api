@@ -35,6 +35,7 @@ export async function getTopUpOrders(
       page_size: params.page_size ?? 20,
       keyword: params.keyword?.trim() || undefined,
       user_id: params.user_id,
+      payment_method: params.payment_method || undefined,
     },
   })
   return response.data
@@ -52,6 +53,7 @@ export function exportTopUpOrders(
   const keyword = params.keyword?.trim()
   if (keyword) query.set('keyword', keyword)
   if (params.user_id !== undefined) query.set('user_id', String(params.user_id))
+  if (params.payment_method) query.set('payment_method', params.payment_method)
   if (params.start_timestamp !== undefined) {
     query.set('start_timestamp', String(params.start_timestamp))
   }

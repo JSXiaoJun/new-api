@@ -17,25 +17,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  claimUsdtDeposit,
-  createUsdtAddress,
-  getUsdtDeposits,
-  getUsdtInfo,
-} from '../api'
+import { createUsdtAddress, getUsdtDeposits, getUsdtInfo } from '../api'
+import { USDT_REFRESH_COOLDOWN_MS } from '../components/usdt-deposit-history'
 import { UsdtDepositPanel } from '../components/usdt-deposit-panel'
-import type { UsdtInfo } from '../types'
+import type { UsdtDeposit, UsdtInfo } from '../types'
 
 vi.mock('../api', () => ({
   getUsdtInfo: vi.fn(),
   createUsdtAddress: vi.fn(),
   getUsdtDeposits: vi.fn(),
-  claimUsdtDeposit: vi.fn(),
 }))
 
 vi.mock('sonner', () => ({
@@ -63,7 +58,30 @@ function info(addresses: Record<string, string>): UsdtInfo {
   return { enabled: true, networks, addresses, rate: '1', rate_mode: 'fixed' }
 }
 
-function renderCard(onBeforeAddress: () => boolean = () => true) {
+function deposit(id: number): UsdtDeposit {
+  return {
+    id,
+    chain: 'bsc',
+    tx_hash: `0x${String(id).padStart(64, '0')}`,
+    log_index: 0,
+    user_id: 1,
+    address: '0xabc',
+    address_display: '0xAbC',
+    from_address: '0xdef',
+    amount: '5',
+    rate: '1',
+    quota: 2500000,
+    status: 'credited',
+    source: 'scan',
+    created_at: 1787124215,
+    credited_at: 1787124220,
+    tx_url: '',
+  }
+}
+
+function renderCard(
+  options: { onBeforeAddress?: () => boolean; onCredited?: () => void } = {}
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -71,16 +89,18 @@ function renderCard(onBeforeAddress: () => boolean = () => true) {
     <QueryClientProvider client={client}>{props.children}</QueryClientProvider>
   )
   return render(
-    <UsdtDepositPanel onBeforeAddress={onBeforeAddress} onCredited={vi.fn()} />,
-    {
-      wrapper,
-    }
+    <UsdtDepositPanel
+      onBeforeAddress={options.onBeforeAddress ?? (() => true)}
+      onCredited={options.onCredited ?? vi.fn()}
+    />,
+    { wrapper }
   )
 }
 
 describe('UsdtDepositPanel', () => {
   afterEach(() => {
     vi.clearAllMocks()
+    vi.useRealTimers()
   })
 
   it('says USDT is unavailable when no network is enabled', async () => {
@@ -97,18 +117,13 @@ describe('UsdtDepositPanel', () => {
   it('requests the address of the selected network only after the purchase agreement check passes', async () => {
     const user = userEvent.setup()
     vi.mocked(getUsdtInfo).mockResolvedValue(info({}))
-    vi.mocked(getUsdtDeposits).mockResolvedValue({
-      page: 1,
-      page_size: 10,
-      total: 0,
-      items: [],
-    })
+    vi.mocked(getUsdtDeposits).mockResolvedValue([])
     vi.mocked(createUsdtAddress).mockResolvedValue({
       chain: 'tron',
       address: 'T123',
     })
     const agreement = vi.fn().mockReturnValueOnce(false).mockReturnValue(true)
-    renderCard(agreement)
+    renderCard({ onBeforeAddress: agreement })
 
     await user.click(
       await screen.findByRole('button', { name: 'TRON (TRC20)' })
@@ -123,45 +138,95 @@ describe('UsdtDepositPanel', () => {
     )
   })
 
-  it('shows the permanent address and claims a deposit only with a valid transaction hash', async () => {
-    const user = userEvent.setup()
+  it('shows the permanent address with the latest deposits and no transaction hash form', async () => {
     vi.mocked(getUsdtInfo).mockResolvedValue(
       info({ bsc: '0xAbC0000000000000000000000000000000000001' })
     )
-    vi.mocked(getUsdtDeposits).mockResolvedValue({
-      page: 1,
-      page_size: 10,
-      total: 0,
-      items: [],
-    })
-    vi.mocked(claimUsdtDeposit).mockResolvedValue([
-      {
-        chain: 'bsc',
-        tx_hash: `0x${'a'.repeat(64)}`,
-        log_index: 0,
-        status: 'credited',
-        amount: '5',
-        quota: 2500000,
-      },
-    ])
+    vi.mocked(getUsdtDeposits).mockResolvedValue([deposit(1)])
     renderCard()
 
     expect(
       await screen.findByText('0xAbC0000000000000000000000000000000000001')
     ).toBeInTheDocument()
-    const input = screen.getByPlaceholderText('Transaction hash (TxID)')
-    const check = screen.getByRole('button', { name: 'Check deposit' })
+    expect(await screen.findByText(deposit(1).tx_hash)).toBeInTheDocument()
+    expect(screen.getByText('Latest 10 only')).toBeInTheDocument()
+    expect(
+      screen.queryByPlaceholderText('Transaction hash (TxID)')
+    ).not.toBeInTheDocument()
+  })
 
-    await user.type(input, '0x1234')
-    expect(check).toBeDisabled()
-    expect(input).toHaveAttribute('aria-invalid', 'true')
+  it('refetches deposits on refresh click and ignores further clicks until the cooldown ends', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    vi.mocked(getUsdtInfo).mockResolvedValue(info({ bsc: '0xAbC' }))
+    vi.mocked(getUsdtDeposits).mockResolvedValue([])
+    renderCard()
 
-    await user.clear(input)
-    await user.type(input, 'a'.repeat(64))
-    expect(check).toBeEnabled()
-    await user.click(check)
-    await waitFor(() =>
-      expect(claimUsdtDeposit).toHaveBeenCalledWith('bsc', 'a'.repeat(64))
-    )
+    const refresh = await screen.findByRole('button', { name: 'Refresh' })
+    act(() => {
+      vi.advanceTimersByTime(1_000)
+    })
+    await waitFor(() => expect(refresh).toBeEnabled())
+    expect(getUsdtDeposits).toHaveBeenCalledTimes(1)
+
+    await user.click(refresh)
+    await waitFor(() => expect(getUsdtDeposits).toHaveBeenCalledTimes(2))
+    expect(refresh).toBeDisabled()
+    await user.click(refresh)
+    expect(getUsdtDeposits).toHaveBeenCalledTimes(2)
+
+    act(() => {
+      vi.advanceTimersByTime(USDT_REFRESH_COOLDOWN_MS)
+    })
+    await waitFor(() => expect(refresh).toBeEnabled())
+  })
+
+  it('marks the refresh button busy and disabled while the automatic refresh runs', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.mocked(getUsdtInfo).mockResolvedValue(info({ bsc: '0xAbC' }))
+    let finish: (deposits: UsdtDeposit[]) => void = () => {}
+    vi.mocked(getUsdtDeposits)
+      .mockResolvedValueOnce([])
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve
+        })
+      )
+    renderCard()
+
+    const refresh = await screen.findByRole('button', { name: 'Refresh' })
+    await waitFor(() => expect(refresh).toHaveAttribute('aria-busy', 'false'))
+
+    act(() => {
+      vi.advanceTimersByTime(15_000)
+    })
+    await waitFor(() => expect(refresh).toHaveAttribute('aria-busy', 'true'))
+    expect(refresh).toBeDisabled()
+
+    act(() => finish([]))
+    await waitFor(() => expect(refresh).toHaveAttribute('aria-busy', 'false'))
+    act(() => {
+      vi.advanceTimersByTime(1_000)
+    })
+    await waitFor(() => expect(refresh).toBeEnabled())
+  })
+
+  it('refreshes the balance once when a refresh finds a newly credited deposit', async () => {
+    const user = userEvent.setup()
+    const onCredited = vi.fn()
+    vi.mocked(getUsdtInfo).mockResolvedValue(info({ bsc: '0xAbC' }))
+    vi.mocked(getUsdtDeposits)
+      .mockResolvedValueOnce([deposit(1)])
+      .mockResolvedValue([deposit(2), deposit(1)])
+    renderCard({ onCredited })
+
+    await screen.findByText(deposit(1).tx_hash)
+    expect(onCredited).not.toHaveBeenCalled()
+
+    const refresh = screen.getByRole('button', { name: 'Refresh' })
+    await waitFor(() => expect(refresh).toBeEnabled(), { timeout: 2_000 })
+    await user.click(refresh)
+    await screen.findByText(deposit(2).tx_hash)
+    expect(onCredited).toHaveBeenCalledTimes(1)
   })
 })

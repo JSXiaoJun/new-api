@@ -73,11 +73,11 @@ func TestExportAllTopUpsDatabaseMatrix(t *testing.T) {
 			require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}))
 			require.NoError(t, db.Create(&model.User{Id: 282, Username: "owner", DisplayName: "Owner", Email: "owner@example.com", AffCode: "aff-282"}).Error)
 			require.NoError(t, db.Create(&[]model.TopUp{
-				{UserId: 282, TradeNo: "MATCH-old", CreateTime: 100, Status: common.TopUpStatusSuccess},
+				{UserId: 282, TradeNo: "MATCH-old", CreateTime: 100, PaymentMethod: model.PaymentMethodUSDT, Status: common.TopUpStatusSuccess},
 				{UserId: 282, TradeNo: "MATCH-in-range", CreateTime: 200, CompleteTime: 210, Amount: 10, Money: 9.5, PaymentProvider: "epay", PaymentMethod: "alipay", Status: common.TopUpStatusSuccess},
 				{UserId: 256, TradeNo: "MATCH-other-user", CreateTime: 250, Status: common.TopUpStatusPending},
 				{UserId: 282, TradeNo: "OTHER-order", CreateTime: 260, Status: common.TopUpStatusSuccess},
-				{UserId: 282, TradeNo: "MATCH-latest", CreateTime: 300, Status: common.TopUpStatusPending},
+				{UserId: 282, TradeNo: "MATCH-latest", CreateTime: 300, PaymentMethod: "wxpay", Status: common.TopUpStatusPending},
 			}).Error)
 
 			export := func(query string) (orders []model.AdminTopUp, result map[string]any) {
@@ -104,6 +104,10 @@ func TestExportAllTopUpsDatabaseMatrix(t *testing.T) {
 			assert.Equal(t, int64(210), orders[1].CompleteTime)
 			assert.Equal(t, 9.5, orders[1].Money)
 			assert.Equal(t, map[string]any{"success": true, "message": "", "data": map[string]any{"count": float64(2)}}, result)
+
+			orders, _ = export("keyword=MATCH%25&payment_method=usdt")
+			require.Len(t, orders, 1, "the payment method filter applies to the export")
+			assert.Equal(t, "MATCH-old", orders[0].TradeNo)
 
 			orders, result = export("")
 			assert.Len(t, orders, 5)
@@ -144,19 +148,13 @@ func TestGetAllTopUpsCombinesUserIDWithOrderSearch(t *testing.T) {
 	})
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}))
 	require.NoError(t, db.Create(&[]model.TopUp{
-		{UserId: 282, TradeNo: "MATCH-first"},
-		{UserId: 256, TradeNo: "MATCH-other-user"},
-		{UserId: 282, TradeNo: "OTHER-order"},
-		{UserId: 282, TradeNo: "MATCH-last"},
+		{UserId: 282, TradeNo: "MATCH-first", PaymentMethod: "alipay"},
+		{UserId: 256, TradeNo: "MATCH-other-user", PaymentMethod: model.PaymentMethodUSDT},
+		{UserId: 282, TradeNo: "OTHER-order", PaymentMethod: model.PaymentMethodUSDT},
+		{UserId: 282, TradeNo: "MATCH-last", PaymentMethod: "wxpay"},
 	}).Error)
 
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/user/topup?user_id=282&keyword=MATCH%25&p=2&page_size=1", nil)
-	GetAllTopUps(c)
-
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	var response struct {
+	type listResponse struct {
 		Success bool `json:"success"`
 		Data    struct {
 			Total    int                `json:"total"`
@@ -165,12 +163,29 @@ func TestGetAllTopUpsCombinesUserIDWithOrderSearch(t *testing.T) {
 			Items    []model.AdminTopUp `json:"items"`
 		} `json:"data"`
 	}
-	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
-	require.True(t, response.Success)
+	list := func(query string) listResponse {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/user/topup?"+query, nil)
+		GetAllTopUps(c)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		var response listResponse
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+		require.True(t, response.Success)
+		return response
+	}
+
+	response := list("user_id=282&keyword=MATCH%25&p=2&page_size=1")
 	assert.Equal(t, 2, response.Data.Total)
 	assert.Equal(t, 2, response.Data.Page)
 	assert.Equal(t, 1, response.Data.PageSize)
 	require.Len(t, response.Data.Items, 1)
 	assert.Equal(t, 282, response.Data.Items[0].UserId)
 	assert.Equal(t, "MATCH-first", response.Data.Items[0].TradeNo)
+
+	response = list("payment_method=usdt")
+	assert.Equal(t, 2, response.Data.Total, "the payment method alone filters the list")
+	require.Len(t, response.Data.Items, 2)
+	assert.Equal(t, "OTHER-order", response.Data.Items[0].TradeNo)
+	assert.Equal(t, "MATCH-other-user", response.Data.Items[1].TradeNo)
 }

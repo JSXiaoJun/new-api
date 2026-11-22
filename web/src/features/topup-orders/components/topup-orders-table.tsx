@@ -17,7 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import type { OnChangeFn, PaginationState } from '@tanstack/react-table'
+import type {
+  ColumnFiltersState,
+  OnChangeFn,
+  PaginationState,
+} from '@tanstack/react-table'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -30,6 +34,13 @@ import { getTopUpOrders } from '../api'
 import type { TopUpOrder } from '../types'
 import { ExportTopUpOrdersDialog } from './export-topup-orders-dialog'
 import { useTopUpOrdersColumns } from './topup-orders-columns'
+
+/** Payment methods the order list can be narrowed to, as stored on orders. */
+const PAYMENT_METHOD_FILTER_OPTIONS = [
+  { label: 'Alipay', value: 'alipay' },
+  { label: 'WeChat Pay', value: 'wxpay' },
+  { label: 'USDT', value: 'usdt' },
+]
 
 export function TopUpOrdersTable() {
   const { t } = useTranslation()
@@ -47,9 +58,21 @@ export function TopUpOrdersTable() {
     pageIndex: 0,
     pageSize: isMobile ? 10 : 20,
   })
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const paymentMethodFilter = columnFilters.find(
+    (filter) => filter.id === 'payment_channel'
+  )?.value as string[] | undefined
+  const paymentMethod = paymentMethodFilter?.[0] ?? ''
 
   const onGlobalFilterChange: OnChangeFn<string> = (updater) => {
     setGlobalFilter((current) =>
+      typeof updater === 'function' ? updater(current) : updater
+    )
+    setPagination((current) => ({ ...current, pageIndex: 0 }))
+  }
+
+  const onColumnFiltersChange: OnChangeFn<ColumnFiltersState> = (updater) => {
+    setColumnFilters((current) =>
       typeof updater === 'function' ? updater(current) : updater
     )
     setPagination((current) => ({ ...current, pageIndex: 0 }))
@@ -62,6 +85,7 @@ export function TopUpOrdersTable() {
       pagination.pageSize,
       globalFilter,
       userId,
+      paymentMethod,
     ],
     enabled: isUserIdValid,
     queryFn: async () => {
@@ -70,6 +94,7 @@ export function TopUpOrdersTable() {
         page_size: pagination.pageSize,
         keyword: globalFilter,
         user_id: userId === '' ? undefined : Number(userId),
+        payment_method: paymentMethod || undefined,
       })
       if (!result.success) {
         toast.error(result.message || t('Failed to load recharge orders'))
@@ -88,8 +113,10 @@ export function TopUpOrdersTable() {
     data: data?.items ?? [],
     columns,
     globalFilter,
+    columnFilters,
     pagination,
     onGlobalFilterChange,
+    onColumnFiltersChange,
     onPaginationChange: setPagination,
     manualFiltering: true,
     manualPagination: true,
@@ -137,9 +164,18 @@ export function TopUpOrdersTable() {
             )}
           </div>
         ),
+        filters: [
+          {
+            columnId: 'payment_channel',
+            title: t('Payment Method'),
+            options: PAYMENT_METHOD_FILTER_OPTIONS,
+            singleSelect: true,
+          },
+        ],
         preActions: (
           <ExportTopUpOrdersDialog
             keyword={globalFilter}
+            paymentMethod={paymentMethod || undefined}
             userId={
               userId === '' || !isUserIdValid ? undefined : Number(userId)
             }

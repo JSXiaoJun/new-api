@@ -36,14 +36,16 @@ type ExportTopUpOrdersDialogProps = {
   keyword: string
   /** User ID filter of the page; undefined when not filtering by user. */
   userId?: number
+  /** Payment method filter of the page; undefined when not filtering. */
+  paymentMethod?: string
   /** False while the page's filters are invalid. */
   disabled?: boolean
 }
 
 /**
  * Export button for the recharge order page. It asks for the creation time
- * range, then downloads the matching orders with the page's order number and
- * user ID filters as a CSV file.
+ * range, then downloads the matching orders with the page's order number,
+ * user ID and payment method filters as a CSV file.
  */
 export function ExportTopUpOrdersDialog(props: ExportTopUpOrdersDialogProps) {
   const { t } = useTranslation()
@@ -86,6 +88,7 @@ export function ExportTopUpOrdersDialog(props: ExportTopUpOrdersDialogProps) {
         {
           keyword: props.keyword,
           user_id: props.userId,
+          payment_method: props.paymentMethod,
           start_timestamp: Math.floor(range.start.getTime() / 1000),
           end_timestamp: Math.floor(range.end.getTime() / 1000),
         },
@@ -122,7 +125,7 @@ export function ExportTopUpOrdersDialog(props: ExportTopUpOrdersDialogProps) {
       }
       title={t('Export recharge orders')}
       description={t(
-        'Orders created in this time range are exported. The order number and user ID filters on this page also apply.'
+        'Orders created in this time range are exported. The filters on this page also apply.'
       )}
       contentClassName='sm:max-w-md'
       footer={

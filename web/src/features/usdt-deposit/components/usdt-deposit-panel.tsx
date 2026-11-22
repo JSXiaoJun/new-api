@@ -32,7 +32,6 @@ import { formatCurrencyFromUSD } from '@/lib/currency'
 import { createUsdtAddress, getUsdtInfo } from '../api'
 import { USDT_QUERY_KEYS } from '../lib'
 import type { UsdtNetwork } from '../types'
-import { UsdtClaimForm } from './usdt-claim-form'
 import { UsdtDepositHistory } from './usdt-deposit-history'
 
 interface UsdtDepositPanelProps {
@@ -163,8 +162,7 @@ export function UsdtDepositPanel(props: UsdtDepositPanelProps) {
         </AlertDescription>
       </Alert>
 
-      <UsdtClaimForm network={network} onCredited={props.onCredited} />
-      <UsdtDepositHistory />
+      <UsdtDepositHistory onCredited={props.onCredited} />
     </section>
   )
 }

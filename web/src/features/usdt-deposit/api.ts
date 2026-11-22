@@ -48,22 +48,9 @@ export function createUsdtAddress(
   return unwrap(api.post('/api/user/usdt/address', { chain }))
 }
 
-export function getUsdtDeposits(
-  page: number,
-  pageSize: number
-): Promise<PageResult<UsdtDeposit>> {
-  return unwrap(
-    api.get('/api/user/usdt/deposits', {
-      params: { p: page, page_size: pageSize },
-    })
-  )
-}
-
-export function claimUsdtDeposit(
-  chain: string,
-  txHash: string
-): Promise<UsdtOutcome[]> {
-  return unwrap(api.post('/api/user/usdt/claim', { chain, tx_hash: txHash }))
+/** The user's latest deposits (at most 10), newest first. */
+export function getUsdtDeposits(): Promise<UsdtDeposit[]> {
+  return unwrap(api.get('/api/user/usdt/deposits'))
 }
 
 // ---------------------------------------------------------------------------

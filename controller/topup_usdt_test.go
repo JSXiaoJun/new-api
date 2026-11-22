@@ -425,3 +425,32 @@ func TestUsdtAdminOnlyModeRefusesRegularUsersOnTheServer(t *testing.T) {
 	assert.True(t, ok, msg)
 	assert.Equal(t, 5*500000, usdtQuota(t, usdtAttackerID))
 }
+
+func TestUsdtDepositHistoryListsOnlyTheCallersLatestTen(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.UsdtDeposit{}))
+	for i := range 12 {
+		require.NoError(t, db.Create(&model.UsdtDeposit{Chain: "polygon", TxHash: usdtTxHash(i), UserId: usdtAttackerID, Status: model.UsdtDepositCredited}).Error)
+	}
+	require.NoError(t, db.Create(&model.UsdtDeposit{Chain: "polygon", TxHash: usdtTxHash(99), UserId: usdtVictimID, Status: model.UsdtDepositCredited}).Error)
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/user/usdt/deposits?p=1&page_size=100", nil)
+	c.Set("id", usdtAttackerID)
+	GetUsdtDeposits(c)
+
+	var resp struct {
+		Success bool                `json:"success"`
+		Data    []model.UsdtDeposit `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.True(t, resp.Success)
+	require.Len(t, resp.Data, 10, "paging parameters cannot widen the list")
+	assert.Equal(t, usdtTxHash(11), resp.Data[0].TxHash)
+	assert.Equal(t, usdtTxHash(2), resp.Data[9].TxHash)
+	for _, deposit := range resp.Data {
+		assert.Equal(t, usdtAttackerID, deposit.UserId)
+	}
+}

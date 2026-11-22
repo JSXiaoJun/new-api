@@ -275,15 +275,13 @@ func CreditUsdtDeposit(in UsdtCreditInput) (UsdtCreditResult, error) {
 	return result, nil
 }
 
-func ListUserUsdtDeposits(userId int, offset, limit int) ([]UsdtDeposit, int64, error) {
+// ListRecentUserUsdtDeposits returns the user's newest deposits, at most
+// limit of them. It never counts or pages, so the wallet's polling stays one
+// indexed read however many deposits a user has.
+func ListRecentUserUsdtDeposits(userId int, limit int) ([]UsdtDeposit, error) {
 	var rows []UsdtDeposit
-	var total int64
-	query := DB.Model(&UsdtDeposit{}).Where("user_id = ?", userId)
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	err := query.Order("id desc").Offset(offset).Limit(limit).Find(&rows).Error
-	return rows, total, err
+	err := DB.Where("user_id = ?", userId).Order("id desc").Limit(limit).Find(&rows).Error
+	return rows, err
 }
 
 type UsdtDepositFilter struct {

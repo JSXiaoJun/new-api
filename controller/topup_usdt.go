@@ -124,16 +124,17 @@ func CreateUsdtAddress(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"chain": req.Chain, "address": usdt.FormatAddress(req.Chain, address)})
 }
 
+// usdtRecentDepositLimit is how many of a user's deposits the wallet lists.
+const usdtRecentDepositLimit = 10
+
+// GetUsdtDeposits returns the caller's latest USDT deposits, newest first.
 func GetUsdtDeposits(c *gin.Context) {
-	pageInfo := common.GetPageQuery(c)
-	rows, total, err := model.ListUserUsdtDeposits(c.GetInt("id"), pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	rows, err := model.ListRecentUserUsdtDeposits(c.GetInt("id"), usdtRecentDepositLimit)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(toUsdtDepositViews(rows))
-	common.ApiSuccess(c, pageInfo)
+	common.ApiSuccess(c, toUsdtDepositViews(rows))
 }
 
 // ClaimUsdtDeposit lets a user submit a transaction hash instead of waiting
