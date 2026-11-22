@@ -8230,6 +8230,8 @@
     "Locked: addresses were already issued from this factory.": "Verrouillé : des adresses ont déjà été émises par cette factory.",
     "Market mode reads Coinbase, then Kraken, and holds deposits while no price is available.": "Le mode marché lit Coinbase puis Kraken, et met les dépôts en attente sans prix.",
     "Market price (USDT/USD)": "Prix du marché (USDT/USD)",
+    "C2C price (USDT/CNY)": "Prix C2C (USDT/CNY)",
+    "C2C mode reads the OKX, then the Binance USDT/CNY C2C price every 30 minutes and divides it by the top-up price. Deposits wait once no price has been read for 2 hours.": "Le mode C2C lit toutes les 30 minutes le prix C2C USDT/CNY d’OKX, puis de Binance, et le divise par le prix de recharge. Les dépôts sont suspendus si aucun prix n’a été lu depuis 2 heures.",
     "Minimum deposit": "Dépôt minimum",
     "Minimum deposit (USDT)": "Dépôt minimum (USDT)",
     "Minimum deposit amount for {{chain}} is invalid": "Le dépôt minimum pour {{chain}} est invalide",

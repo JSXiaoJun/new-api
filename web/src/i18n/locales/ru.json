@@ -8230,6 +8230,8 @@
     "Locked: addresses were already issued from this factory.": "Заблокировано: эта фабрика уже выдала адреса.",
     "Market mode reads Coinbase, then Kraken, and holds deposits while no price is available.": "Рыночный режим берёт цену с Coinbase, затем с Kraken; без цены зачисление откладывается.",
     "Market price (USDT/USD)": "Рыночная цена (USDT/USD)",
+    "C2C price (USDT/CNY)": "Цена C2C (USDT/CNY)",
+    "C2C mode reads the OKX, then the Binance USDT/CNY C2C price every 30 minutes and divides it by the top-up price. Deposits wait once no price has been read for 2 hours.": "Режим C2C каждые 30 минут получает цену USDT/CNY на C2C-рынке OKX, затем Binance, и делит её на цену пополнения. Если цену не удаётся получить 2 часа, зачисления приостанавливаются.",
     "Minimum deposit": "Минимальное пополнение",
     "Minimum deposit (USDT)": "Минимальное пополнение (USDT)",
     "Minimum deposit amount for {{chain}} is invalid": "Неверная минимальная сумма для {{chain}}",

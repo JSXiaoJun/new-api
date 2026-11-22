@@ -199,7 +199,7 @@ func UpdateSettings(patch SettingsPatch) error {
 
 	if patch.RateMode != nil {
 		mode := strings.TrimSpace(*patch.RateMode)
-		if mode != operation_setting.UsdtRateMarket && mode != operation_setting.UsdtRateFixed {
+		if !slices.Contains([]string{operation_setting.UsdtRateMarket, operation_setting.UsdtRateFixed, operation_setting.UsdtRateC2C}, mode) {
 			return common.NewMessage("USDT rate mode {{mode}} is not supported", map[string]any{"mode": mode})
 		}
 		setting.RateMode = mode

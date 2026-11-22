@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/glebarez/sqlite"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -391,4 +392,83 @@ func TestVerificationNodesMustBeDifferentProviders(t *testing.T) {
 	primary, secondary := "https://polygon-mainnet.g.alchemy.com/v2/a", "https://polygon-mainnet.g.alchemy.com/v2/b"
 	err := UpdateSettings(SettingsPatch{Chains: map[string]ChainPatch{"arbitrum": {RPCURL: &primary, RPCURLSecondary: &secondary}}})
 	require.Error(t, err)
+}
+
+func TestC2CRateIsTheMedianCNYPriceOverTheTopUpPriceAndRefreshesEveryHalfHour(t *testing.T) {
+	okxAds := `{"code":0,"data":{"sell":[{"price":"6.70"},{"price":"6.72"},{"price":"9.90"},{"price":"6.71"},{"price":"5.10"}]}}`
+	binanceAds := `{"code":"000000","data":[{"adv":{"price":"6.80"}},{"adv":{"price":"6.82"}}]}`
+	var okxUp, binanceUp bool
+	var okxHits int
+	okx := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		okxHits++
+		if !okxUp {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write([]byte(okxAds))
+	}))
+	t.Cleanup(okx.Close)
+	binance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !binanceUp || r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(binanceAds))
+	}))
+	t.Cleanup(binance.Close)
+
+	oldOkx, oldBinance, oldPrice := okxC2CURL, binanceC2CURL, operation_setting.Price
+	okxC2CURL, binanceC2CURL, operation_setting.Price = okx.URL, binance.URL, 2
+	t.Cleanup(func() {
+		okxC2CURL, binanceC2CURL, operation_setting.Price = oldOkx, oldBinance, oldPrice
+		c2cCache.price, c2cCache.source, c2cCache.at, c2cCache.tried, c2cCache.lastErr = decimal.Zero, "", time.Time{}, time.Time{}, nil
+		require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("usdt_setting"), map[string]string{"rate_mode": "market"}))
+	})
+	require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("usdt_setting"), map[string]string{"rate_mode": "c2c"}))
+	reset := func(at time.Time) {
+		c2cCache.price, c2cCache.source, c2cCache.at, c2cCache.tried, c2cCache.lastErr = decimal.RequireFromString("6.5"), "okx_c2c", at, time.Time{}, nil
+	}
+
+	// Both feeds down and no price yet: deposits wait.
+	reset(time.Time{})
+	_, _, err := CurrentRate(context.Background())
+	assert.True(t, errors.Is(err, ErrNotReady), "%v", err)
+
+	// OKX answers: median of its ads (6.71) over a top-up price of 2.
+	okxUp = true
+	reset(time.Time{})
+	rate, source, err := CurrentRate(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "3.355", rate.String())
+	assert.Equal(t, "okx_c2c", source)
+
+	// Within 30 minutes the cached price is used without asking again.
+	hits := okxHits
+	_, _, err = CurrentRate(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, hits, okxHits)
+
+	// After 30 minutes it refreshes; OKX failing falls back to Binance.
+	okxUp, binanceUp = false, true
+	reset(time.Now().Add(-31 * time.Minute))
+	rate, source, err = CurrentRate(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "3.405", rate.String())
+	assert.Equal(t, "binance_c2c", source)
+
+	// Both down: the last price is kept for up to 2 hours, then deposits wait.
+	binanceUp = false
+	reset(time.Now().Add(-90 * time.Minute))
+	rate, _, err = CurrentRate(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "3.25", rate.String())
+	reset(time.Now().Add(-3 * time.Hour))
+	_, _, err = CurrentRate(context.Background())
+	assert.True(t, errors.Is(err, ErrNotReady), "%v", err)
+
+	// A price that cannot be USDT/CNY is refused.
+	okxUp, okxAds = true, `{"code":0,"data":{"sell":[{"price":"0.99"}]}}`
+	reset(time.Time{})
+	_, _, err = CurrentRate(context.Background())
+	assert.True(t, errors.Is(err, ErrNotReady), "%v", err)
 }

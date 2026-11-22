@@ -86,6 +86,9 @@ export interface UsdtOutcome {
 
 export type UsdtFinality = 'finalized' | 'safe' | 'confirmations'
 
+/** market: USDT/USD; fixed: admin rate; c2c: OKX / Binance CNY C2C price */
+export type UsdtRateMode = 'market' | 'fixed' | 'c2c'
+
 export interface UsdtChainSetting {
   id: string
   name: string
@@ -123,7 +126,7 @@ export interface UsdtVerificationAlert {
 export interface UsdtSettings {
   enabled: boolean
   admin_only: boolean
-  rate_mode: 'market' | 'fixed'
+  rate_mode: UsdtRateMode
   fixed_rate: number
   scanner_ips: string
   has_scanner_secret: boolean
@@ -148,7 +151,7 @@ export interface UsdtChainPatch {
 export interface UsdtSettingsPatch {
   enabled?: boolean
   admin_only?: boolean
-  rate_mode?: 'market' | 'fixed'
+  rate_mode?: UsdtRateMode
   fixed_rate?: number
   scanner_ips?: string
   chains?: Record<string, UsdtChainPatch>

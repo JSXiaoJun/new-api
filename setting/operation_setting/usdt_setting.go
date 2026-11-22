@@ -26,6 +26,10 @@ const (
 
 	UsdtRateMarket = "market"
 	UsdtRateFixed  = "fixed"
+	// UsdtRateC2C credits at the CNY price of USDT on the OKX / Binance
+	// peer-to-peer markets, divided by the top-up price (Price, CNY per quota
+	// unit), so USDT buys as much quota as the same money paid online.
+	UsdtRateC2C = "c2c"
 )
 
 // UsdtChainSetting is one network's deposit configuration. FactoryAddress and
@@ -94,7 +98,7 @@ func GetUsdtSetting() UsdtSetting {
 	out := usdtSetting
 	out.Chains = maps.Clone(defaultUsdtChains())
 	maps.Copy(out.Chains, usdtSetting.Chains)
-	if out.RateMode != UsdtRateFixed {
+	if out.RateMode != UsdtRateFixed && out.RateMode != UsdtRateC2C {
 		out.RateMode = UsdtRateMarket
 	}
 	return out

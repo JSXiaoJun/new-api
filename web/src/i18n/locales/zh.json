@@ -8230,6 +8230,8 @@
     "Locked: addresses were already issued from this factory.": "已锁定：这个工厂合约已经发放过地址。",
     "Market mode reads Coinbase, then Kraken, and holds deposits while no price is available.": "行情模式先读取 Coinbase，再读取 Kraken；拿不到行情时暂缓入账。",
     "Market price (USDT/USD)": "市场行情（USDT/USD）",
+    "C2C price (USDT/CNY)": "C2C 买 U 价（USDT/CNY）",
+    "C2C mode reads the OKX, then the Binance USDT/CNY C2C price every 30 minutes and divides it by the top-up price. Deposits wait once no price has been read for 2 hours.": "C2C 模式每 30 分钟读取一次欧易、币安的 USDT/CNY C2C 价格，再除以充值价格折算成额度；连续 2 小时拿不到价格时暂缓入账。",
     "Minimum deposit": "最小充值金额",
     "Minimum deposit (USDT)": "最小充值金额（USDT）",
     "Minimum deposit amount for {{chain}} is invalid": "{{chain}} 的最小充值金额无效",

@@ -8230,6 +8230,8 @@
     "Locked: addresses were already issued from this factory.": "Đã khóa: factory này đã cấp địa chỉ.",
     "Market mode reads Coinbase, then Kraken, and holds deposits while no price is available.": "Chế độ thị trường đọc Coinbase rồi Kraken, tạm giữ khoản nạp khi không có giá.",
     "Market price (USDT/USD)": "Giá thị trường (USDT/USD)",
+    "C2C price (USDT/CNY)": "Giá C2C (USDT/CNY)",
+    "C2C mode reads the OKX, then the Binance USDT/CNY C2C price every 30 minutes and divides it by the top-up price. Deposits wait once no price has been read for 2 hours.": "Chế độ C2C lấy giá USDT/CNY C2C của OKX, sau đó Binance, mỗi 30 phút và chia cho giá nạp tiền. Nếu 2 giờ không lấy được giá, việc ghi có tiền nạp sẽ tạm dừng.",
     "Minimum deposit": "Nạp tối thiểu",
     "Minimum deposit (USDT)": "Nạp tối thiểu (USDT)",
     "Minimum deposit amount for {{chain}} is invalid": "Số tiền nạp tối thiểu của {{chain}} không hợp lệ",

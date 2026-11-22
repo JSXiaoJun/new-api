@@ -69,7 +69,7 @@ const chainSchema = z.object({
 const schema = z.object({
   enabled: z.boolean(),
   admin_only: z.boolean(),
-  rate_mode: z.enum(['market', 'fixed']),
+  rate_mode: z.enum(['market', 'fixed', 'c2c']),
   fixed_rate: z.coerce.number().gt(0).max(100),
   scanner_ips: z.string().trim(),
   chains: z.array(chainSchema),
@@ -206,6 +206,7 @@ export function UsdtSettingsForm(props: { settings: UsdtSettings }) {
                 <Select
                   items={[
                     { value: 'market', label: t('Market price (USDT/USD)') },
+                    { value: 'c2c', label: t('C2C price (USDT/CNY)') },
                     { value: 'fixed', label: t('Fixed rate') },
                   ]}
                   value={field.value}
@@ -221,14 +222,21 @@ export function UsdtSettingsForm(props: { settings: UsdtSettings }) {
                       <SelectItem value='market'>
                         {t('Market price (USDT/USD)')}
                       </SelectItem>
+                      <SelectItem value='c2c'>
+                        {t('C2C price (USDT/CNY)')}
+                      </SelectItem>
                       <SelectItem value='fixed'>{t('Fixed rate')}</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
                 <FormDescription>
-                  {t(
-                    'Market mode reads Coinbase, then Kraken, and holds deposits while no price is available.'
-                  )}
+                  {rateMode === 'c2c'
+                    ? t(
+                        'C2C mode reads the OKX, then the Binance USDT/CNY C2C price every 30 minutes and divides it by the top-up price. Deposits wait once no price has been read for 2 hours.'
+                      )
+                    : t(
+                        'Market mode reads Coinbase, then Kraken, and holds deposits while no price is available.'
+                      )}
                 </FormDescription>
               </FormItem>
             )}

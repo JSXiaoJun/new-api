@@ -33,7 +33,8 @@ var (
 	rateMax = decimal.NewFromFloat(1.2)
 )
 
-// CurrentRate returns the USD quota credited per USDT and where it came from.
+// CurrentRate returns the quota units (USD quota) credited per USDT and where
+// the price came from.
 func CurrentRate(ctx context.Context) (decimal.Decimal, string, error) {
 	setting := operation_setting.GetUsdtSetting()
 	if setting.RateMode == operation_setting.UsdtRateFixed {
@@ -42,6 +43,17 @@ func CurrentRate(ctx context.Context) (decimal.Decimal, string, error) {
 			return decimal.Zero, "", errors.New("fixed USDT rate is not configured")
 		}
 		return rate, "fixed", nil
+	}
+	if setting.RateMode == operation_setting.UsdtRateC2C {
+		price, source, err := currentC2CPrice(ctx)
+		if err != nil {
+			return decimal.Zero, "", err
+		}
+		unitPrice := decimal.NewFromFloat(operation_setting.Price)
+		if unitPrice.Sign() <= 0 {
+			return decimal.Zero, "", errors.New("top-up price is not configured")
+		}
+		return price.Div(unitPrice).Round(8), source, nil
 	}
 
 	rateCache.mu.Lock()
