@@ -186,7 +186,6 @@ export function SecureVerificationDialog(props: SecureVerificationDialogProps) {
                 <Input
                   id={inputId}
                   type='password'
-                  autoComplete='current-password'
                   autoFocus
                   disabled={verifying}
                   value={input.method === 'password' ? input.password : ''}

@@ -75,7 +75,6 @@ export function AdminStep({ form, rootInitialized }: AdminStepProps) {
               <Input
                 {...field}
                 placeholder={t('Choose a username')}
-                autoComplete='username'
                 onChange={(event) => {
                   form.clearErrors('username')
                   field.onChange(event)

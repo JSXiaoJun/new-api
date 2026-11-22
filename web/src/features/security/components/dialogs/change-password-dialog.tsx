@@ -206,11 +206,7 @@ export function ChangePasswordDialog(props: ChangePasswordDialogProps) {
                   <FormItem>
                     <FormLabel>{t('Current Password')}</FormLabel>
                     <FormControl>
-                      <PasswordInput
-                        {...field}
-                        autoComplete='current-password'
-                        disabled={security.pending}
-                      />
+                      <PasswordInput {...field} disabled={security.pending} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

@@ -55,6 +55,7 @@ export function SearchBar(props: SearchBarProps) {
       <input
         ref={inputRef}
         type='text'
+        autoComplete='off'
         placeholder={props.placeholder || t('Search models...')}
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}

@@ -245,7 +245,6 @@ export function EmailBindDialog(props: EmailBindDialogProps) {
                     <Input
                       {...field}
                       type='email'
-                      autoComplete='email'
                       disabled={security.pending || Boolean(flow)}
                       placeholder={t('Enter your email')}
                     />

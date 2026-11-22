@@ -372,6 +372,7 @@ export function UserAuthForm({
                   <FormLabel>{t('Username or Email')}</FormLabel>
                   <FormControl>
                     <Input
+                      autoComplete='username'
                       placeholder={t('Enter your username or email')}
                       {...field}
                     />
@@ -390,6 +391,7 @@ export function UserAuthForm({
                   <FormLabel>{t('Password')}</FormLabel>
                   <FormControl>
                     <PasswordInput
+                      autoComplete='current-password'
                       placeholder={t('Enter password')}
                       {...field}
                     />

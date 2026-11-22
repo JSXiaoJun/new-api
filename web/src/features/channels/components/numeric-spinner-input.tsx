@@ -170,6 +170,7 @@ export function NumericSpinnerInput({
             data-slot='numeric-spinner-value'
             ref={inputRef}
             type='text'
+            autoComplete='off'
             value={localValue}
             onChange={handleInputChange}
             onBlur={commitValue}
