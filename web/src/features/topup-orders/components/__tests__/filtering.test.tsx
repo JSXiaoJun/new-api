@@ -43,6 +43,14 @@ const order = {
   status: 'success',
 }
 
+const usdtOrder = {
+  ...order,
+  id: 2,
+  trade_no: 'USDT-polygon-abc123def456-0',
+  payment_method: 'usdt',
+  payment_provider: 'usdt',
+}
+
 describe('Recharge order filters', () => {
   let queryClient: QueryClient
   let footer: HTMLDivElement
@@ -81,7 +89,7 @@ describe('Recharge order filters', () => {
     await user.click(screen.getByRole('button', { name: 'Go to next page' }))
     await waitFor(() => {
       expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
-        params: { p: 2, page_size: 20, keyword: undefined, user_id: undefined },
+        params: { p: 2, page_size: 20, keyword: undefined, user_id: undefined, tx_hash: undefined },
       })
     })
 
@@ -90,7 +98,7 @@ describe('Recharge order filters', () => {
     })
     await waitFor(() => {
       expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
-        params: { p: 1, page_size: 20, keyword: undefined, user_id: 282 },
+        params: { p: 1, page_size: 20, keyword: undefined, user_id: 282, tx_hash: undefined },
       })
     })
 
@@ -99,13 +107,13 @@ describe('Recharge order filters', () => {
     })
     await waitFor(() => {
       expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
-        params: { p: 1, page_size: 20, keyword: 'MATCH', user_id: 282 },
+        params: { p: 1, page_size: 20, keyword: 'MATCH', user_id: 282, tx_hash: undefined },
       })
     })
     await user.click(screen.getByRole('button', { name: 'Go to next page' }))
     await waitFor(() => {
       expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
-        params: { p: 2, page_size: 20, keyword: 'MATCH', user_id: 282 },
+        params: { p: 2, page_size: 20, keyword: 'MATCH', user_id: 282, tx_hash: undefined },
       })
     })
   })
@@ -135,7 +143,7 @@ describe('Recharge order filters', () => {
     await user.click(screen.getByRole('button', { name: 'Go to next page' }))
     await waitFor(() => {
       expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
-        params: { p: 2, page_size: 20, keyword: undefined, user_id: undefined },
+        params: { p: 2, page_size: 20, keyword: undefined, user_id: undefined, tx_hash: undefined },
       })
     })
 
@@ -149,6 +157,7 @@ describe('Recharge order filters', () => {
           keyword: undefined,
           user_id: undefined,
           payment_method: 'usdt',
+          tx_hash: undefined,
         },
       })
     })
@@ -162,6 +171,7 @@ describe('Recharge order filters', () => {
           keyword: undefined,
           user_id: undefined,
           payment_method: 'wxpay',
+          tx_hash: undefined,
         },
       })
     })
@@ -178,6 +188,7 @@ describe('Recharge order filters', () => {
           keyword: undefined,
           user_id: undefined,
           payment_method: undefined,
+          tx_hash: undefined,
         },
       })
     })
@@ -196,6 +207,7 @@ describe('Recharge order filters', () => {
           keyword: undefined,
           user_id: undefined,
           payment_method: undefined,
+          tx_hash: undefined,
         },
       })
     })
@@ -212,7 +224,7 @@ describe('Recharge order filters', () => {
     })
     await waitFor(() => {
       expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
-        params: { p: 1, page_size: 20, keyword: 'MATCH', user_id: 282 },
+        params: { p: 1, page_size: 20, keyword: 'MATCH', user_id: 282, tx_hash: undefined },
       })
     })
     await user.click(screen.getByRole('button', { name: 'Go to next page' }))
@@ -220,7 +232,7 @@ describe('Recharge order filters', () => {
 
     await waitFor(() => {
       expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
-        params: { p: 1, page_size: 20, keyword: undefined, user_id: undefined },
+        params: { p: 1, page_size: 20, keyword: undefined, user_id: undefined, tx_hash: undefined },
       })
     })
     expect(screen.getByRole('textbox', { name: 'User ID' })).toHaveValue('')
@@ -230,5 +242,42 @@ describe('Recharge order filters', () => {
     expect(
       screen.getByRole('button', { name: 'Go to previous page' })
     ).toBeDisabled()
+  })
+
+  test('transaction ID input sends tx_hash and reset clears it', async () => {
+    const user = userEvent.setup()
+    await screen.findByText('MATCH-order')
+
+    fireEvent.change(
+      screen.getByPlaceholderText('Search by transaction ID...'),
+      { target: { value: '0xabc123def456' } }
+    )
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
+        params: {
+          p: 1,
+          page_size: 20,
+          keyword: undefined,
+          user_id: undefined,
+          tx_hash: '0xabc123def456',
+        },
+      })
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/user/topup', {
+        params: {
+          p: 1,
+          page_size: 20,
+          keyword: undefined,
+          user_id: undefined,
+          tx_hash: undefined,
+        },
+      })
+    })
+    expect(
+      screen.getByPlaceholderText('Search by transaction ID...')
+    ).toHaveValue('')
   })
 })

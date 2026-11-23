@@ -6126,6 +6126,8 @@
     "Search by name or URL...": "Поиск по имени или URL...",
     "Search by order number...": "Поиск по номеру заказа...",
     "Search by user ID...": "Поиск по ID пользователя...",
+    "Search by transaction ID...": "Поиск по ID транзакции...",
+    "Blockchain Transaction ID": "ID блокчейн-транзакции",
     "Search by username or user ID": "Поиск по имени пользователя или ID",
     "Search channel type...": "Поиск типа канала...",
     "Search chat presets...": "Поиск предустановок чата...",

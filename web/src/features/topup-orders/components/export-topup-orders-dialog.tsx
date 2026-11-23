@@ -38,6 +38,8 @@ type ExportTopUpOrdersDialogProps = {
   userId?: number
   /** Payment method filter of the page; undefined when not filtering. */
   paymentMethod?: string
+  /** Blockchain transaction ID filter of the page; undefined when not filtering. */
+  txHash?: string
   /** False while the page's filters are invalid. */
   disabled?: boolean
 }
@@ -89,6 +91,7 @@ export function ExportTopUpOrdersDialog(props: ExportTopUpOrdersDialogProps) {
           keyword: props.keyword,
           user_id: props.userId,
           payment_method: props.paymentMethod,
+          tx_hash: props.txHash,
           start_timestamp: Math.floor(range.start.getTime() / 1000),
           end_timestamp: Math.floor(range.end.getTime() / 1000),
         },

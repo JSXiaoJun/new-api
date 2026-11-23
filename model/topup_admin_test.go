@@ -53,7 +53,7 @@ func TestSearchAllTopUpsFiltersByUserOrderAndPaymentMethodWithPagination(t *test
 		{UserId: 282, TradeNo: "MATCH-older", PaymentMethod: "alipay", CreateTime: 1, Status: common.TopUpStatusSuccess},
 		{UserId: 282, TradeNo: "OTHER-order", PaymentMethod: "wxpay", CreateTime: 2, Status: common.TopUpStatusPending},
 		{UserId: 256, TradeNo: "MATCH-other-user", PaymentMethod: PaymentMethodUSDT, CreateTime: 3, Status: common.TopUpStatusSuccess},
-		{UserId: 282, TradeNo: "MATCH-newer", PaymentMethod: PaymentMethodUSDT, CreateTime: 4, Status: common.TopUpStatusSuccess},
+		{UserId: 282, TradeNo: "USDT-polygon-abc123def456-0", PaymentMethod: PaymentMethodUSDT, CreateTime: 4, Status: common.TopUpStatusSuccess},
 	}
 	require.NoError(t, DB.Create(&orders).Error)
 
@@ -65,13 +65,15 @@ func TestSearchAllTopUpsFiltersByUserOrderAndPaymentMethodWithPagination(t *test
 		wantTotal int64
 		wantTrade []string
 	}{
-		{"user alone includes historical orders", TopUpFilter{UserId: 282}, 1, 20, 3, []string{"MATCH-newer", "OTHER-order", "MATCH-older"}},
-		{"combined filters exclude other users", TopUpFilter{Keyword: "MATCH%", UserId: 282}, 1, 1, 2, []string{"MATCH-newer"}},
-		{"second page retains both filters and total", TopUpFilter{Keyword: "MATCH%", UserId: 282}, 2, 1, 2, []string{"MATCH-older"}},
+		{"user alone includes historical orders", TopUpFilter{UserId: 282}, 1, 20, 3, []string{"USDT-polygon-abc123def456-0", "OTHER-order", "MATCH-older"}},
+		{"combined filters exclude other users", TopUpFilter{Keyword: "MATCH%", UserId: 282}, 1, 1, 1, []string{"MATCH-older"}},
+		{"second page retains both filters and total", TopUpFilter{Keyword: "MATCH%", UserId: 282}, 2, 1, 1, []string{}},
 		{"missing user returns no orders", TopUpFilter{UserId: 999}, 1, 20, 0, []string{}},
-		{"order search without user remains supported", TopUpFilter{Keyword: "MATCH%"}, 1, 20, 3, []string{"MATCH-newer", "MATCH-other-user", "MATCH-older"}},
-		{"payment method alone lists that method for every user", TopUpFilter{PaymentMethod: PaymentMethodUSDT}, 1, 20, 2, []string{"MATCH-newer", "MATCH-other-user"}},
+		{"order search without user remains supported", TopUpFilter{Keyword: "MATCH%"}, 1, 20, 2, []string{"MATCH-other-user", "MATCH-older"}},
+		{"payment method alone lists that method for every user", TopUpFilter{PaymentMethod: PaymentMethodUSDT}, 1, 20, 2, []string{"USDT-polygon-abc123def456-0", "MATCH-other-user"}},
 		{"payment method combines with user", TopUpFilter{UserId: 282, PaymentMethod: "alipay"}, 1, 20, 1, []string{"MATCH-older"}},
+		{"tx_hash filters by partial trade_no match", TopUpFilter{TxHash: "abc123"}, 1, 20, 1, []string{"USDT-polygon-abc123def456-0"}},
+		{"tx_hash with 0x prefix is stripped before matching", TopUpFilter{TxHash: "0xabc123"}, 1, 20, 1, []string{"USDT-polygon-abc123def456-0"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

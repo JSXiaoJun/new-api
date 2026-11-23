@@ -48,6 +48,7 @@ export function TopUpOrdersTable() {
   const isMobile = useMediaQuery('(max-width: 640px)')
   const [globalFilter, setGlobalFilter] = useState('')
   const [userIdFilter, setUserIdFilter] = useState('')
+  const [txHashFilter, setTxHashFilter] = useState('')
   const userId = userIdFilter.trim()
   const isUserIdValid =
     userId === '' ||
@@ -86,6 +87,7 @@ export function TopUpOrdersTable() {
       globalFilter,
       userId,
       paymentMethod,
+      txHashFilter.trim(),
     ],
     enabled: isUserIdValid,
     queryFn: async () => {
@@ -95,6 +97,7 @@ export function TopUpOrdersTable() {
         keyword: globalFilter,
         user_id: userId === '' ? undefined : Number(userId),
         payment_method: paymentMethod || undefined,
+        tx_hash: txHashFilter.trim() || undefined,
       })
       if (!result.success) {
         toast.error(result.message || t('Failed to load recharge orders'))
@@ -137,32 +140,46 @@ export function TopUpOrdersTable() {
         searchPlaceholder: t('Search by order number...'),
         searchDebounceMs: 500,
         additionalSearch: (
-          <div className='w-full sm:w-[180px]'>
-            <Input
-              aria-label={t('User ID')}
-              aria-invalid={!isUserIdValid}
-              aria-describedby={
-                isUserIdValid ? undefined : 'topup-user-id-error'
-              }
-              inputMode='numeric'
-              placeholder={t('Search by user ID...')}
-              value={userIdFilter}
-              onChange={(event) => {
-                setUserIdFilter(event.target.value)
-                setPagination((current) => ({ ...current, pageIndex: 0 }))
-              }}
-              className='w-full'
-            />
-            {!isUserIdValid && (
-              <p
-                id='topup-user-id-error'
-                role='alert'
-                className='text-destructive mt-1 text-xs'
-              >
-                {t('Enter a valid user ID')}
-              </p>
-            )}
-          </div>
+          <>
+            <div className='w-full sm:w-[180px]'>
+              <Input
+                aria-label={t('User ID')}
+                aria-invalid={!isUserIdValid}
+                aria-describedby={
+                  isUserIdValid ? undefined : 'topup-user-id-error'
+                }
+                inputMode='numeric'
+                placeholder={t('Search by user ID...')}
+                value={userIdFilter}
+                onChange={(event) => {
+                  setUserIdFilter(event.target.value)
+                  setPagination((current) => ({ ...current, pageIndex: 0 }))
+                }}
+                className='w-full'
+              />
+              {!isUserIdValid && (
+                <p
+                  id='topup-user-id-error'
+                  role='alert'
+                  className='text-destructive mt-1 text-xs'
+                >
+                  {t('Enter a valid user ID')}
+                </p>
+              )}
+            </div>
+            <div className='w-full sm:w-[220px]'>
+              <Input
+                aria-label={t('Blockchain Transaction ID')}
+                placeholder={t('Search by transaction ID...')}
+                value={txHashFilter}
+                onChange={(event) => {
+                  setTxHashFilter(event.target.value)
+                  setPagination((current) => ({ ...current, pageIndex: 0 }))
+                }}
+                className='w-full font-mono'
+              />
+            </div>
+          </>
         ),
         filters: [
           {
@@ -179,12 +196,14 @@ export function TopUpOrdersTable() {
             userId={
               userId === '' || !isUserIdValid ? undefined : Number(userId)
             }
+            txHash={txHashFilter.trim() || undefined}
             disabled={!isUserIdValid}
           />
         ),
-        hasAdditionalFilters: userIdFilter !== '',
+        hasAdditionalFilters: userIdFilter !== '' || txHashFilter !== '',
         onReset: () => {
           setUserIdFilter('')
+          setTxHashFilter('')
           setPagination((current) => ({ ...current, pageIndex: 0 }))
         },
       }}

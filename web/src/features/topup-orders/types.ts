@@ -41,12 +41,14 @@ export type GetTopUpOrdersParams = {
   keyword?: string
   user_id?: number
   payment_method?: string
+  tx_hash?: string
 }
 
 export type ExportTopUpOrdersParams = {
   keyword?: string
   user_id?: number
   payment_method?: string
+  tx_hash?: string
   /** Creation time bounds in seconds. */
   start_timestamp?: number
   end_timestamp?: number

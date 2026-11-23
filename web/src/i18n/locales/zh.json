@@ -6126,6 +6126,8 @@
     "Search by name or URL...": "按名称或 URL 搜索...",
     "Search by order number...": "按订单号搜索...",
     "Search by user ID...": "按用户 ID 搜索...",
+    "Search by transaction ID...": "按交易 ID 搜索...",
+    "Blockchain Transaction ID": "区块链交易 ID",
     "Search by username or user ID": "按用户名或用户 ID 搜索",
     "Search channel type...": "搜索渠道类型...",
     "Search chat presets...": "搜索聊天预设...",

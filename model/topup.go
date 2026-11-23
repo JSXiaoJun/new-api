@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -881,6 +882,7 @@ type TopUpFilter struct {
 	Keyword        string
 	UserId         int
 	PaymentMethod  string
+	TxHash         string
 	StartTimestamp int64
 	EndTimestamp   int64
 }
@@ -895,6 +897,16 @@ func (filter TopUpFilter) apply(query *gorm.DB) (*gorm.DB, error) {
 			return nil, err
 		}
 		query = query.Where("trade_no LIKE ? ESCAPE '!'", pattern)
+	}
+	if filter.TxHash != "" {
+		// USDT trade_no format: USDT-{chain}-{txhash_without_0x}-{logIndex}.
+		// Strip the 0x prefix so both "0xabc" and "abc" match the same row.
+		hash := strings.ToLower(strings.TrimPrefix(filter.TxHash, "0x"))
+		pattern, err := sanitizeLikePattern(hash)
+		if err != nil {
+			return nil, err
+		}
+		query = query.Where("trade_no LIKE ? ESCAPE '!'", "%"+pattern+"%")
 	}
 	if filter.PaymentMethod != "" {
 		query = query.Where("payment_method = ?", filter.PaymentMethod)

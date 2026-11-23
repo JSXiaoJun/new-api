@@ -6126,6 +6126,8 @@
     "Search by name or URL...": "名前またはURLで検索...",
     "Search by order number...": "注文番号で検索...",
     "Search by user ID...": "ユーザー ID で検索...",
+    "Search by transaction ID...": "トランザクション ID で検索...",
+    "Blockchain Transaction ID": "ブロックチェーントランザクション ID",
     "Search by username or user ID": "ユーザー名またはユーザー ID で検索",
     "Search channel type...": "チャネルタイプを検索...",
     "Search chat presets...": "チャットプリセットを検索...",

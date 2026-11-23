@@ -1141,6 +1141,7 @@ func GetAllTopUps(c *gin.Context) {
 		Keyword:       c.Query("keyword"),
 		UserId:        userId,
 		PaymentMethod: strings.TrimSpace(c.Query("payment_method")),
+		TxHash:        strings.TrimSpace(c.Query("tx_hash")),
 	}
 
 	var (
@@ -1148,7 +1149,7 @@ func GetAllTopUps(c *gin.Context) {
 		total  int64
 		err    error
 	)
-	if filter.Keyword != "" || filter.UserId > 0 || filter.PaymentMethod != "" {
+	if filter.Keyword != "" || filter.UserId > 0 || filter.PaymentMethod != "" || filter.TxHash != "" {
 		topups, total, err = model.SearchAllTopUps(filter, pageInfo)
 	} else {
 		topups, total, err = model.GetAllTopUps(pageInfo)
@@ -1176,6 +1177,7 @@ func ExportAllTopUps(c *gin.Context) {
 		Keyword:       strings.TrimSpace(c.Query("keyword")),
 		UserId:        userId,
 		PaymentMethod: strings.TrimSpace(c.Query("payment_method")),
+		TxHash:        strings.TrimSpace(c.Query("tx_hash")),
 	}
 	filter.StartTimestamp, _ = strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	filter.EndTimestamp, _ = strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
