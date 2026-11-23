@@ -19,12 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { TriangleAlert } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { formatCurrencyFromUSD } from '@/lib/currency'
@@ -61,6 +60,19 @@ export function UsdtDepositPanel(props: UsdtDepositPanelProps) {
 
   const info = infoQuery.data
   const networks = info?.networks ?? []
+
+  const network: UsdtNetwork =
+    networks.find((n) => n.id === selected) ?? networks[0]
+  const address = network ? info?.addresses[network.id] : undefined
+
+  // Auto-create address whenever network changes and there is no address yet
+  useEffect(() => {
+    if (!network || address || addressMutation.isPending) return
+    if (!props.onBeforeAddress()) return
+    addressMutation.mutate(network.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [network?.id])
+
   if (infoQuery.isLoading) {
     return <Skeleton className='h-64 w-full rounded-xl' />
   }
@@ -71,9 +83,6 @@ export function UsdtDepositPanel(props: UsdtDepositPanelProps) {
       </p>
     )
   }
-  const network: UsdtNetwork =
-    networks.find((n) => n.id === selected) ?? networks[0]
-  const address = info.addresses[network.id]
 
   return (
     <section className='space-y-5' aria-label={t('USDT Deposit')}>
@@ -140,21 +149,19 @@ export function UsdtDepositPanel(props: UsdtDepositPanelProps) {
         ) : (
           <div className='flex-1 space-y-3'>
             <DepositFacts network={network} rate={info.rate} />
-            <Button
-              onClick={() => {
-                if (props.onBeforeAddress()) addressMutation.mutate(network.id)
-              }}
-              disabled={addressMutation.isPending}
-            >
-              {t('Show my deposit address')}
-            </Button>
+            {addressMutation.isPending && (
+              <Skeleton className='h-10 w-full rounded-lg' />
+            )}
           </div>
         )}
       </div>
 
-      <Alert>
-        <TriangleAlert aria-hidden='true' />
-        <AlertDescription>
+      <Alert className='border-yellow-400 bg-yellow-50 dark:border-yellow-500 dark:bg-yellow-950/40'>
+        <TriangleAlert
+          aria-hidden='true'
+          className='text-yellow-500 dark:text-yellow-400'
+        />
+        <AlertDescription className='font-semibold text-yellow-700 dark:text-yellow-300'>
           {t(
             'Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically.',
             { network: network.name }
