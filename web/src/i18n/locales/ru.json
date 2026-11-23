@@ -8241,7 +8241,7 @@
     "Not verified": "Не проверено",
     "Offline": "Не в сети",
     "Only deposits below the minimum amount can be credited manually": "Вручную можно зачислить только пополнения ниже минимума",
-    "Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically.": "Отправляйте на этот адрес только USDT в сети {{network}}. Другие токены и сети не зачисляются автоматически.",
+    "Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically. (The amount received must be at least the minimum deposit.)": "Отправляйте на этот адрес только USDT в сети {{network}}. Другие токены и сети не зачисляются автоматически. (Полученная сумма должна быть не меньше минимального пополнения.)",
     "Pending sweeps": "Ожидающие переводы",
     "Printed by usdt-deploy. Changing it clears verification.": "Выводится usdt-deploy. Изменение сбрасывает проверку.",
     "Put the secret in the scanner .env as SCANNER_SECRET. It is shown only once.": "Укажите секрет в .env сканера как SCANNER_SECRET. Он показывается один раз.",

@@ -8241,7 +8241,7 @@
     "Not verified": "Chưa xác minh",
     "Offline": "Ngoại tuyến",
     "Only deposits below the minimum amount can be credited manually": "Chỉ khoản nạp dưới mức tối thiểu mới được ghi có thủ công",
-    "Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically.": "Chỉ gửi USDT trên {{network}} đến địa chỉ này. Token hoặc mạng khác sẽ không được ghi có tự động.",
+    "Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically. (The amount received must be at least the minimum deposit.)": "Chỉ gửi USDT trên {{network}} đến địa chỉ này. Token hoặc mạng khác sẽ không được ghi có tự động. (Số tiền nhận được không được thấp hơn mức nạp tối thiểu.)",
     "Pending sweeps": "Lệnh gom đang chờ",
     "Printed by usdt-deploy. Changing it clears verification.": "Do usdt-deploy in ra. Thay đổi sẽ xóa trạng thái xác minh.",
     "Put the secret in the scanner .env as SCANNER_SECRET. It is shown only once.": "Đặt khóa vào .env của trình quét (SCANNER_SECRET). Khóa chỉ hiển thị một lần.",

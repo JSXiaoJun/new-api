@@ -8241,7 +8241,7 @@
     "Not verified": "Non vérifiée",
     "Offline": "Hors ligne",
     "Only deposits below the minimum amount can be credited manually": "Seuls les dépôts sous le minimum peuvent être crédités manuellement",
-    "Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically.": "N'envoyez que de l'USDT sur {{network}} à cette adresse. Les autres jetons ou réseaux ne sont pas crédités automatiquement.",
+    "Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically. (The amount received must be at least the minimum deposit.)": "N'envoyez que de l'USDT sur {{network}} à cette adresse. Les autres jetons ou réseaux ne sont pas crédités automatiquement. (Le montant reçu doit être au moins égal au dépôt minimum.)",
     "Pending sweeps": "Transferts en attente",
     "Printed by usdt-deploy. Changing it clears verification.": "Affichée par usdt-deploy. La modifier annule la vérification.",
     "Put the secret in the scanner .env as SCANNER_SECRET. It is shown only once.": "Placez le secret dans le .env du scanner (SCANNER_SECRET). Il n'est affiché qu'une fois.",

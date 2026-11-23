@@ -8241,7 +8241,7 @@
     "Not verified": "未検証",
     "Offline": "オフライン",
     "Only deposits below the minimum amount can be credited manually": "手動で入金できるのは最低額未満の入金だけです",
-    "Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically.": "このアドレスには {{network}} の USDT のみ送金してください。他のトークンやネットワークは自動入金されません。",
+    "Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically. (The amount received must be at least the minimum deposit.)": "このアドレスには {{network}} の USDT のみ送金してください。他のトークンやネットワークは自動入金されません。（着金額は最低入金額以上である必要があります）",
     "Pending sweeps": "保留中の集約",
     "Printed by usdt-deploy. Changing it clears verification.": "usdt-deploy が出力します。変更すると検証がリセットされます。",
     "Put the secret in the scanner .env as SCANNER_SECRET. It is shown only once.": "シークレットをスキャナーの .env の SCANNER_SECRET に設定してください。表示は一度だけです。",

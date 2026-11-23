@@ -8241,7 +8241,7 @@
     "Not verified": "未校驗",
     "Offline": "離線",
     "Only deposits below the minimum amount can be credited manually": "只有低於最小金額的儲值可以手動入帳",
-    "Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically.": "只能向這個地址轉入 {{network}} 網路的 USDT，其他幣種或網路不會自動入帳。",
+    "Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically. (The amount received must be at least the minimum deposit.)": "只能向這個地址轉入 {{network}} 網路的 USDT，其他幣種或網路不會自動入帳。（到帳金額不低於最小儲值金額）",
     "Pending sweeps": "待完成歸集",
     "Printed by usdt-deploy. Changing it clears verification.": "由 usdt-deploy 輸出。修改後需重新校驗。",
     "Put the secret in the scanner .env as SCANNER_SECRET. It is shown only once.": "把金鑰填到掃鏈服務 .env 的 SCANNER_SECRET，只顯示這一次。",

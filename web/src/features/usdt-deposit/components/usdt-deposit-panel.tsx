@@ -163,7 +163,7 @@ export function UsdtDepositPanel(props: UsdtDepositPanelProps) {
         />
         <AlertDescription className='font-semibold text-yellow-700 dark:text-yellow-300'>
           {t(
-            'Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically.',
+            'Only send USDT on {{network}} to this address. Other tokens or networks are not credited automatically. (The amount received must be at least the minimum deposit.)',
             { network: network.name }
           )}
         </AlertDescription>
