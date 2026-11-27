@@ -8361,6 +8361,12 @@
     "{{available}}/{{providers}} providers available": "{{available}}/{{providers}} fournisseurs disponibles",
     "{{count}} networks report errors": "{{count}} réseaux signalent des erreurs",
     "{{count}} records": "{{count}} enregistrements",
-    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "{{network}} est encombré en ce moment. Les dépôts sont toujours crédités, mais peuvent prendre plus de temps. Ne les renvoyez pas."
+    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "{{network}} est encombré en ce moment. Les dépôts sont toujours crédités, mais peuvent prendre plus de temps. Ne les renvoyez pas.",
+    "View share": "Voir la répartition",
+    "User consumption share": "Répartition de la consommation par utilisateur",
+    "Top 10 users by net consumption on {{channel}}": "Les 10 premiers utilisateurs par consommation nette sur {{channel}}",
+    "Deleted user": "Utilisateur supprimé",
+    "Failed to load user share": "Échec du chargement de la répartition par utilisateur",
+    "No user consumption on this channel": "Aucune consommation d'utilisateur sur ce canal"
   }
 }

@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -27,12 +26,12 @@ import {
 import { EmptyState } from '@/components/empty-state'
 import { LoadingState } from '@/components/loading-state'
 import { TableId } from '@/components/table-id'
-import { Button } from '@/components/ui/button'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatLogQuota, formatNumber, formatPercent } from '@/lib/format'
 
 import { getNetQuotaShare } from '../lib/rank-summary'
 import type { ChannelQuotaRank } from '../types'
+import { ChannelUserShareDialog } from './channel-user-share-dialog'
 
 type ChannelRankTableProps = {
   rows: ChannelQuotaRank[]
@@ -124,24 +123,12 @@ export function ChannelRankTable(props: ChannelRankTableProps) {
       className: 'w-24 text-right',
       cellClassName: 'text-right',
       cell: (row) => (
-        <Button
-          variant='ghost'
-          size='sm'
-          render={
-            <Link
-              to='/usage-logs/$section'
-              params={{ section: 'common' }}
-              search={{
-                page: 1,
-                channel: String(row.channel_id),
-                startTime: props.range.start * 1000,
-                endTime: props.range.end * 1000 - 1000,
-              }}
-            />
-          }
-        >
-          {t('View logs')}
-        </Button>
+        <ChannelUserShareDialog
+          channelId={row.channel_id}
+          channelLabel={channelLabel(row)}
+          channelNetQuota={row.net_quota}
+          range={props.range}
+        />
       ),
     },
   ]

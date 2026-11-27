@@ -32,3 +32,18 @@ export type ChannelQuotaRankResponse = {
   message?: string
   data: ChannelQuotaRank[]
 }
+
+export type ChannelUserQuotaRank = {
+  user_id: number
+  username: string
+  request_count: number
+  consumed_quota: number
+  refunded_quota: number
+  net_quota: number
+}
+
+export type ChannelUserQuotaRankResponse = {
+  success: boolean
+  message?: string
+  data: ChannelUserQuotaRank[]
+}

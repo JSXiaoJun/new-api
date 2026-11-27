@@ -190,3 +190,41 @@ func TestGetChannelQuotaRankNetsRefundsPerChannelAndSortsByNetQuota(t *testing.T
 	require.NoError(t, err)
 	assert.Empty(t, empty)
 }
+
+func TestGetChannelUserQuotaRankNetsRefundsPerUserAndKeepsTopN(t *testing.T) {
+	truncateTables(t)
+
+	seed := func(channelId int, userId int, username string, logType int, quota int, createdAt int64) {
+		require.NoError(t, LOG_DB.Create(&Log{
+			UserId:    userId,
+			Username:  username,
+			CreatedAt: createdAt,
+			Type:      logType,
+			ModelName: "gpt-a",
+			Quota:     quota,
+			ChannelId: channelId,
+		}).Error)
+	}
+	// alice: 100+50 消耗，退款 30，净额 120。
+	seed(1, 1, "alice", LogTypeConsume, 100, 1000)
+	seed(1, 1, "alice", LogTypeConsume, 50, 1100)
+	seed(1, 1, "alice", LogTypeRefund, 30, 1200)
+	// bob: 净额 200，排第一。
+	seed(1, 2, "bob", LogTypeConsume, 200, 1300)
+	// carol 与 alice 净额相同，按用户 ID 升序排在 alice 之后，并被 limit 截掉。
+	seed(1, 3, "carol", LogTypeConsume, 120, 1400)
+	// 其它渠道、窗口外、非计费类型都不计入。
+	seed(2, 4, "dave", LogTypeConsume, 999, 1500)
+	seed(1, 2, "bob", LogTypeConsume, 999, 2000)
+	seed(1, 2, "bob", LogTypeError, 999, 1500)
+
+	rows, err := GetChannelUserQuotaRank(1, 1000, 2000, 2)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, ChannelUserQuotaRank{UserId: 2, Username: "bob", RequestCount: 1, ConsumedQuota: 200, NetQuota: 200}, *rows[0])
+	assert.Equal(t, ChannelUserQuotaRank{UserId: 1, Username: "alice", RequestCount: 2, ConsumedQuota: 150, RefundedQuota: 30, NetQuota: 120}, *rows[1])
+
+	empty, err := GetChannelUserQuotaRank(1, 5000, 6000, 10)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}

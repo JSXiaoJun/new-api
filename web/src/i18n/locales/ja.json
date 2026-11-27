@@ -8361,6 +8361,12 @@
     "{{available}}/{{providers}} providers available": "利用可能なプロバイダー {{available}}/{{providers}}",
     "{{count}} networks report errors": "{{count}} ネットワークでエラー",
     "{{count}} records": "{{count}} 件",
-    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "{{network}} は現在混雑しています。入金は反映されますが時間がかかる場合があります。再送金しないでください。"
+    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "{{network}} は現在混雑しています。入金は反映されますが時間がかかる場合があります。再送金しないでください。",
+    "View share": "シェアを表示",
+    "User consumption share": "ユーザー別消費シェア",
+    "Top 10 users by net consumption on {{channel}}": "{{channel}} の純消費上位 10 ユーザー",
+    "Deleted user": "削除済みユーザー",
+    "Failed to load user share": "ユーザーシェアの読み込みに失敗しました",
+    "No user consumption on this channel": "このチャネルにはユーザーの消費がありません"
   }
 }

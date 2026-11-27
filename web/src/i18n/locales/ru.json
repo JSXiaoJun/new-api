@@ -8361,6 +8361,12 @@
     "{{available}}/{{providers}} providers available": "Доступно провайдеров: {{available}}/{{providers}}",
     "{{count}} networks report errors": "Сетей с ошибками: {{count}}",
     "{{count}} records": "Записей: {{count}}",
-    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "Сеть {{network}} сейчас перегружена. Пополнения зачисляются, но могут задержаться. Не отправляйте повторно."
+    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "Сеть {{network}} сейчас перегружена. Пополнения зачисляются, но могут задержаться. Не отправляйте повторно.",
+    "View share": "Доли",
+    "User consumption share": "Доля потребления по пользователям",
+    "Top 10 users by net consumption on {{channel}}": "Топ-10 пользователей по чистому потреблению в {{channel}}",
+    "Deleted user": "Удалённый пользователь",
+    "Failed to load user share": "Не удалось загрузить доли пользователей",
+    "No user consumption on this channel": "Нет потребления пользователей в этом канале"
   }
 }

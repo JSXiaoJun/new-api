@@ -8361,6 +8361,12 @@
     "{{available}}/{{providers}} providers available": "{{available}}/{{providers}} providers available",
     "{{count}} networks report errors": "{{count}} networks report errors",
     "{{count}} records": "{{count}} records",
-    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again."
+    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.",
+    "View share": "View share",
+    "User consumption share": "User consumption share",
+    "Top 10 users by net consumption on {{channel}}": "Top 10 users by net consumption on {{channel}}",
+    "Deleted user": "Deleted user",
+    "Failed to load user share": "Failed to load user share",
+    "No user consumption on this channel": "No user consumption on this channel"
   }
 }

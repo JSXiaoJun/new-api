@@ -19,7 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
-import type { ChannelQuotaRank, ChannelQuotaRankResponse } from './types'
+import type {
+  ChannelQuotaRank,
+  ChannelQuotaRankResponse,
+  ChannelUserQuotaRank,
+  ChannelUserQuotaRankResponse,
+} from './types'
 
 export async function getChannelQuotaRank(
   startTimestamp: number,
@@ -28,5 +33,23 @@ export async function getChannelQuotaRank(
   const res = await api.get<ChannelQuotaRankResponse>('/api/log/channel_rank', {
     params: { start_timestamp: startTimestamp, end_timestamp: endTimestamp },
   })
+  return requireServerSuccess(res.data).data ?? []
+}
+
+export async function getChannelUserQuotaRank(
+  channelId: number,
+  startTimestamp: number,
+  endTimestamp: number
+): Promise<ChannelUserQuotaRank[]> {
+  const res = await api.get<ChannelUserQuotaRankResponse>(
+    '/api/log/channel_rank/users',
+    {
+      params: {
+        channel_id: channelId,
+        start_timestamp: startTimestamp,
+        end_timestamp: endTimestamp,
+      },
+    }
+  )
   return requireServerSuccess(res.data).data ?? []
 }

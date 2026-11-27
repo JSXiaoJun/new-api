@@ -8361,6 +8361,12 @@
     "{{available}}/{{providers}} providers available": "{{available}}/{{providers}} 家服務商可用",
     "{{count}} networks report errors": "{{count}} 條網路有錯誤",
     "{{count}} records": "共 {{count}} 筆",
-    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "{{network}} 目前鏈路擁擠，儲值仍會入帳，但到帳可能較慢，請勿重複轉帳。"
+    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "{{network}} 目前鏈路擁擠，儲值仍會入帳，但到帳可能較慢，請勿重複轉帳。",
+    "View share": "查看佔比",
+    "User consumption share": "使用者消費佔比",
+    "Top 10 users by net consumption on {{channel}}": "{{channel}} 淨消費前 10 名使用者",
+    "Deleted user": "已刪除使用者",
+    "Failed to load user share": "載入使用者佔比失敗",
+    "No user consumption on this channel": "該渠道當天沒有使用者消費"
   }
 }

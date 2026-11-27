@@ -271,6 +271,32 @@ func GetChannelQuotaRank(c *gin.Context) {
 	})
 }
 
+const channelUserQuotaRankLimit = 10
+
+func GetChannelUserQuotaRank(c *gin.Context) {
+	channelId, channelErr := strconv.Atoi(c.Query("channel_id"))
+	startTimestamp, startErr := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, endErr := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	if channelErr != nil || startErr != nil || endErr != nil || channelId < 0 || startTimestamp <= 0 || endTimestamp <= startTimestamp {
+		common.ApiError(c, common.NewMessage("Invalid parameters"))
+		return
+	}
+	if endTimestamp-startTimestamp > maxChannelQuotaRankRangeSeconds {
+		common.ApiError(c, common.NewMessage("The time range cannot exceed {{days}} days", map[string]any{"days": maxChannelQuotaRankRangeSeconds / (24 * 60 * 60)}))
+		return
+	}
+	rows, err := model.GetChannelUserQuotaRank(channelId, startTimestamp, endTimestamp, channelUserQuotaRankLimit)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    rows,
+	})
+}
+
 func GetLogsSelfStat(c *gin.Context) {
 	username := c.GetString("username")
 	logType, _ := strconv.Atoi(c.Query("type"))

@@ -8361,6 +8361,12 @@
     "{{available}}/{{providers}} providers available": "{{available}}/{{providers}} nhà cung cấp khả dụng",
     "{{count}} networks report errors": "{{count}} mạng báo lỗi",
     "{{count}} records": "{{count}} bản ghi",
-    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "{{network}} đang tắc nghẽn. Khoản nạp vẫn được ghi có nhưng có thể chậm hơn. Đừng chuyển lại."
+    "{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.": "{{network}} đang tắc nghẽn. Khoản nạp vẫn được ghi có nhưng có thể chậm hơn. Đừng chuyển lại.",
+    "View share": "Xem tỷ lệ",
+    "User consumption share": "Tỷ lệ tiêu thụ theo người dùng",
+    "Top 10 users by net consumption on {{channel}}": "10 người dùng tiêu thụ ròng cao nhất trên {{channel}}",
+    "Deleted user": "Người dùng đã xóa",
+    "Failed to load user share": "Không tải được tỷ lệ người dùng",
+    "No user consumption on this channel": "Kênh này không có tiêu thụ của người dùng"
   }
 }

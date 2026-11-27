@@ -993,6 +993,43 @@ func GetChannelQuotaRank(startTimestamp int64, endTimestamp int64) ([]*ChannelQu
 	return rows, nil
 }
 
+type ChannelUserQuotaRank struct {
+	UserId        int    `json:"user_id" gorm:"column:user_id"`
+	Username      string `json:"username" gorm:"column:user_name"`
+	RequestCount  int64  `json:"request_count" gorm:"column:request_count"`
+	ConsumedQuota int64  `json:"consumed_quota" gorm:"column:consumed_quota"`
+	RefundedQuota int64  `json:"refunded_quota" gorm:"column:refunded_quota"`
+	NetQuota      int64  `json:"net_quota" gorm:"column:net_quota"`
+}
+
+// GetChannelUserQuotaRank returns the users with the highest net consumption
+// on one channel in [startTimestamp, endTimestamp), netted like
+// GetChannelQuotaRank so the shares add up to that channel's row.
+func GetChannelUserQuotaRank(channelId int, startTimestamp int64, endTimestamp int64, limit int) ([]*ChannelUserQuotaRank, error) {
+	rows := make([]*ChannelUserQuotaRank, 0)
+	consumed := fmt.Sprintf("COALESCE(sum(CASE WHEN type = %d THEN quota ELSE 0 END), 0)", LogTypeConsume)
+	refunded := fmt.Sprintf("COALESCE(sum(CASE WHEN type = %d THEN quota ELSE 0 END), 0)", LogTypeRefund)
+	// The name alias differs from the column so ClickHouse does not see a cyclic alias.
+	selectSQL := fmt.Sprintf("user_id, MAX(username) user_name, "+
+		"COALESCE(sum(CASE WHEN type = %d THEN 1 ELSE 0 END), 0) request_count, "+
+		"%[2]s consumed_quota, %[3]s refunded_quota, %[2]s - %[3]s net_quota",
+		LogTypeConsume, consumed, refunded)
+	err := LOG_DB.Table("logs").
+		Select(selectSQL).
+		Where("channel_id = ?", channelId).
+		Where("created_at >= ? AND created_at < ?", startTimestamp, endTimestamp).
+		Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+		Group("user_id").
+		Order("net_quota DESC, user_id ASC").
+		Limit(limit).
+		Scan(&rows).Error
+	if err != nil {
+		common.SysError(common.LogText("failed to query channel user quota rank: %s", err.Error()))
+		return nil, common.NewMessage("Failed to query statistics")
+	}
+	return rows, nil
+}
+
 func CountOldLog(ctx context.Context, targetTimestamp int64) (int64, error) {
 	var total int64
 	if err := LOG_DB.WithContext(ctx).Model(&Log{}).Where("created_at < ?", targetTimestamp).Count(&total).Error; err != nil {
