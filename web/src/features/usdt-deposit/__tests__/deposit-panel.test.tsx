@@ -122,20 +122,43 @@ describe('UsdtDepositPanel', () => {
       chain: 'tron',
       address: 'T123',
     })
+    // The first network is shown on load while the agreement is unsigned.
     const agreement = vi.fn().mockReturnValueOnce(false).mockReturnValue(true)
     renderCard({ onBeforeAddress: agreement })
 
     await user.click(
-      await screen.findByRole('button', { name: 'TRON (TRC20)' })
+      await screen.findByRole('button', { name: /TRON \(TRC20\)/ })
     )
-    const show = screen.getByRole('button', { name: 'Show my deposit address' })
-    await user.click(show)
-    expect(createUsdtAddress).not.toHaveBeenCalled()
-
-    await user.click(show)
     await waitFor(() =>
       expect(createUsdtAddress).toHaveBeenCalledWith('tron', expect.anything())
     )
+    expect(createUsdtAddress).not.toHaveBeenCalledWith('bsc', expect.anything())
+  })
+
+  it('marks a congested network and tells the user not to send again', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getUsdtInfo).mockResolvedValue({
+      ...info({ bsc: '0xb', tron: 'T1' }),
+      networks: [
+        { ...networks[0], status: 'normal' },
+        { ...networks[1], status: 'congested' },
+      ],
+    })
+    vi.mocked(getUsdtDeposits).mockResolvedValue([])
+    renderCard()
+
+    const bsc = await screen.findByRole('button', { name: /BSC \(BEP20\)/ })
+    expect(bsc).toHaveTextContent('Smooth')
+    const tron = screen.getByRole('button', { name: /TRON \(TRC20\)/ })
+    expect(tron).toHaveTextContent('Congested')
+    expect(screen.queryByText(/is congested right now/)).not.toBeInTheDocument()
+
+    await user.click(tron)
+    expect(
+      screen.getByText(
+        'TRON (TRC20) is congested right now. Deposits are still credited, but may take longer. Do not send again.'
+      )
+    ).toBeInTheDocument()
   })
 
   it('shows the permanent address with the latest deposits and no transaction hash form', async () => {

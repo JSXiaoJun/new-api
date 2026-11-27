@@ -24,6 +24,8 @@ import type {
   PageResult,
   UsdtDeposit,
   UsdtInfo,
+  UsdtNodePreview,
+  UsdtNodeTestResult,
   UsdtOutcome,
   UsdtSettings,
   UsdtSettingsPatch,
@@ -75,6 +77,30 @@ export function verifyUsdtFactory(
 
 export function regenerateUsdtScannerSecret(): Promise<{ secret: string }> {
   return unwrap(api.post('/api/option/usdt/scanner-secret', {}))
+}
+
+/** Tests saved endpoints of a network (one, with nodeId) from the server. */
+export function testUsdtNodes(
+  chain: string,
+  nodeId?: string
+): Promise<UsdtNodeTestResult[]> {
+  return unwrap(
+    api.post('/api/option/usdt/nodes/test', { chain, node_id: nodeId ?? '' })
+  )
+}
+
+/** Recognizes the providers of pasted URLs without saving them. */
+export function previewUsdtNodes(urls: string[]): Promise<UsdtNodePreview[]> {
+  return unwrap(api.post('/api/option/usdt/nodes/preview', { urls }))
+}
+
+export function releaseUsdtConflict(
+  chain: string,
+  txHash: string
+): Promise<null> {
+  return unwrap(
+    api.post('/api/option/usdt/conflicts/release', { chain, tx_hash: txHash })
+  )
 }
 
 export interface UsdtDepositFilters {

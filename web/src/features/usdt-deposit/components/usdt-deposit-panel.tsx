@@ -23,13 +23,14 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
+import { StatusBadge } from '@/components/status-badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { formatCurrencyFromUSD } from '@/lib/currency'
 
 import { createUsdtAddress, getUsdtInfo } from '../api'
-import { USDT_QUERY_KEYS } from '../lib'
+import { NETWORK_STATUS, USDT_QUERY_KEYS } from '../lib'
 import type { UsdtNetwork } from '../types'
 import { UsdtDepositHistory } from './usdt-deposit-history'
 
@@ -105,17 +106,33 @@ export function UsdtDepositPanel(props: UsdtDepositPanelProps) {
           spacing={2}
           className='grid w-full grid-cols-2 md:grid-cols-4'
         >
-          {networks.map((n) => (
-            <ToggleGroupItem
-              key={n.id}
-              value={n.id}
-              variant='outline'
-              className='data-[pressed]:border-primary data-[pressed]:bg-primary/5 h-auto min-h-11 px-2 py-2 text-sm whitespace-normal'
-            >
-              {n.name}
-            </ToggleGroupItem>
-          ))}
+          {networks.map((n) => {
+            const status = NETWORK_STATUS[n.status ?? 'normal']
+            return (
+              <ToggleGroupItem
+                key={n.id}
+                value={n.id}
+                variant='outline'
+                className='data-[pressed]:border-primary data-[pressed]:bg-primary/5 h-auto min-h-11 flex-wrap gap-x-2 gap-y-1 px-2 py-2 text-sm whitespace-normal'
+              >
+                {n.name}
+                <StatusBadge
+                  label={t(status.labelKey)}
+                  variant={status.variant}
+                  size='sm'
+                />
+              </ToggleGroupItem>
+            )
+          })}
         </ToggleGroup>
+        {network.status === 'congested' && (
+          <p className='text-warning text-xs'>
+            {t(
+              '{{network}} is congested right now. Deposits are still credited, but may take longer. Do not send again.',
+              { network: network.name }
+            )}
+          </p>
+        )}
       </div>
 
       <div className='flex flex-col gap-4 sm:flex-row sm:items-start'>

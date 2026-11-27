@@ -20,7 +20,8 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// ChainView is one network as the settings page shows it.
+// ChainView is one network as the settings page shows it. Endpoint URLs and
+// the legacy URL fields are never sent: they can carry API keys.
 type ChainView struct {
 	operation_setting.UsdtChainSetting
 	ID           string `json:"id"`
@@ -30,7 +31,47 @@ type ChainView struct {
 	AddressCount int64  `json:"address_count"`
 	// FactoryLocked is true once addresses exist: changing the factory would
 	// strand every deposit sent to them.
-	FactoryLocked bool `json:"factory_locked"`
+	FactoryLocked bool       `json:"factory_locked"`
+	Nodes         []NodeView `json:"nodes"`
+	// EnabledNodes and Providers are "N enabled endpoints / M independent
+	// providers"; AvailableProviders counts those not cooling down now.
+	EnabledNodes       int `json:"enabled_nodes"`
+	Providers          int `json:"providers"`
+	AvailableProviders int `json:"available_providers"`
+	// Status is what users see on this network: "normal" or "congested".
+	Status string `json:"status"`
+}
+
+// NodeView is a verification endpoint without its credentials.
+type NodeView struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	// ProviderKey is the independent source the endpoint counts as ("" when
+	// its operator is unknown and it is not used); ProviderName displays it.
+	ProviderKey      string             `json:"provider_key"`
+	ProviderName     string             `json:"provider_name"`
+	ProviderKnown    bool               `json:"provider_known"`
+	ProviderInferred bool               `json:"provider_inferred"`
+	Endpoint         string             `json:"endpoint"`
+	Priority         int                `json:"priority"`
+	Enabled          bool               `json:"enabled"`
+	Health           EndpointHealthView `json:"health"`
+}
+
+func nodeViews(chainID string, nodes []operation_setting.UsdtRPCNode) []NodeView {
+	now := time.Now()
+	views := make([]NodeView, 0, len(nodes))
+	for _, n := range nodes {
+		key := nodeProvider(n)
+		views = append(views, NodeView{
+			ID: n.ID, Name: n.Name, Provider: n.Provider, ProviderKey: key, ProviderName: providerDisplayName(key),
+			ProviderKnown: knownProvider(rpcHost(n.URL)) != "", ProviderInferred: n.ProviderInferred,
+			Endpoint: maskedRPCURL(n.URL), Priority: n.Priority, Enabled: n.Enabled,
+			Health: healthFor(chainID, n.URL).view(now),
+		})
+	}
+	return views
 }
 
 type SettingsView struct {
@@ -42,9 +83,15 @@ type SettingsView struct {
 	HasScannerSecret bool                      `json:"has_scanner_secret"`
 	Chains           []ChainView               `json:"chains"`
 	Heartbeat        map[string]ChainHeartbeat `json:"heartbeat"`
-	Alerts           []VerificationAlert       `json:"alerts"`
+	Alerts           []AlertView               `json:"alerts"`
 	HeartbeatAt      int64                     `json:"heartbeat_at"`
 	ScannerVersion   string                    `json:"scanner_version"`
+}
+
+// AlertView is a disagreement and whether its transaction is still held.
+type AlertView struct {
+	VerificationAlert
+	Held bool `json:"held"`
 }
 
 func SettingsForAdmin() (SettingsView, error) {
@@ -57,14 +104,28 @@ func SettingsForAdmin() (SettingsView, error) {
 	view := SettingsView{
 		Enabled: setting.Enabled, AdminOnly: setting.AdminOnly, RateMode: setting.RateMode, FixedRate: setting.FixedRate,
 		ScannerIPs: setting.ScannerIPs, HasScannerSecret: strings.TrimSpace(setting.ScannerSecret) != "",
-		Heartbeat: hb.chains, HeartbeatAt: hb.at, ScannerVersion: hb.version, Alerts: RecentVerificationAlerts(),
+		Heartbeat: hb.chains, HeartbeatAt: hb.at, ScannerVersion: hb.version, Alerts: []AlertView{},
+	}
+	for _, alert := range RecentVerificationAlerts() {
+		_, held := conflictHolds.Load(alert.Chain + "|" + alert.TxHash)
+		view.Alerts = append(view.Alerts, AlertView{VerificationAlert: alert, Held: held})
 	}
 	for _, id := range operation_setting.UsdtChainOrder {
 		chain, _ := LookupChain(id)
 		cfg := setting.Chains[id]
+		nodes := chainNodes(cfg)
+		groups := groupProviders(nodes)
+		public := cfg
+		public.RPCNodes, public.RPCURL, public.SecondaryRPCURL = nil, "", ""
 		v := ChainView{
-			UsdtChainSetting: cfg, ID: id, Name: chain.Name, Contract: DisplayAddress(chain, chain.USDT),
-			AddressCount: counts[id], FactoryLocked: counts[id] > 0,
+			UsdtChainSetting: public, ID: id, Name: chain.Name, Contract: DisplayAddress(chain, chain.USDT),
+			AddressCount: counts[id], FactoryLocked: counts[id] > 0, Nodes: nodeViews(id, nodes),
+			Providers: len(groups), AvailableProviders: len(availableProviders(id, groups)), Status: NetworkStatus(id, cfg),
+		}
+		for _, n := range nodes {
+			if n.Enabled {
+				v.EnabledNodes++
+			}
 		}
 		if f, err := ParseHex20(cfg.FactoryAddress); err == nil {
 			v.Factory = DisplayAddress(chain, f)
@@ -74,15 +135,26 @@ func SettingsForAdmin() (SettingsView, error) {
 	return view, nil
 }
 
+// NodePatch is one endpoint as the settings page sends it. An existing node
+// (ID set) with an empty URL keeps its saved URL, so editing a name or the
+// order never needs the API key again.
+type NodePatch struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	URL      string `json:"url"`
+	Enabled  bool   `json:"enabled"`
+}
+
 type ChainPatch struct {
-	Enabled         *bool    `json:"enabled"`
-	FactoryAddress  *string  `json:"factory_address"`
-	RPCURL          *string  `json:"rpc_url"`
-	RPCURLSecondary *string  `json:"rpc_url_secondary"`
-	Finality        *string  `json:"finality"`
-	Confirmations   *int     `json:"confirmations"`
-	MinAmount       *float64 `json:"min_amount"`
-	SweepThreshold  *float64 `json:"sweep_threshold"`
+	Enabled        *bool    `json:"enabled"`
+	FactoryAddress *string  `json:"factory_address"`
+	Finality       *string  `json:"finality"`
+	Confirmations  *int     `json:"confirmations"`
+	MinAmount      *float64 `json:"min_amount"`
+	SweepThreshold *float64 `json:"sweep_threshold"`
+	// RPCNodes replaces the node list, in priority order.
+	RPCNodes *[]NodePatch `json:"rpc_nodes"`
 }
 
 type SettingsPatch struct {
@@ -106,6 +178,60 @@ func randomHex32() (string, error) {
 
 func validAmountSetting(v float64) bool {
 	return !math.IsNaN(v) && v >= 0 && v <= 1_000_000
+}
+
+// applyNodePatch validates a new node list against the saved one. The list
+// order is the priority. A URL appears once; one registrable domain belongs
+// to one provider, so renaming cannot split an operator into two votes.
+func applyNodePatch(chain Chain, saved []operation_setting.UsdtRPCNode, patch []NodePatch) ([]operation_setting.UsdtRPCNode, error) {
+	byID := map[string]operation_setting.UsdtRPCNode{}
+	for _, n := range saved {
+		byID[n.ID] = n
+	}
+	nodes := make([]operation_setting.UsdtRPCNode, 0, len(patch))
+	seenURL := map[string]int{}
+	domainProvider := map[string]string{}
+	for i, p := range patch {
+		position := map[string]any{"chain": chain.ID, "position": i + 1}
+		node := operation_setting.UsdtRPCNode{
+			ID: strings.TrimSpace(p.ID), Name: strings.TrimSpace(p.Name), Provider: strings.Join(strings.Fields(p.Provider), " "),
+			URL: strings.TrimSpace(p.URL), Priority: (i + 1) * 10, Enabled: p.Enabled,
+		}
+		old, existing := byID[node.ID]
+		if node.ID == "" || !existing {
+			node.ID = newNodeID()
+		}
+		if node.URL == "" && existing {
+			node.URL = old.URL
+		}
+		if existing && old.ProviderInferred && node.Provider == old.Provider {
+			node.ProviderInferred = true
+		}
+		if len(node.Name) > 64 || len(node.Provider) > 64 || len(node.URL) > 2048 {
+			return nil, common.NewMessage("Node {{position}} of {{chain}} has a field that is too long", position)
+		}
+		host := rpcHost(node.URL)
+		if host == "" {
+			return nil, common.NewMessage("Node {{position}} of {{chain}} needs an http or https URL", position)
+		}
+		normalized := normalizedRPCURL(node.URL)
+		if first, dup := seenURL[normalized]; dup {
+			position["first"] = first
+			return nil, common.NewMessage("Node {{position}} of {{chain}} repeats the URL of node {{first}}", position)
+		}
+		seenURL[normalized] = i + 1
+		domain, provider := registrableDomain(host), nodeProvider(node)
+		if known, ok := domainProvider[domain]; ok && known != provider {
+			position["domain"] = domain
+			return nil, common.NewMessage("Endpoints on {{domain}} belong to one provider; give node {{position}} of {{chain}} the same provider as the others", position)
+		}
+		domainProvider[domain] = provider
+		if node.Name == "" {
+			node.Name = host
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes, nil
 }
 
 // UpdateSettings validates and persists a partial settings change. The salt
@@ -145,16 +271,24 @@ func UpdateSettings(patch SettingsPatch) error {
 				cfg.Enabled = false
 			}
 		}
-		if p.RPCURL != nil {
-			cfg.RPCURL = strings.TrimSpace(*p.RPCURL)
-		}
-		if p.RPCURLSecondary != nil {
-			cfg.SecondaryRPCURL = strings.TrimSpace(*p.RPCURLSecondary)
-		}
-		if cfg.RPCURL != "" && cfg.SecondaryRPCURL != "" {
-			if err := DistinctProviders(cfg.RPCURL, cfg.SecondaryRPCURL); err != nil {
-				return common.NewMessage("The two verification nodes of {{chain}} must use different providers", map[string]any{"chain": chain.ID})
+		providersBefore := len(groupProviders(chainNodes(cfg)))
+		if p.RPCNodes != nil {
+			nodes, err := applyNodePatch(chain, chainNodes(cfg), *p.RPCNodes)
+			if err != nil {
+				return err
 			}
+			cfg.RPCNodes = nodes
+		}
+		if cfg.RPCNodes == nil {
+			// First save after an upgrade: keep the migrated legacy list.
+			cfg.RPCNodes = chainNodes(cfg)
+		}
+		cfg.RPCURL, cfg.SecondaryRPCURL = legacySlots(cfg.RPCNodes)
+		providers := len(groupProviders(cfg.RPCNodes))
+		if cfg.Verified && providers < 2 && providers < providersBefore {
+			// A verified network verifies deposits now, shown to users or not:
+			// keep the working configuration rather than stall its deposits.
+			return common.NewMessage("{{chain}} verifies deposits and needs at least two enabled independent providers; this change leaves {{count}}", map[string]any{"chain": chain.ID, "count": providers})
 		}
 		if p.Finality != nil {
 			mode := strings.TrimSpace(*p.Finality)
@@ -189,7 +323,7 @@ func UpdateSettings(patch SettingsPatch) error {
 			if *p.Enabled && !cfg.Verified {
 				return common.NewMessage("{{chain}} cannot be enabled before its factory is verified", map[string]any{"chain": chain.ID})
 			}
-			if *p.Enabled && DistinctProviders(cfg.RPCURL, cfg.SecondaryRPCURL) != nil {
+			if *p.Enabled && len(groupProviders(cfg.RPCNodes)) < 2 {
 				return common.NewMessage("{{chain}} needs two verification nodes from different providers", map[string]any{"chain": chain.ID})
 			}
 			cfg.Enabled = *p.Enabled

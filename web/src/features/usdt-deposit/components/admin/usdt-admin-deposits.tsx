@@ -42,6 +42,7 @@ import {
 import { isTxHash, summarizeOutcomes, USDT_QUERY_KEYS } from '../../lib'
 import type { UsdtChainSetting, UsdtDeposit } from '../../types'
 import { DepositRow } from '../usdt-deposit-history'
+import { UsdtCollapsibleCard } from './usdt-collapsible-card'
 
 const PAGE_SIZE = 20
 
@@ -92,8 +93,14 @@ export function UsdtAdminDeposits(props: { chains: UsdtChainSetting[] }) {
   const lastPage = Math.max(1, Math.ceil((query.data?.total ?? 0) / PAGE_SIZE))
 
   return (
-    <div className='space-y-3 rounded-lg border p-4'>
-      <h3 className='text-sm font-medium'>{t('USDT deposits')}</h3>
+    <UsdtCollapsibleCard
+      title={t('USDT deposits')}
+      summary={
+        <span className='text-muted-foreground text-xs font-normal'>
+          {t('{{count}} records', { count: query.data?.total ?? 0 })}
+        </span>
+      }
+    >
       <form
         className='flex flex-col gap-2 sm:flex-row'
         onSubmit={(event) => {
@@ -236,6 +243,6 @@ export function UsdtAdminDeposits(props: { chains: UsdtChainSetting[] }) {
         }}
         isLoading={credit.isPending}
       />
-    </div>
+    </UsdtCollapsibleCard>
   )
 }

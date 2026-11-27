@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { StatusVariant } from '@/components/status-badge'
 
-import type { UsdtDepositStatus, UsdtOutcome } from './types'
+import type { UsdtDepositStatus, UsdtNetworkStatus, UsdtOutcome } from './types'
 
 export const USDT_QUERY_KEYS = {
   info: ['usdt', 'info'] as const,
@@ -37,9 +37,26 @@ export const DEPOSIT_STATUS: Record<
   below_min: { labelKey: 'Below minimum', variant: 'warning' },
 }
 
+/** i18n keys and badge colors for a network's current crediting speed. */
+export const NETWORK_STATUS: Record<
+  UsdtNetworkStatus,
+  { labelKey: string; variant: StatusVariant }
+> = {
+  normal: { labelKey: 'Smooth', variant: 'success' },
+  congested: { labelKey: 'Congested', variant: 'warning' },
+}
+
 /** A transaction hash is 64 hex characters, with or without 0x (TRON txids). */
 export function isTxHash(value: string): boolean {
   return /^(0x)?[0-9a-fA-F]{64}$/.test(value.trim())
+}
+
+/** Splits pasted text into RPC URLs: one per line, commas also separate. */
+export function splitPastedUrls(text: string): string[] {
+  return text
+    .split(/[\n,]/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
 }
 
 export interface ClaimSummary {

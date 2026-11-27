@@ -37,6 +37,7 @@ import { formatTimestamp } from '@/lib/format'
 import { regenerateUsdtScannerSecret } from '../../api'
 import { USDT_QUERY_KEYS } from '../../lib'
 import type { UsdtSettings } from '../../types'
+import { UsdtCollapsibleCard } from './usdt-collapsible-card'
 
 // The scanner reports every minute; three missed reports means it is down.
 const STALE_AFTER_SECONDS = 180
@@ -57,25 +58,34 @@ export function UsdtScannerPanel(props: { settings: UsdtSettings }) {
   const seenAt = props.settings.heartbeat_at
   const online = seenAt > 0 && Date.now() / 1000 - seenAt < STALE_AFTER_SECONDS
   const heartbeat = props.settings.heartbeat ?? {}
+  const failing = Object.values(heartbeat).filter((hb) => hb.last_error).length
 
   return (
-    <div className='space-y-3 rounded-lg border p-4'>
-      <div className='flex flex-wrap items-center gap-2'>
-        <h3 className='text-sm font-medium'>{t('Scanner service')}</h3>
-        <StatusBadge
-          label={online ? t('Online') : t('Offline')}
-          variant={online ? 'success' : 'danger'}
-        />
-        <span className='text-muted-foreground text-xs'>
-          {seenAt > 0
-            ? t('Last report {{time}}, version {{version}}', {
-                time: formatTimestamp(seenAt),
-                version: props.settings.scanner_version || '-',
-              })
-            : t('No report received yet')}
-        </span>
-      </div>
-
+    <UsdtCollapsibleCard
+      title={t('Scanner service')}
+      summary={
+        <>
+          <StatusBadge
+            label={online ? t('Online') : t('Offline')}
+            variant={online ? 'success' : 'danger'}
+          />
+          {failing > 0 && (
+            <StatusBadge
+              label={t('{{count}} networks report errors', { count: failing })}
+              variant='warning'
+            />
+          )}
+          <span className='text-muted-foreground text-xs font-normal'>
+            {seenAt > 0
+              ? t('Last report {{time}}, version {{version}}', {
+                  time: formatTimestamp(seenAt),
+                  version: props.settings.scanner_version || '-',
+                })
+              : t('No report received yet')}
+          </span>
+        </>
+      }
+    >
       {Object.keys(heartbeat).length > 0 && (
         <Table>
           <TableHeader>
@@ -145,6 +155,6 @@ export function UsdtScannerPanel(props: { settings: UsdtSettings }) {
         handleConfirm={() => regenerate.mutate()}
         isLoading={regenerate.isPending}
       />
-    </div>
+    </UsdtCollapsibleCard>
   )
 }

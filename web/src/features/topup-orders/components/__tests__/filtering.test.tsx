@@ -43,14 +43,6 @@ const order = {
   status: 'success',
 }
 
-const usdtOrder = {
-  ...order,
-  id: 2,
-  trade_no: 'USDT-polygon-abc123def456-0',
-  payment_method: 'usdt',
-  payment_provider: 'usdt',
-}
-
 describe('Recharge order filters', () => {
   let queryClient: QueryClient
   let footer: HTMLDivElement

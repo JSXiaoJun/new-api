@@ -134,6 +134,8 @@ type NetworkInfo struct {
 	MinAmount string `json:"min_amount"`
 	Contract  string `json:"contract"`
 	TxURL     string `json:"tx_url"`
+	// Status is "normal" or "congested" (deposits may be credited late).
+	Status string `json:"status"`
 }
 
 // UserNetworks lists the networks a user may deposit on, in display order.
@@ -151,7 +153,7 @@ func UserNetworks() []NetworkInfo {
 		}
 		out = append(out, NetworkInfo{
 			ID: id, Name: chain.Name, MinAmount: decimal.NewFromFloat(cfg.MinAmount).String(),
-			Contract: DisplayAddress(chain, chain.USDT), TxURL: chain.TxURL,
+			Contract: DisplayAddress(chain, chain.USDT), TxURL: chain.TxURL, Status: NetworkStatus(id, cfg),
 		})
 	}
 	return out

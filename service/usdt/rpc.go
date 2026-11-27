@@ -10,31 +10,35 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 )
 
-var rpcHTTPClient = &http.Client{Timeout: 15 * time.Second}
+// rpcRequestTimeout bounds one JSON-RPC request; a round of verification has
+// its own, larger budget (verifyRoundBudget).
+const rpcRequestTimeout = 5 * time.Second
 
-// rpcClient speaks Ethereum JSON-RPC. TRON nodes expose the same methods on
-// /jsonrpc, with 20-byte hex addresses, so one client serves all four chains.
+var rpcHTTPClient = &http.Client{}
+
+// rpcClient speaks Ethereum JSON-RPC to one endpoint. TRON nodes expose the
+// same methods on /jsonrpc, with 20-byte hex addresses, so one client serves
+// all four chains. Failover between endpoints and providers happens above it,
+// so every answer of one piece of evidence comes from the same endpoint.
 type rpcClient struct {
-	endpoints []string
+	url string
+	// health, when set, records each call's outcome for this endpoint.
+	health *endpointHealth
 }
 
-func newRPCClient(urls string) (*rpcClient, error) {
-	var endpoints []string
-	for raw := range strings.SplitSeq(urls, ",") {
-		if u := strings.TrimSpace(raw); u != "" {
-			endpoints = append(endpoints, u)
-		}
-	}
-	if len(endpoints) == 0 {
+func newRPCClient(url string) (*rpcClient, error) {
+	url = strings.TrimSpace(url)
+	if url == "" {
 		return nil, errors.New("no RPC endpoint configured")
 	}
-	return &rpcClient{endpoints: endpoints}, nil
+	return &rpcClient{url: url}, nil
 }
 
 type rpcRequest struct {
@@ -52,63 +56,125 @@ type rpcResponse struct {
 	} `json:"error"`
 }
 
-// call tries each endpoint in order and decodes the first successful result.
-// Endpoint URLs can carry API keys, so errors never include them.
+// rpcFaultKind classifies why an endpoint could not answer. It decides how
+// long the endpoint rests before it is asked again.
+type rpcFaultKind string
+
+const (
+	faultRateLimited  rpcFaultKind = "rate_limited"
+	faultDenied       rpcFaultKind = "denied"
+	faultUnavailable  rpcFaultKind = "unavailable"
+	faultRPCError     rpcFaultKind = "rpc_error"
+	faultUnsupported  rpcFaultKind = "unsupported"
+	faultWrongNetwork rpcFaultKind = "wrong_network"
+)
+
+// rpcFault is an endpoint failure. Its text never contains the endpoint URL,
+// which can carry an API key.
+type rpcFault struct {
+	Kind       rpcFaultKind
+	Method     string
+	Detail     string
+	RetryAfter time.Duration
+}
+
+func (e *rpcFault) Error() string { return e.Method + ": " + e.Detail }
+
+// call posts one request and decodes its result. Cancellation of ctx by the
+// caller is returned as is and never counted against the endpoint.
 func (c *rpcClient) call(ctx context.Context, method string, params []any, out any) error {
 	body, err := common.Marshal(rpcRequest{JSONRPC: "2.0", ID: 1, Method: method, Params: params})
 	if err != nil {
 		return err
 	}
-	var lastErr error
-	for i, endpoint := range c.endpoints {
-		raw, err := c.post(ctx, endpoint, body)
-		if err != nil {
-			lastErr = fmt.Errorf("%s via endpoint %d: %w", method, i+1, err)
-			continue
-		}
-		var resp rpcResponse
-		if err := common.Unmarshal(raw, &resp); err != nil {
-			lastErr = fmt.Errorf("%s via endpoint %d: invalid response", method, i+1)
-			continue
-		}
-		if resp.Error != nil {
-			lastErr = fmt.Errorf("%s via endpoint %d: rpc error %d: %s", method, i+1, resp.Error.Code, resp.Error.Message)
-			continue
-		}
-		if out == nil {
-			return nil
-		}
-		if err := common.Unmarshal(resp.Result, out); err != nil {
-			lastErr = fmt.Errorf("%s via endpoint %d: decode result: %w", method, i+1, err)
-			continue
-		}
-		return nil
+	err = c.exchange(ctx, method, body, out)
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
-	return lastErr
+	if c.health != nil {
+		c.health.record(method, err)
+	}
+	return err
 }
 
-func (c *rpcClient) post(ctx context.Context, endpoint string, body []byte) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+func (c *rpcClient) exchange(ctx context.Context, method string, body []byte, out any) error {
+	reqCtx, cancel := context.WithTimeout(ctx, rpcRequestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.url, bytes.NewReader(body))
 	if err != nil {
-		return nil, errors.New("invalid endpoint URL")
+		return &rpcFault{Kind: faultUnavailable, Method: method, Detail: "invalid endpoint URL"}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := rpcHTTPClient.Do(req)
 	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+		detail := "connection failed"
+		if reqCtx.Err() != nil {
+			detail = "timeout"
 		}
-		return nil, errors.New("request failed")
+		return &rpcFault{Kind: faultUnavailable, Method: method, Detail: detail}
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return nil, errors.New("read failed")
+		return &rpcFault{Kind: faultUnavailable, Method: method, Detail: "read failed"}
 	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	switch {
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return &rpcFault{Kind: faultRateLimited, Method: method, Detail: "HTTP 429",
+			RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return &rpcFault{Kind: faultDenied, Method: method, Detail: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+	case resp.StatusCode != http.StatusOK:
+		return &rpcFault{Kind: faultUnavailable, Method: method, Detail: fmt.Sprintf("HTTP %d", resp.StatusCode)}
 	}
-	return raw, nil
+	var decoded rpcResponse
+	if err := common.Unmarshal(raw, &decoded); err != nil {
+		return &rpcFault{Kind: faultUnavailable, Method: method, Detail: "invalid JSON response"}
+	}
+	if decoded.Error != nil {
+		kind := faultRPCError
+		// -32601 method not found; -32602 often an unsupported block tag.
+		if decoded.Error.Code == -32601 || decoded.Error.Code == -32602 {
+			kind = faultUnsupported
+		}
+		if decoded.Error.Code == 429 || decoded.Error.Code == -32005 {
+			kind = faultRateLimited
+		}
+		return &rpcFault{Kind: kind, Method: method, Detail: fmt.Sprintf("RPC error %d: %s", decoded.Error.Code, truncate(decoded.Error.Message, 120))}
+	}
+	if out == nil {
+		return nil
+	}
+	if err := common.Unmarshal(decoded.Result, out); err != nil {
+		return &rpcFault{Kind: faultUnavailable, Method: method, Detail: "invalid result"}
+	}
+	return nil
+}
+
+// parseRetryAfter reads delay-seconds or an HTTP date; zero means absent or
+// invalid.
+func parseRetryAfter(value string, now time.Time) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.Atoi(value); err == nil {
+		if seconds <= 0 {
+			return 0
+		}
+		return time.Duration(seconds) * time.Second
+	}
+	if at, err := http.ParseTime(value); err == nil && at.After(now) {
+		return at.Sub(now)
+	}
+	return 0
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 func parseQuantity(s string) (uint64, error) {
@@ -165,10 +231,11 @@ type rpcLog struct {
 }
 
 type rpcReceipt struct {
-	Status      string   `json:"status"`
-	BlockNumber string   `json:"blockNumber"`
-	BlockHash   string   `json:"blockHash"`
-	Logs        []rpcLog `json:"logs"`
+	TransactionHash string   `json:"transactionHash"`
+	Status          string   `json:"status"`
+	BlockNumber     string   `json:"blockNumber"`
+	BlockHash       string   `json:"blockHash"`
+	Logs            []rpcLog `json:"logs"`
 }
 
 func (c *rpcClient) receipt(ctx context.Context, txHash string) (*rpcReceipt, error) {

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -48,10 +49,20 @@ func toUsdtDepositViews(rows []model.UsdtDeposit) []usdtDepositView {
 }
 
 // usdtError maps verification errors to messages the web console translates.
+// Users learn what happens next; provider names, endpoints and RPC errors
+// stay in the server log and the administrator's view.
 func usdtError(c *gin.Context, err error) {
+	var verifyErr *usdt.VerifyError
+	if errors.As(err, &verifyErr) {
+		logger.LogWarn(c.Request.Context(), common.LogText("USDT verification incomplete error=%q", err.Error()))
+	}
 	switch {
+	case errors.As(err, &verifyErr) && verifyErr.Reason == usdt.ReasonFailedOnChain:
+		common.ApiErrorT(c, "This transaction failed on chain and cannot be credited")
+	case errors.As(err, &verifyErr) && verifyErr.Reason != usdt.ReasonAwaitingConfirmation:
+		common.ApiErrorT(c, "Your deposit is being verified and will be retried automatically. Do not send it again.")
 	case errors.Is(err, usdt.ErrNotReady):
-		common.ApiErrorT(c, "The transaction is not confirmed yet. Try again in a few minutes.")
+		common.ApiErrorT(c, "Waiting for on-chain confirmation. Try again in a few minutes.")
 	case errors.Is(err, usdt.ErrRejected):
 		common.ApiErrorT(c, "This transaction cannot be credited")
 	case errors.Is(err, usdt.ErrChainUnavailable):
@@ -295,11 +306,11 @@ func VerifyUsdtFactory(c *gin.Context) {
 		return
 	}
 	cfg := operation_setting.GetUsdtSetting().Chains[chain.ID]
-	if cfg.FactoryAddress == "" || strings.TrimSpace(cfg.RPCURL) == "" || strings.TrimSpace(cfg.SecondaryRPCURL) == "" {
-		common.ApiErrorT(c, "Save the factory address and both verification RPC URLs first")
+	if cfg.FactoryAddress == "" {
+		common.ApiErrorT(c, "Save the factory address first")
 		return
 	}
-	check, err := usdt.VerifyFactory(c.Request.Context(), chain.ID, cfg.FactoryAddress, cfg.RPCURL, cfg.SecondaryRPCURL)
+	check, err := usdt.VerifyFactory(c.Request.Context(), chain.ID, cfg.FactoryAddress)
 	if err != nil {
 		common.ApiErrorT(c, "Factory verification failed: {{reason}}", map[string]any{"reason": err.Error()})
 		return
@@ -348,10 +359,82 @@ func RecheckUsdtTransaction(c *gin.Context) {
 	}
 	outcomes, err := usdt.ProcessTransaction(c.Request.Context(), req.Chain, req.TxHash, -1, 0, model.UsdtDepositSourceAdmin, c.ClientIP(), false)
 	if err != nil {
-		usdtError(c, err)
+		usdtAdminError(c, err)
 		return
 	}
 	common.ApiSuccess(c, outcomes)
+}
+
+// usdtAdminError shows an administrator which providers were asked and why
+// the round ended. Endpoints are masked; no URL or key is included.
+func usdtAdminError(c *gin.Context, err error) {
+	var verifyErr *usdt.VerifyError
+	if !errors.As(err, &verifyErr) {
+		usdtError(c, err)
+		return
+	}
+	var attempts strings.Builder
+	for _, a := range verifyErr.Attempts {
+		if attempts.Len() > 0 {
+			attempts.WriteString("; ")
+		}
+		fmt.Fprintf(&attempts, "%s %s: %s", a.Provider, a.Endpoint, a.Outcome)
+		if a.Detail != "" {
+			attempts.WriteString(" (" + a.Detail + ")")
+		}
+	}
+	common.ApiErrorT(c, "Verification incomplete ({{reason}}): {{attempts}}", map[string]any{
+		"reason": verifyErr.Reason, "attempts": attempts.String(),
+	})
+}
+
+type usdtNodeTestRequest struct {
+	Chain  string `json:"chain"`
+	NodeID string `json:"node_id"`
+}
+
+// PreviewUsdtNodes recognizes the providers of pasted endpoint URLs.
+func PreviewUsdtNodes(c *gin.Context) {
+	var req struct {
+		URLs []string `json:"urls"`
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil || len(req.URLs) > 500 {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
+	common.ApiSuccess(c, usdt.PreviewNodes(req.URLs))
+}
+
+// TestUsdtNodes tests saved verification endpoints from this new-api process,
+// method by method.
+func TestUsdtNodes(c *gin.Context) {
+	var req usdtNodeTestRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
+	results, err := usdt.TestNodes(c.Request.Context(), req.Chain, req.NodeID)
+	if err != nil {
+		usdtError(c, err)
+		return
+	}
+	common.ApiSuccess(c, results)
+}
+
+// ReleaseUsdtConflict lifts the hold on a transaction whose providers
+// disagreed, after the administrator dealt with the faulty provider. The next
+// verification asks two providers again from scratch.
+func ReleaseUsdtConflict(c *gin.Context) {
+	var req usdtChainRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
+	if !usdt.ReleaseConflict(req.Chain, req.TxHash, fmt.Sprintf("user %d from %s", c.GetInt("id"), c.ClientIP())) {
+		common.ApiErrorT(c, "This transaction is not on hold")
+		return
+	}
+	common.ApiSuccess(c, nil)
 }
 
 // CreditUsdtDepositBelowMin credits a recorded deposit that was below the
@@ -373,7 +456,7 @@ func CreditUsdtDepositBelowMin(c *gin.Context) {
 	}
 	outcomes, err := usdt.ProcessTransaction(c.Request.Context(), deposit.Chain, deposit.TxHash, deposit.LogIndex, deposit.UserId, model.UsdtDepositSourceAdmin, c.ClientIP(), true)
 	if err != nil {
-		usdtError(c, err)
+		usdtAdminError(c, err)
 		return
 	}
 	common.ApiSuccess(c, outcomes)

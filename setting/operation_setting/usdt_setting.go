@@ -32,6 +32,23 @@ const (
 	UsdtRateC2C = "c2c"
 )
 
+// UsdtRPCNode is one verification endpoint of a network. URL may carry an API
+// key and is never shown back to the browser. Provider is the operator the
+// administrator names for a host new-api does not recognize; it can only
+// merge endpoints into one provider, never split a known provider in two.
+type UsdtRPCNode struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	// ProviderInferred marks a provider taken from the host of a legacy
+	// two-slot URL rather than named by the administrator; it still counts,
+	// as it did before node lists, and the settings page asks for a review.
+	ProviderInferred bool   `json:"provider_inferred"`
+	URL              string `json:"url"`
+	Priority         int    `json:"priority"`
+	Enabled          bool   `json:"enabled"`
+}
+
 // UsdtChainSetting is one network's deposit configuration. FactoryAddress and
 // ImplementationAddress are 0x-prefixed lowercase hex on every chain,
 // including TRON. Verified is set only by the factory check endpoint and is
@@ -41,9 +58,15 @@ type UsdtChainSetting struct {
 	FactoryAddress        string `json:"factory_address"`
 	ImplementationAddress string `json:"implementation_address"`
 	Verified              bool   `json:"verified"`
-	RPCURL                string `json:"rpc_url"`
-	// SecondaryRPCURL must be a different provider: a deposit is credited only
-	// when both providers report exactly the same transfer.
+	// RPCNodes is the verification node list. A deposit is credited only when
+	// two independent providers from it report exactly the same transfer. Nil
+	// means the network still uses the two legacy fields below.
+	RPCNodes []UsdtRPCNode `json:"rpc_nodes"`
+	// RPCURL and SecondaryRPCURL are the legacy two-slot configuration
+	// (comma-separated failover URLs). They are read once to build RPCNodes
+	// and rewritten from RPCNodes on every save, so an older build rolled
+	// back to still finds two different providers.
+	RPCURL          string  `json:"rpc_url"`
 	SecondaryRPCURL string  `json:"rpc_url_secondary"`
 	Finality        string  `json:"finality"`
 	Confirmations   int     `json:"confirmations"`

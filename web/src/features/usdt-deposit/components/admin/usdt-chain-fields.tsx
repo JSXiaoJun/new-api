@@ -21,7 +21,6 @@ import { type Control, useFormState, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { PasswordInput } from '@/components/password-input'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -43,8 +42,10 @@ import {
 import { Switch } from '@/components/ui/switch'
 
 import { verifyUsdtFactory } from '../../api'
-import { USDT_QUERY_KEYS } from '../../lib'
+import { NETWORK_STATUS, USDT_QUERY_KEYS } from '../../lib'
 import type { UsdtChainSetting } from '../../types'
+import { UsdtCollapsibleCard } from './usdt-collapsible-card'
+import { UsdtRpcNodeList } from './usdt-rpc-node-list'
 import type { UsdtSettingsValues } from './usdt-settings-form'
 
 interface UsdtChainFieldsProps {
@@ -80,20 +81,38 @@ export function UsdtChainFields(props: UsdtChainFieldsProps) {
     { value: 'confirmations', label: t('Confirmation count') },
   ]
 
+  const networkStatus = NETWORK_STATUS[props.chain.status ?? 'normal']
+
   return (
-    <fieldset className='space-y-4 rounded-lg border p-4'>
-      <legend className='flex flex-wrap items-center gap-2 px-1 text-sm font-medium'>
-        {props.chain.name}
-        <StatusBadge
-          label={props.chain.verified ? t('Verified') : t('Not verified')}
-          variant={props.chain.verified ? 'success' : 'warning'}
-        />
-        <span className='text-muted-foreground text-xs font-normal'>
-          {t('{{count}} addresses issued', {
-            count: props.chain.address_count,
-          })}
-        </span>
-      </legend>
+    <UsdtCollapsibleCard
+      title={props.chain.name}
+      summary={
+        <>
+          <StatusBadge
+            label={props.chain.verified ? t('Verified') : t('Not verified')}
+            variant={props.chain.verified ? 'success' : 'warning'}
+          />
+          <StatusBadge
+            label={props.chain.enabled ? t('Shown to users') : t('Hidden')}
+            variant={props.chain.enabled ? 'info' : 'neutral'}
+          />
+          <StatusBadge
+            label={t(networkStatus.labelKey)}
+            variant={networkStatus.variant}
+          />
+          <span className='text-muted-foreground text-xs font-normal'>
+            {t('{{count}} addresses issued', {
+              count: props.chain.address_count,
+            })}
+            {' · '}
+            {t('{{available}}/{{providers}} providers available', {
+              available: props.chain.available_providers,
+              providers: props.chain.providers,
+            })}
+          </span>
+        </>
+      }
+    >
       <p className='text-muted-foreground font-mono text-xs break-all'>
         {t('USDT contract')}: {props.chain.contract}
       </p>
@@ -142,40 +161,6 @@ export function UsdtChainFields(props: UsdtChainFieldsProps) {
                   : t(
                       'Printed by usdt-deploy. Changing it clears verification.'
                     )}
-              </FormDescription>
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={props.control}
-          name={`${prefix}.rpc_url`}
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Verification RPC URL')}</FormLabel>
-              <FormControl>
-                <PasswordInput autoComplete='off' {...field} />
-              </FormControl>
-              <FormDescription>
-                {t(
-                  'Use a different provider than the scanner. Comma-separate several URLs for failover.'
-                )}
-              </FormDescription>
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={props.control}
-          name={`${prefix}.rpc_url_secondary`}
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Second verification RPC URL')}</FormLabel>
-              <FormControl>
-                <PasswordInput autoComplete='off' {...field} />
-              </FormControl>
-              <FormDescription>
-                {t(
-                  'Must be another provider. A deposit is credited only when both nodes report exactly the same transfer.'
-                )}
               </FormDescription>
             </FormItem>
           )}
@@ -258,6 +243,11 @@ export function UsdtChainFields(props: UsdtChainFieldsProps) {
             </FormItem>
           )}
         />
+        <UsdtRpcNodeList
+          chain={props.chain}
+          chainIndex={props.index}
+          control={props.control}
+        />
       </div>
       <div className='flex flex-wrap items-center gap-3'>
         <Button
@@ -268,8 +258,7 @@ export function UsdtChainFields(props: UsdtChainFieldsProps) {
             verify.isPending ||
             isDirty ||
             !props.chain.factory_address ||
-            !props.chain.rpc_url ||
-            !props.chain.rpc_url_secondary
+            props.chain.providers < 2
           }
           onClick={() => verify.mutate()}
         >
@@ -283,6 +272,6 @@ export function UsdtChainFields(props: UsdtChainFieldsProps) {
               )}
         </span>
       </div>
-    </fieldset>
+    </UsdtCollapsibleCard>
   )
 }

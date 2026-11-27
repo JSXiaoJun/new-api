@@ -77,6 +77,17 @@ func (f *usdtFakeChain) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func usdtTxHash(n int) string { return fmt.Sprintf("0x%064x", n) }
 
+// usdtTestNodes makes each URL its own named provider, in priority order.
+func usdtTestNodes(urls ...string) []operation_setting.UsdtRPCNode {
+	nodes := make([]operation_setting.UsdtRPCNode, 0, len(urls))
+	for i, u := range urls {
+		nodes = append(nodes, operation_setting.UsdtRPCNode{
+			ID: fmt.Sprintf("n%d", i+1), Provider: fmt.Sprintf("provider %d", i+1), URL: u, Priority: i + 1, Enabled: true,
+		})
+	}
+	return nodes
+}
+
 func usdtTransferLog(contract string, to string, amount int64, index int) map[string]any {
 	return map[string]any{
 		"address":  contract,
@@ -130,7 +141,7 @@ func setupUsdtAttackTest(t *testing.T) usdtAttackFixture {
 	chains, err := common.Marshal(map[string]operation_setting.UsdtChainSetting{
 		operation_setting.UsdtChainPolygon: {
 			Enabled: true, Verified: true, FactoryAddress: usdtTestFactory, ImplementationAddress: usdtTestImpl,
-			RPCURL: server.URL, SecondaryRPCURL: second.URL, Finality: operation_setting.UsdtFinalityFinalized, MinAmount: 1,
+			RPCNodes: usdtTestNodes(server.URL, second.URL), Finality: operation_setting.UsdtFinalityFinalized, MinAmount: 1,
 		},
 	})
 	require.NoError(t, err)
@@ -298,10 +309,10 @@ func TestUsdtUserClaimCannotStealForgeOrDoubleCredit(t *testing.T) {
 	assert.False(t, ok, "look-alike token")
 	ok, msg = claim(usdtAttackerID, "polygon", usdtTxHash(txReverted))
 	assert.False(t, ok)
-	assert.Equal(t, "This transaction cannot be credited", msg)
+	assert.Equal(t, "This transaction failed on chain and cannot be credited", msg)
 	ok, msg = claim(usdtAttackerID, "polygon", usdtTxHash(txNotFinal))
 	assert.False(t, ok)
-	assert.Equal(t, "The transaction is not confirmed yet. Try again in a few minutes.", msg)
+	assert.Equal(t, "Waiting for on-chain confirmation. Try again in a few minutes.", msg)
 	ok, msg = claim(usdtAttackerID, "polygon", "' OR 1=1 --")
 	assert.False(t, ok)
 	assert.Equal(t, "Invalid transaction hash", msg)
@@ -370,11 +381,13 @@ func TestUsdtCompromisedVerificationNodeCannotMintBalance(t *testing.T) {
 	chains, err := common.Marshal(map[string]operation_setting.UsdtChainSetting{
 		operation_setting.UsdtChainPolygon: {
 			Enabled: true, Verified: true, FactoryAddress: usdtTestFactory, ImplementationAddress: usdtTestImpl,
-			RPCURL: liarServer.URL, SecondaryRPCURL: fx.honest, Finality: operation_setting.UsdtFinalityFinalized, MinAmount: 1,
+			RPCNodes: usdtTestNodes(liarServer.URL, fx.honest), Finality: operation_setting.UsdtFinalityFinalized, MinAmount: 1,
 		},
 	})
 	require.NoError(t, err)
 	require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("usdt_setting"), map[string]string{"chains": string(chains)}))
+	// The inflated payment puts the transaction on hold; later tests reuse it.
+	t.Cleanup(func() { usdt.ReleaseConflict("polygon", usdtTxHash(txAttackerPays), "test") })
 
 	for _, tx := range []int{txUnknown, txAttackerPays} {
 		ok, _ := userCall(ClaimUsdtDeposit, usdtAttackerID, "/api/user/usdt/claim", fmt.Sprintf(`{"chain":"polygon","tx_hash":%q}`, usdtTxHash(tx)))
@@ -383,6 +396,7 @@ func TestUsdtCompromisedVerificationNodeCannotMintBalance(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, recorder.Code, "scanner report of tx %d is held, not settled", tx)
 	}
 	assert.Zero(t, usdtQuota(t, usdtAttackerID), "one lying provider cannot create or inflate a deposit")
+	assert.False(t, usdt.ReleaseConflict("polygon", usdtTxHash(txUnknown), "test"), "an unconfirmed invention is not a conflict")
 }
 
 func TestUsdtAdminOnlyModeRefusesRegularUsersOnTheServer(t *testing.T) {

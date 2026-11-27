@@ -35,7 +35,11 @@ export interface UsdtNetwork {
   min_amount: string
   contract: string
   tx_url: string
+  /** congested: deposits on this network may be credited late right now */
+  status?: UsdtNetworkStatus
 }
+
+export type UsdtNetworkStatus = 'normal' | 'congested'
 
 export interface UsdtInfo {
   enabled: boolean
@@ -89,6 +93,43 @@ export type UsdtFinality = 'finalized' | 'safe' | 'confirmations'
 /** market: USDT/USD; fixed: admin rate; c2c: OKX / Binance CNY C2C price */
 export type UsdtRateMode = 'market' | 'fixed' | 'c2c'
 
+export interface UsdtEndpointMethod {
+  method: string
+  ok: boolean
+  kind?: string
+  detail?: string
+  at: number
+}
+
+export type UsdtEndpointState = 'healthy' | 'cooling' | 'unknown'
+
+export interface UsdtEndpointHealth {
+  state: UsdtEndpointState
+  cooling_until?: number
+  failures: number
+  last_error?: string
+  last_kind?: string
+  last_at?: number
+  methods: UsdtEndpointMethod[]
+}
+
+/** A saved verification endpoint; its URL never leaves the server. */
+export interface UsdtRpcNode {
+  id: string
+  name: string
+  provider: string
+  /** The independent source it counts as; empty when it is not used. */
+  provider_key: string
+  provider_name: string
+  provider_known: boolean
+  provider_inferred: boolean
+  /** scheme://host, with "/…" when the URL has a path or key */
+  endpoint: string
+  priority: number
+  enabled: boolean
+  health: UsdtEndpointHealth
+}
+
 export interface UsdtChainSetting {
   id: string
   name: string
@@ -98,14 +139,17 @@ export interface UsdtChainSetting {
   factory_display: string
   implementation_address: string
   verified: boolean
-  rpc_url: string
-  rpc_url_secondary: string
   finality: UsdtFinality
   confirmations: number
   min_amount: number
   sweep_threshold: number
   address_count: number
   factory_locked: boolean
+  nodes: UsdtRpcNode[]
+  enabled_nodes: number
+  providers: number
+  available_providers: number
+  status: UsdtNetworkStatus
 }
 
 export interface UsdtChainHeartbeat {
@@ -121,6 +165,8 @@ export interface UsdtVerificationAlert {
   chain: string
   tx_hash: string
   detail: string
+  /** still on hold until an administrator releases it */
+  held: boolean
 }
 
 export interface UsdtSettings {
@@ -137,15 +183,50 @@ export interface UsdtSettings {
   alerts: UsdtVerificationAlert[] | null
 }
 
+/** An endpoint as the settings page saves it. An existing node with an
+ * empty url keeps its saved URL (and API key). */
+export interface UsdtRpcNodePatch {
+  id: string
+  name: string
+  provider: string
+  url: string
+  enabled: boolean
+}
+
 export interface UsdtChainPatch {
   enabled?: boolean
   factory_address?: string
-  rpc_url?: string
-  rpc_url_secondary?: string
   finality?: UsdtFinality
   confirmations?: number
   min_amount?: number
   sweep_threshold?: number
+  /** the whole list, in priority order */
+  rpc_nodes?: UsdtRpcNodePatch[]
+}
+
+export interface UsdtNodePreview {
+  url: string
+  endpoint: string
+  valid: boolean
+  provider_key: string
+  provider_name: string
+  known: boolean
+  domain: string
+}
+
+export interface UsdtNodeCheck {
+  method: string
+  ok: boolean
+  detail?: string
+}
+
+export interface UsdtNodeTestResult {
+  node_id: string
+  provider: string
+  endpoint: string
+  ok: boolean
+  checks: UsdtNodeCheck[]
+  millis: number
 }
 
 export interface UsdtSettingsPatch {

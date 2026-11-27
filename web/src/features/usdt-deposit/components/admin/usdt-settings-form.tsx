@@ -54,12 +54,19 @@ import { USDT_QUERY_KEYS } from '../../lib'
 import type { UsdtSettings, UsdtSettingsPatch } from '../../types'
 import { UsdtChainFields } from './usdt-chain-fields'
 
+const nodeSchema = z.object({
+  id: z.string(),
+  name: z.string().trim().max(64),
+  provider: z.string().trim().max(64),
+  url: z.string().trim().max(2048),
+  enabled: z.boolean(),
+})
+
 const chainSchema = z.object({
   id: z.string(),
   enabled: z.boolean(),
   factory_address: z.string().trim(),
-  rpc_url: z.string().trim(),
-  rpc_url_secondary: z.string().trim(),
+  rpc_nodes: z.array(nodeSchema),
   finality: z.enum(['finalized', 'safe', 'confirmations']),
   confirmations: z.coerce.number().int().min(0).max(10000),
   min_amount: z.coerce.number().min(0),
@@ -76,6 +83,7 @@ const schema = z.object({
 })
 
 export type UsdtSettingsValues = z.infer<typeof schema>
+export type UsdtNodeValues = z.infer<typeof nodeSchema>
 
 function toFormValues(settings: UsdtSettings): UsdtSettingsValues {
   return {
@@ -88,8 +96,14 @@ function toFormValues(settings: UsdtSettings): UsdtSettingsValues {
       id: c.id,
       enabled: c.enabled,
       factory_address: c.factory_display || c.factory_address,
-      rpc_url: c.rpc_url,
-      rpc_url_secondary: c.rpc_url_secondary,
+      // Saved URLs stay on the server; an empty url keeps the saved one.
+      rpc_nodes: c.nodes.map((n) => ({
+        id: n.id,
+        name: n.name,
+        provider: n.provider,
+        url: '',
+        enabled: n.enabled,
+      })),
       finality: c.finality,
       confirmations: c.confirmations,
       min_amount: c.min_amount,
@@ -104,8 +118,7 @@ function toPatch(values: UsdtSettingsValues): UsdtSettingsPatch {
     chains[c.id] = {
       enabled: c.enabled,
       factory_address: c.factory_address,
-      rpc_url: c.rpc_url,
-      rpc_url_secondary: c.rpc_url_secondary,
+      rpc_nodes: c.rpc_nodes,
       finality: c.finality,
       confirmations: c.confirmations,
       min_amount: c.min_amount,

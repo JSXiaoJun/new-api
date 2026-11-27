@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -66,14 +68,18 @@ func TestAddressDerivationMatchesTheScannerAndContract(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// fakeChain is a scripted JSON-RPC node.
+// fakeChain is a scripted JSON-RPC node. deny makes a method answer with an
+// HTTP status instead, the way a provider refuses one method and serves others.
 type fakeChain struct {
 	mu        sync.Mutex
 	chainID   uint64
 	head      uint64
 	finalized uint64
 	hashes    map[uint64]string
+	txs       map[uint64][]string
 	receipts  map[string]map[string]any
+	deny      map[string]int
+	calls     map[string]int
 }
 
 func (f *fakeChain) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +90,14 @@ func (f *fakeChain) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.calls == nil {
+		f.calls = map[string]int{}
+	}
+	f.calls[req.Method]++
+	if status := f.deny[req.Method]; status != 0 {
+		w.WriteHeader(status)
+		return
+	}
 	var result any
 	switch req.Method {
 	case "eth_chainId":
@@ -98,7 +112,7 @@ func (f *fakeChain) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			n, _ := strconv.ParseUint(tag[2:], 16, 64)
 			number = n
 		}
-		result = map[string]any{"number": fmt.Sprintf("0x%x", number), "hash": f.hashes[number]}
+		result = map[string]any{"number": fmt.Sprintf("0x%x", number), "hash": f.hashes[number], "transactions": f.txs[number]}
 	case "eth_getTransactionReceipt":
 		var hash string
 		_ = json.Unmarshal(req.Params[0], &hash)
@@ -107,6 +121,18 @@ func (f *fakeChain) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": result})
+}
+
+func (f *fakeChain) set(fn func(f *fakeChain)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fn(f)
+}
+
+func (f *fakeChain) callCount(method string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls[method]
 }
 
 func topicFor(a [20]byte) string { return fmt.Sprintf("0x%024x%x", 0, a[:]) }
@@ -130,23 +156,45 @@ const (
 	testImpl    = "0x2222222222222222222222222222222222222222"
 )
 
-// configureChain points Polygon's two verification nodes at fake nodes and
-// marks its factory verified.
+// configureChain points Polygon's verification nodes at fake nodes, each its
+// own provider, in priority order, and marks its factory verified.
 func configureChain(t *testing.T, primary, secondary string, rate float64) {
 	t.Helper()
-	chains := map[string]operation_setting.UsdtChainSetting{
-		operation_setting.UsdtChainPolygon: {
-			Enabled: true, Verified: true, FactoryAddress: testFactory, ImplementationAddress: testImpl,
-			RPCURL: primary, SecondaryRPCURL: secondary, Finality: operation_setting.UsdtFinalityFinalized, MinAmount: 1,
-		},
+	var urls []string
+	for _, u := range []string{primary, secondary} {
+		if u != "" {
+			urls = append(urls, u)
+		}
 	}
-	raw, err := common.Marshal(chains)
+	configureChainNodes(t, operation_setting.UsdtChainPolygon, rate, urls...)
+}
+
+func configureChainNodes(t *testing.T, chainID string, rate float64, urls ...string) {
+	t.Helper()
+	nodes := []operation_setting.UsdtRPCNode{}
+	for i, u := range urls {
+		nodes = append(nodes, operation_setting.UsdtRPCNode{
+			ID: fmt.Sprintf("n%d", i+1), Name: fmt.Sprintf("node %d", i+1), Provider: fmt.Sprintf("provider %d", i+1),
+			URL: u, Priority: (i + 1) * 10, Enabled: true,
+		})
+	}
+	configureChainSetting(t, chainID, rate, operation_setting.UsdtChainSetting{RPCNodes: nodes})
+}
+
+func configureChainSetting(t *testing.T, chainID string, rate float64, cfg operation_setting.UsdtChainSetting) {
+	t.Helper()
+	cfg.Enabled, cfg.Verified, cfg.FactoryAddress, cfg.ImplementationAddress = true, true, testFactory, testImpl
+	cfg.Finality, cfg.MinAmount = operation_setting.UsdtFinalityFinalized, 1
+	raw, err := common.Marshal(map[string]operation_setting.UsdtChainSetting{chainID: cfg})
 	require.NoError(t, err)
 	require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("usdt_setting"), map[string]string{
 		"enabled": "true", "chains": string(raw), "rate_mode": "fixed", "fixed_rate": strconv.FormatFloat(rate, 'f', -1, 64),
 		"salt_secret": "0x0101010101010101010101010101010101010101010101010101010101010101",
 	}))
 	chainIDCache.Clear()
+	healthStore.Clear()
+	conflictHolds.Clear()
+	strainedAt.Clear()
 }
 
 func newFakeNode(t *testing.T, fake *fakeChain) string {
@@ -383,15 +431,341 @@ func TestOneLyingVerificationNodeCannotCreditADeposit(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrNotReady), "%v", err)
 }
 
-func TestVerificationNodesMustBeDifferentProviders(t *testing.T) {
-	assert.NoError(t, DistinctProviders("https://polygon-mainnet.g.alchemy.com/v2/k", "https://rpc.ankr.com/polygon/k"))
-	assert.Error(t, DistinctProviders("https://polygon-mainnet.g.alchemy.com/v2/a", "https://polygon-mainnet.g.alchemy.com/v2/b"), "same provider, two keys")
-	assert.Error(t, DistinctProviders("https://a.example,https://b.example", "https://c.example,https://B.example"), "shared host in a failover list")
-	assert.Error(t, DistinctProviders("https://a.example", ""))
+func TestNodeListCountsOperatorsNotURLs(t *testing.T) {
+	node := func(provider, url string) operation_setting.UsdtRPCNode {
+		return operation_setting.UsdtRPCNode{ID: newNodeID(), Provider: provider, URL: url, Enabled: true}
+	}
+	// Ten URLs of one operator (keys, regions, product hosts) are one provider,
+	// whatever the administrator calls them.
+	var alchemy []operation_setting.UsdtRPCNode
+	for i := range 10 {
+		alchemy = append(alchemy, node(fmt.Sprintf("my provider %d", i), fmt.Sprintf("https://bnb-mainnet%d.g.alchemy.com/v2/key%d", i, i)))
+	}
+	alchemy = append(alchemy, node("other", "https://dashboard.alchemyapi.io/rpc/k"))
+	require.Len(t, groupProviders(alchemy), 1)
 
-	primary, secondary := "https://polygon-mainnet.g.alchemy.com/v2/a", "https://polygon-mainnet.g.alchemy.com/v2/b"
-	err := UpdateSettings(SettingsPatch{Chains: map[string]ChainPatch{"arbitrum": {RPCURL: &primary, RPCURLSecondary: &secondary}}})
-	require.Error(t, err)
+	// An unknown host counts only once its operator is named.
+	selfHosted := node("", "https://rpc.my-node.example/bsc")
+	assert.Len(t, groupProviders(append(slices.Clone(alchemy), selfHosted)), 1)
+	selfHosted.Provider = "Our own node"
+	assert.Len(t, groupProviders(append(slices.Clone(alchemy), selfHosted)), 2)
+	// Naming a known provider joins it instead of adding a vote.
+	selfHosted.Provider = "Alchemy"
+	assert.Len(t, groupProviders(append(slices.Clone(alchemy), selfHosted)), 1)
+	// Disabled endpoints do not count.
+	disabled := node("Our own node", "https://rpc.my-node.example/bsc")
+	disabled.Enabled = false
+	assert.Len(t, groupProviders(append(slices.Clone(alchemy), disabled)), 1)
+
+	// A saved list never shows a URL, path or key.
+	assert.Equal(t, "https://bnb-mainnet0.g.alchemy.com/…", maskedRPCURL(alchemy[0].URL))
+	assert.Equal(t, "https://rpc.ankr.com", maskedRPCURL("https://rpc.ankr.com"))
+}
+
+func TestLegacyTwoSlotSettingsMigrateToANodeList(t *testing.T) {
+	legacy := operation_setting.UsdtChainSetting{
+		RPCURL:          "https://bsc-mainnet.nodereal.io/v1/KEY1, https://lb.drpc.org/ogrpc?network=bsc&dkey=KEY2",
+		SecondaryRPCURL: "https://rpc.my-node.example/bsc,https://bsc-mainnet.nodereal.io/v1/KEY1",
+	}
+	nodes := chainNodes(legacy)
+	require.Len(t, nodes, 3, "a URL listed in both slots is kept once")
+	assert.Equal(t, "https://bsc-mainnet.nodereal.io/v1/KEY1", nodes[0].URL, "slot order is the priority")
+	assert.Equal(t, "Secondary", nodes[2].Name)
+	assert.True(t, nodes[2].ProviderInferred, "an unknown host from the old slots is flagged for review")
+	assert.Equal(t, "my-node.example", nodes[2].Provider)
+	assert.Len(t, groupProviders(nodes), 3)
+
+	// Every save rewrites the legacy fields, so a rolled-back build still
+	// finds two different providers.
+	primary, secondary := legacySlots(nodes)
+	assert.Equal(t, "https://bsc-mainnet.nodereal.io/v1/KEY1", primary)
+	assert.Equal(t, "https://lb.drpc.org/ogrpc?network=bsc&dkey=KEY2,https://rpc.my-node.example/bsc", secondary)
+}
+
+func TestSavingNodeListsKeepsKeysAndRefusesUnsafeLists(t *testing.T) {
+	configureChainSetting(t, operation_setting.UsdtChainArbitrum, 1, operation_setting.UsdtChainSetting{
+		RPCURL: "https://arb-mainnet.g.alchemy.com/v2/SECRET1", SecondaryRPCURL: "https://rpc.ankr.com/arbitrum/SECRET2",
+	})
+	save := func(nodes ...NodePatch) error {
+		return UpdateSettings(SettingsPatch{Chains: map[string]ChainPatch{"arbitrum": {RPCNodes: &nodes}}})
+	}
+	view, err := SettingsForAdmin()
+	require.NoError(t, err)
+	var arbitrum ChainView
+	for _, c := range view.Chains {
+		if c.ID == "arbitrum" {
+			arbitrum = c
+		}
+	}
+	require.Len(t, arbitrum.Nodes, 2, "the legacy slots appear as a list before the first save")
+	raw, err := common.Marshal(view)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "SECRET", "the settings view carries no endpoint key")
+
+	// Reorder and rename without resending the keys: the saved URLs stay.
+	first, second := arbitrum.Nodes[0], arbitrum.Nodes[1]
+	require.NoError(t, save(
+		NodePatch{ID: second.ID, Name: "Ankr", Enabled: true},
+		NodePatch{ID: first.ID, Name: "Alchemy", Enabled: true},
+		NodePatch{Name: "PublicNode", URL: "https://arbitrum-one-rpc.publicnode.com", Enabled: true},
+	))
+	saved := operation_setting.GetUsdtSetting().Chains["arbitrum"]
+	require.Len(t, saved.RPCNodes, 3)
+	assert.Equal(t, "https://rpc.ankr.com/arbitrum/SECRET2", saved.RPCNodes[0].URL)
+	assert.Equal(t, "https://arb-mainnet.g.alchemy.com/v2/SECRET1", saved.RPCNodes[1].URL)
+	assert.Less(t, saved.RPCNodes[0].Priority, saved.RPCNodes[1].Priority)
+	assert.Equal(t, "https://rpc.ankr.com/arbitrum/SECRET2", saved.RPCURL)
+
+	// A verified network may not drop below two providers; the saved list stays.
+	assert.Error(t, save(NodePatch{ID: second.ID, Enabled: true}, NodePatch{ID: first.ID, Enabled: false}))
+	assert.Error(t, save(NodePatch{ID: second.ID, Enabled: true},
+		NodePatch{Provider: "Ankr", URL: "https://rpc.ankr.com/arbitrum/OTHERKEY", Enabled: true}), "a second Ankr key is not a second provider")
+	assert.Len(t, operation_setting.GetUsdtSetting().Chains["arbitrum"].RPCNodes, 3)
+
+	// Duplicates and one domain under two operator names are refused.
+	assert.Error(t, save(NodePatch{ID: second.ID, Enabled: true}, NodePatch{ID: first.ID, Enabled: true},
+		NodePatch{URL: "HTTPS://RPC.ANKR.COM/arbitrum/SECRET2", Enabled: true}))
+	assert.Error(t, save(NodePatch{ID: second.ID, Enabled: true}, NodePatch{ID: first.ID, Enabled: true},
+		NodePatch{Provider: "Node A", URL: "https://a.my-node.example", Enabled: true},
+		NodePatch{Provider: "Node B", URL: "https://b.my-node.example", Enabled: true}))
+
+	// There is no fixed cap: 101 endpoints save and come back in order.
+	patch := []NodePatch{{ID: second.ID, Enabled: true}, {ID: first.ID, Enabled: true}}
+	for i := range 99 {
+		patch = append(patch, NodePatch{Provider: "Own nodes", URL: fmt.Sprintf("https://n%d.my-node.example/rpc", i), Enabled: true})
+	}
+	require.NoError(t, save(patch...))
+	saved = operation_setting.GetUsdtSetting().Chains["arbitrum"]
+	require.Len(t, saved.RPCNodes, 101)
+	assert.Equal(t, "https://n98.my-node.example/rpc", saved.RPCNodes[100].URL)
+	assert.Len(t, groupProviders(saved.RPCNodes), 3)
+}
+
+// newFakeProviders starts n honest nodes of one Polygon chain, each its own
+// provider with an API key in its URL path, with a 3 USDT deposit to wallet
+// in tx 500 (block 100).
+func newFakeProviders(t *testing.T, n int, wallet [20]byte) ([]*fakeChain, []string) {
+	t.Helper()
+	polygon, _ := LookupChain(operation_setting.UsdtChainPolygon)
+	from := mustHex20("0x00000000000000000000000000000000000000aa")
+	var fakes []*fakeChain
+	var urls []string
+	for i := range n {
+		f := &fakeChain{chainID: 137, head: 120, finalized: 110, hashes: map[uint64]string{100: "0xblock100", 110: "0xblock110"},
+			txs: map[uint64][]string{110: {txHash(1)}}, receipts: map[string]map[string]any{
+				txHash(500): receipt("0x1", 100, "0xblock100", transferLog(polygon.USDT, from, wallet, big.NewInt(3_000_000), 0)),
+				txHash(1):   receipt("0x1", 110, "0xblock110"),
+			}}
+		fakes = append(fakes, f)
+		urls = append(urls, fmt.Sprintf("%s/v2/SECRETKEY%d", newFakeNode(t, f), i))
+	}
+	return fakes, urls
+}
+
+func TestAFailingProviderIsReplacedByTheNextHealthyOne(t *testing.T) {
+	require.NoError(t, model.DB.Create(&model.User{Id: 901, Username: "usdt-failover", AffCode: "aff901", Status: common.UserStatusEnabled}).Error)
+	configureChainNodes(t, "polygon", 1)
+	addr, err := EnsureUserAddress("polygon", 901)
+	require.NoError(t, err)
+	fakes, urls := newFakeProviders(t, 5, mustHex20(addr))
+	configureChainNodes(t, "polygon", 1, urls...)
+
+	// The first provider answers eth_chainId but refuses receipts (yesterday's
+	// dRPC case); the second is rate limited. The next two settle it.
+	fakes[0].set(func(f *fakeChain) { f.deny = map[string]int{"eth_getTransactionReceipt": http.StatusForbidden} })
+	fakes[1].set(func(f *fakeChain) { f.deny = map[string]int{"eth_chainId": http.StatusTooManyRequests} })
+	outcomes, err := ProcessTransaction(context.Background(), "polygon", txHash(500), 0, 0, model.UsdtDepositSourceScan, "", false)
+	require.NoError(t, err)
+	require.Len(t, outcomes, 1)
+	assert.Equal(t, model.UsdtDepositCredited, outcomes[0].Status)
+	assert.Equal(t, 3*int(common.QuotaPerUnit), userQuota(t, 901))
+	assert.Zero(t, fakes[4].callCount("eth_getTransactionReceipt"), "two agreeing providers end the round")
+
+	// The refusing and rate-limited endpoints rest; a retry does not ask them again.
+	before := fakes[0].callCount("eth_getTransactionReceipt")
+	outcomes, err = ProcessTransaction(context.Background(), "polygon", txHash(500), 0, 0, model.UsdtDepositSourceClaim, "", false)
+	require.NoError(t, err)
+	assert.Equal(t, "already", outcomes[0].Status)
+	assert.Equal(t, before, fakes[0].callCount("eth_getTransactionReceipt"))
+	assert.Equal(t, 3*int(common.QuotaPerUnit), userQuota(t, 901), "a retry never credits twice")
+
+	// The administrator sees which method failed where, without the URL.
+	view, err := SettingsForAdmin()
+	require.NoError(t, err)
+	for _, c := range view.Chains {
+		if c.ID != "polygon" {
+			continue
+		}
+		assert.Equal(t, 5, c.Providers)
+		assert.Equal(t, 3, c.AvailableProviders)
+		assert.Equal(t, "cooling", c.Nodes[0].Health.State)
+		assert.Equal(t, "denied", c.Nodes[0].Health.LastKind)
+		methods := map[string]bool{}
+		for _, m := range c.Nodes[0].Health.Methods {
+			methods[m.Method] = m.OK
+		}
+		assert.Equal(t, map[string]bool{"eth_chainId": true, "eth_getTransactionReceipt": false}, methods)
+		assert.Equal(t, "rate_limited", c.Nodes[1].Health.LastKind)
+	}
+}
+
+func TestProvidersAtTheEndOfALongListAreReachedInLaterRounds(t *testing.T) {
+	fakes, urls := newFakeProviders(t, 10, mustHex20("0x00000000000000000000000000000000000000bb"))
+	configureChainNodes(t, "polygon", 1, urls...)
+	for _, f := range fakes[:8] {
+		f.set(func(f *fakeChain) { f.deny = map[string]int{"eth_chainId": http.StatusServiceUnavailable} })
+	}
+	// One round asks a bounded number of providers, however long the list.
+	_, err := FinalTransfers(context.Background(), "polygon", txHash(500))
+	var verifyErr *VerifyError
+	require.ErrorAs(t, err, &verifyErr)
+	assert.Equal(t, ReasonProvidersUnavailable, verifyErr.Reason)
+	assert.Len(t, verifyErr.Attempts, verifyMaxProviders)
+	assert.NotContains(t, err.Error(), "SECRETKEY", "errors never carry an endpoint key")
+	cfg := operation_setting.GetUsdtSetting().Chains["polygon"]
+	assert.Equal(t, NetworkStatusCongested, NetworkStatus("polygon", cfg), "users see the network as congested")
+
+	// The next round skips the resting providers and reaches the 9th and 10th.
+	transfers, err := FinalTransfers(context.Background(), "polygon", txHash(500))
+	require.NoError(t, err)
+	require.Len(t, transfers, 1)
+	assert.Equal(t, NetworkStatusNormal, NetworkStatus("polygon", cfg), "a verified deposit clears the congestion mark")
+	assert.Equal(t, 1, fakes[8].callCount("eth_getTransactionReceipt"))
+	assert.Equal(t, 1, fakes[9].callCount("eth_getTransactionReceipt"))
+	for _, f := range fakes[:6] {
+		assert.Equal(t, 1, f.callCount("eth_chainId"), "a resting provider is not asked again")
+	}
+
+	// With one live provider nothing is credited; once another recovers, it is.
+	configureChainNodes(t, "polygon", 1, urls[7], urls[8])
+	_, err = FinalTransfers(context.Background(), "polygon", txHash(500))
+	require.ErrorAs(t, err, &verifyErr)
+	assert.Equal(t, ReasonProvidersUnavailable, verifyErr.Reason)
+	fakes[7].set(func(f *fakeChain) { f.deny = nil })
+	healthStore.Clear()
+	_, err = FinalTransfers(context.Background(), "polygon", txHash(500))
+	require.NoError(t, err)
+}
+
+func TestProvidersMayDifferInHeightButNotInTheBlock(t *testing.T) {
+	fakes, urls := newFakeProviders(t, 3, mustHex20("0x00000000000000000000000000000000000000bb"))
+	configureChainNodes(t, "polygon", 1, urls...)
+	fakes[1].set(func(f *fakeChain) { f.finalized, f.hashes[140] = 140, "0xblock140" })
+	_, err := FinalTransfers(context.Background(), "polygon", txHash(500))
+	require.NoError(t, err, "both finalized heights cover block 100")
+
+	// One provider not final yet: the round keeps asking until two agree.
+	fakes[0].set(func(f *fakeChain) { f.finalized = 90 })
+	_, err = FinalTransfers(context.Background(), "polygon", txHash(500))
+	require.NoError(t, err)
+	assert.Equal(t, 1, fakes[2].callCount("eth_getTransactionReceipt"))
+
+	// Two providers with the block mined but not final: wait for the chain.
+	fakes[1].set(func(f *fakeChain) { f.finalized = 90 })
+	_, err = FinalTransfers(context.Background(), "polygon", txHash(500))
+	var verifyErr *VerifyError
+	require.ErrorAs(t, err, &verifyErr)
+	assert.Equal(t, ReasonAwaitingConfirmation, verifyErr.Reason)
+}
+
+func TestAContradictionIsHeldUntilAnAdministratorReleasesIt(t *testing.T) {
+	polygon, _ := LookupChain(operation_setting.UsdtChainPolygon)
+	wallet := mustHex20("0x00000000000000000000000000000000000000bb")
+	fakes, urls := newFakeProviders(t, 3, wallet)
+	configureChainNodes(t, "polygon", 1, urls...)
+	from := mustHex20("0x00000000000000000000000000000000000000aa")
+	honest := receipt("0x1", 100, "0xblock100", transferLog(polygon.USDT, from, wallet, big.NewInt(3_000_000), 0))
+	fakes[0].set(func(f *fakeChain) {
+		f.receipts[txHash(500)] = receipt("0x1", 100, "0xblock100", transferLog(polygon.USDT, from, wallet, big.NewInt(3_000_000_000), 0))
+	})
+	_, err := FinalTransfers(context.Background(), "polygon", txHash(500))
+	var verifyErr *VerifyError
+	require.ErrorAs(t, err, &verifyErr)
+	assert.Equal(t, ReasonConflict, verifyErr.Reason)
+	assert.Zero(t, fakes[2].callCount("eth_getTransactionReceipt"), "a third provider is not asked to outvote")
+
+	// The liar is fixed, yet the hold stays until it is released on purpose.
+	fakes[0].set(func(f *fakeChain) { f.receipts[txHash(500)] = honest })
+	_, err = FinalTransfers(context.Background(), "polygon", txHash(500))
+	require.ErrorAs(t, err, &verifyErr)
+	assert.Equal(t, ReasonConflict, verifyErr.Reason)
+	require.True(t, ReleaseConflict("polygon", strings.TrimPrefix(txHash(500), "0x"), "test"))
+	_, err = FinalTransfers(context.Background(), "polygon", txHash(500))
+	require.NoError(t, err)
+}
+
+func TestReplayOfTheBSCDepositWithDRPCRefusingReceipts(t *testing.T) {
+	bsc, _ := LookupChain(operation_setting.UsdtChainBSC)
+	const (
+		tx    = "0x28fa66f587b16ed59e0fb6ec4db4637751b52283a31f2deb304ba4cd72e889f2"
+		block = uint64(135818312)
+	)
+	wallet := mustHex20("0xdc2be7b8f33554f1f04dc9f94c0970420c603c37")
+	from := mustHex20("0x00000000000000000000000000000000000000aa")
+	amount, _ := new(big.Int).SetString("15000000000000000000", 10) // 15 USDT, 18 decimals
+	var fakes []*fakeChain
+	var nodes []operation_setting.UsdtRPCNode
+	for i, provider := range []string{"dRPC", "NodeReal", "PublicNode"} {
+		f := &fakeChain{chainID: 56, head: block + 30, finalized: block + 10, hashes: map[uint64]string{block: "0xbsc135818312", block + 10: "0xbscfinal"},
+			receipts: map[string]map[string]any{tx: receipt("0x1", block, "0xbsc135818312", transferLog(bsc.USDT, from, wallet, amount, 7))}}
+		fakes = append(fakes, f)
+		nodes = append(nodes, operation_setting.UsdtRPCNode{ID: provider, Provider: provider, URL: newFakeNode(t, f), Priority: i, Enabled: true})
+	}
+	fakes[0].set(func(f *fakeChain) {
+		f.deny = map[string]int{"eth_getTransactionReceipt": http.StatusForbidden, "eth_getBlockByNumber": http.StatusForbidden}
+	})
+	configureChainSetting(t, operation_setting.UsdtChainBSC, 1, operation_setting.UsdtChainSetting{RPCNodes: nodes})
+	require.NoError(t, model.DB.Create(&model.User{Id: 902, Username: "usdt-bsc-replay", AffCode: "aff902", Status: common.UserStatusEnabled}).Error)
+	_, err := model.CreateUsdtDepositAddress(&model.UsdtDepositAddress{UserId: 902, Chain: "bsc", Address: Hex20(wallet), Salt: Hex32([32]byte{9})})
+	require.NoError(t, err)
+
+	outcomes, err := ProcessTransaction(context.Background(), "bsc", tx, 7, 0, model.UsdtDepositSourceScan, "", false)
+	require.NoError(t, err)
+	require.Len(t, outcomes, 1)
+	assert.Equal(t, model.UsdtDepositCredited, outcomes[0].Status)
+	assert.Equal(t, "15", outcomes[0].Amount)
+	credited := userQuota(t, 902)
+	assert.Equal(t, 15*int(common.QuotaPerUnit), credited)
+	var deposit model.UsdtDeposit
+	require.NoError(t, model.DB.Where("chain = ? AND tx_hash = ?", "bsc", tx).Take(&deposit).Error)
+	assert.Equal(t, int64(block), deposit.BlockNumber)
+
+	// Replaying a settled deposit returns the record and changes no balance.
+	outcomes, err = ProcessTransaction(context.Background(), "bsc", tx, -1, 0, model.UsdtDepositSourceAdmin, "", false)
+	require.NoError(t, err)
+	assert.Equal(t, "already", outcomes[0].Status)
+	assert.Equal(t, credited, userQuota(t, 902))
+
+	// The node test, run from this process, names the refused method.
+	results, err := TestNodes(context.Background(), "bsc", "dRPC")
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.False(t, results[0].OK)
+	require.GreaterOrEqual(t, len(results[0].Checks), 2)
+	assert.True(t, results[0].Checks[0].OK, "eth_chainId still works")
+	assert.Equal(t, "eth_getBlockByNumber(finalized)", results[0].Checks[1].Method)
+	assert.Contains(t, results[0].Checks[1].Detail, "HTTP 403")
+	fakes[2].set(func(f *fakeChain) {
+		// A final block holding a transaction, for the end-to-end receipt check.
+		f.txs = map[uint64][]string{block + 10: {txHash(1)}}
+		f.receipts[txHash(1)] = receipt("0x1", block+10, "0xbscfinal")
+	})
+	results, err = TestNodes(context.Background(), "bsc", "PublicNode")
+	require.NoError(t, err)
+	assert.True(t, results[0].OK, "%+v", results[0].Checks)
+}
+
+func TestRateLimitCooldownHonoursRetryAfter(t *testing.T) {
+	now := time.Date(2026, 11, 27, 0, 0, 0, 0, time.UTC)
+	assert.Equal(t, 120*time.Second, parseRetryAfter("120", now))
+	assert.Equal(t, 90*time.Second, parseRetryAfter(now.Add(90*time.Second).Format(http.TimeFormat), now))
+	assert.Zero(t, parseRetryAfter("soon", now))
+	assert.Zero(t, parseRetryAfter("-5", now))
+	cooldown := cooldownFor(&rpcFault{Kind: faultRateLimited, RetryAfter: 7 * time.Minute}, 1)
+	assert.Equal(t, 7*time.Minute, cooldown, "a valid Retry-After beyond the backoff wins")
+	first, third := cooldownFor(&rpcFault{Kind: faultUnavailable}, 1), cooldownFor(&rpcFault{Kind: faultUnavailable}, 3)
+	assert.Greater(t, third, first, "repeated failures rest longer")
+	assert.LessOrEqual(t, cooldownFor(&rpcFault{Kind: faultUnavailable}, 50), 6*time.Minute, "backoff is capped")
 }
 
 func TestC2CRateIsTheMedianCNYPriceOverTheTopUpPriceAndRefreshesEveryHalfHour(t *testing.T) {
